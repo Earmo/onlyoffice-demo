@@ -1,0 +1,10 @@
+services:
+  onlyoffice:
+    image: onlyoffice/documentserver:9.3
+    container_name: onlyoffice-demo-docs
+    ports:
+      - "8088:80"
+    environment:
+      JWT_SECRET: onlyoffice-demo-secret-2026-03-09-123456
+    restart: unless-stopped
+
