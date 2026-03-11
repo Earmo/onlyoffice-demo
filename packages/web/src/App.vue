@@ -24,6 +24,15 @@ const errorMessage = ref("");
 const editorPayload = ref(null);
 const editorKey = ref(0);
 
+async function readErrorMessage(response, fallbackMessage) {
+  try {
+    const payload = await response.json();
+    return payload?.message || fallbackMessage;
+  } catch {
+    return fallbackMessage;
+  }
+}
+
 async function loadEditorConfig() {
   // 每次重新加载前先重置页面状态，避免沿用上一次的报错或旧配置。
   isLoading.value = true;
@@ -38,7 +47,7 @@ async function loadEditorConfig() {
       `${apiBaseUrl}/api/documents/${currentDocumentId.value}/editor-config?${params.toString()}`
     );
     if (!response.ok) {
-      throw new Error(`配置请求失败，HTTP ${response.status}`);
+      throw new Error(await readErrorMessage(response, `配置请求失败，HTTP ${response.status}`));
     }
 
     // 返回结果里同时包含 documentServerUrl 和 config，直接喂给官方组件即可。
@@ -95,7 +104,7 @@ async function handleFileSelected(event) {
     });
 
     if (!response.ok) {
-      throw new Error(`上传文档失败，HTTP ${response.status}`);
+      throw new Error(await readErrorMessage(response, `上传文档失败，HTTP ${response.status}`));
     }
 
     const documentSummary = await response.json();
@@ -125,7 +134,7 @@ async function importRemoteDocument() {
     });
 
     if (!response.ok) {
-      throw new Error(`导入网络文档失败，HTTP ${response.status}`);
+      throw new Error(await readErrorMessage(response, `导入网络文档失败，HTTP ${response.status}`));
     }
 
     const documentSummary = await response.json();
@@ -169,7 +178,7 @@ async function insertRemoteImage() {
     });
 
     if (!response.ok) {
-      throw new Error(`插图配置请求失败，HTTP ${response.status}`);
+      throw new Error(await readErrorMessage(response, `插图配置请求失败，HTTP ${response.status}`));
     }
 
     const payload = await response.json();

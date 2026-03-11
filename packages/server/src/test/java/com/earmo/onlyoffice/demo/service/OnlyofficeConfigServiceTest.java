@@ -34,6 +34,11 @@ class OnlyofficeConfigServiceTest {
     Map<String, Object> document = cast(config.get("document"));
     Map<String, Object> editorConfig = cast(config.get("editorConfig"));
     Map<String, Object> permissions = cast(document.get("permissions"));
+    Map<String, Object> customization = cast(editorConfig.get("customization"));
+    Map<String, Object> layout = cast(customization.get("layout"));
+    Map<String, Object> leftMenu = cast(layout.get("leftMenu"));
+    Map<String, Object> toolbar = cast(layout.get("toolbar"));
+    Map<String, Object> viewToolbar = cast(toolbar.get("view"));
 
     assertEquals("http://localhost:8088/", response.documentServerUrl());
     assertEquals("word", config.get("documentType"));
@@ -41,6 +46,9 @@ class OnlyofficeConfigServiceTest {
     assertTrue(editorConfig.get("callbackUrl").toString().contains("/api/documents/demo/callback"));
     assertEquals("edit", editorConfig.get("mode"));
     assertEquals(Boolean.TRUE, permissions.get("edit"));
+    assertEquals(Boolean.TRUE, leftMenu.get("mode"));
+    assertEquals(Boolean.TRUE, leftMenu.get("navigation"));
+    assertEquals(Boolean.TRUE, viewToolbar.get("navigation"));
     assertNotNull(config.get("token"));
   }
 

@@ -109,7 +109,8 @@ public class OnlyofficeConfigService {
     fileToolbar.put("settings", false);
 
     Map<String, Object> viewToolbar = new LinkedHashMap<>();
-    viewToolbar.put("navigation", false);
+    // 打开导航入口，便于在左侧展示文档目录。
+    viewToolbar.put("navigation", true);
 
     Map<String, Object> toolbar = new LinkedHashMap<>();
     toolbar.put("file", fileToolbar);
@@ -123,8 +124,9 @@ public class OnlyofficeConfigService {
     toolbar.put("collaboration", false);
 
     Map<String, Object> leftMenu = new LinkedHashMap<>();
-    leftMenu.put("mode", false);
-    leftMenu.put("navigation", false);
+    // 默认显示左侧菜单，并启用文档目录/导航面板。
+    leftMenu.put("mode", true);
+    leftMenu.put("navigation", true);
     leftMenu.put("spellcheck", false);
 
     Map<String, Object> rightMenu = new LinkedHashMap<>();

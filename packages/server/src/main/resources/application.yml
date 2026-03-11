@@ -1,11 +1,17 @@
 server:
   port: 8080
 
+spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
 demo:
   onlyoffice:
     document-server-url: http://localhost:8088/
     internal-base-url: http://host.docker.internal:8080
-    jwt-secret: onlyoffice-demo-secret-2026-03-09-123456
+    jwt-secret: 5d8fc72d49e070f303bb963f69902fe626eece4e
     default-language: zh
     default-region: zh-CN
     default-user-id: demo-user
