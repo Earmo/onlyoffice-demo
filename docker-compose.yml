@@ -1,10 +1,51 @@
 services:
+  # -------- OnlyOffice Document Server --------
   onlyoffice:
     image: onlyoffice/documentserver:9.3
     container_name: onlyoffice-demo-docs
-    ports:
-      - "8088:80"
     environment:
-      JWT_SECRET: 5d8fc72d49e070f303bb963f69902fe626eece4e
+      JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/healthcheck >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
     restart: unless-stopped
+
+  # -------- Spring Boot 后端 --------
+  server:
+    build:
+      context: ./packages/server
+    container_name: onlyoffice-demo-server
+    environment:
+      # 浏览器侧的 ONLYOFFICE 地址改为按请求自动推导，不再依赖固定域名或 IP。
+      DEMO_ONLYOFFICE_DOCUMENT_SERVER_URL: ""
+      # OnlyOffice 容器下载文档、插图、回调保存时仍走同一套 nginx 反代入口。
+      DEMO_ONLYOFFICE_INTERNAL_BASE_URL: http://web:80
+      DEMO_ONLYOFFICE_JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
+      DEMO_STORAGE_ROOT: /data/storage
+    volumes:
+      - storage-data:/data/storage
+    depends_on:
+      onlyoffice:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # -------- Vue 前端（nginx 同时反向代理 /api/ 和 ONLYOFFICE）--------
+  web:
+    build:
+      context: ./packages/web
+    container_name: onlyoffice-demo-web
+    ports:
+      - "${WEB_PORT:-12333}:80"
+    depends_on:
+      server:
+        condition: service_started
+      onlyoffice:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  storage-data:
 

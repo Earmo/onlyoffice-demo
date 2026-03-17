@@ -46,10 +46,10 @@ public class DemoProperties {
     /**
      * 浏览器访问 ONLYOFFICE Docs 的公开地址。
      *
-     * <p>前端会把这个地址直接交给 Vue 组件，用来加载编辑器脚本和页面资源。
+     * <p>留空时表示按当前请求自动推导，这样部署到公网域名、动态 IP 或反向代理后，
+     * 就不需要为每个访问入口单独改配置。
      */
-    @NotBlank
-    private String documentServerUrl = "http://localhost:8088/";
+    private String documentServerUrl = "";
 
     /**
      * ONLYOFFICE 容器回调当前后端、下载文档时使用的后端地址。

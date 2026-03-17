@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.demo.web;
 
 import com.earmo.onlyoffice.demo.model.DocumentImportRequest;
+import com.earmo.onlyoffice.demo.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.demo.model.DocumentSummaryResponse;
 import com.earmo.onlyoffice.demo.model.EditorConfigResponse;
 import com.earmo.onlyoffice.demo.model.InsertImageRequest;
@@ -11,6 +12,8 @@ import com.earmo.onlyoffice.demo.model.StoredDocument;
 import com.earmo.onlyoffice.demo.service.DocumentStorageService;
 import com.earmo.onlyoffice.demo.service.OnlyofficeConfigService;
 import com.earmo.onlyoffice.demo.service.OnlyofficeImageService;
+import com.earmo.onlyoffice.demo.service.DocumentStatusService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.Map;
 import jakarta.validation.Valid;
@@ -43,15 +46,18 @@ public class DocumentController {
   private final OnlyofficeConfigService onlyofficeConfigService;
   private final DocumentStorageService documentStorageService;
   private final OnlyofficeImageService onlyofficeImageService;
+  private final DocumentStatusService documentStatusService;
 
   public DocumentController(
       OnlyofficeConfigService onlyofficeConfigService,
       DocumentStorageService documentStorageService,
-      OnlyofficeImageService onlyofficeImageService
+      OnlyofficeImageService onlyofficeImageService,
+      DocumentStatusService documentStatusService
   ) {
     this.onlyofficeConfigService = onlyofficeConfigService;
     this.documentStorageService = documentStorageService;
     this.onlyofficeImageService = onlyofficeImageService;
+    this.documentStatusService = documentStatusService;
   }
 
   /**
@@ -60,9 +66,19 @@ public class DocumentController {
   @GetMapping("/{documentId}/editor-config")
   public EditorConfigResponse editorConfig(
       @PathVariable String documentId,
-      @RequestParam(defaultValue = "false") boolean readonly
+      @RequestParam(defaultValue = "false") boolean readonly,
+      HttpServletRequest request
   ) throws IOException {
-    return onlyofficeConfigService.buildEditorConfig(documentId, readonly);
+    documentStatusService.initialize(documentId);
+    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, request);
+  }
+
+  /**
+   * 返回当前文档最近一次保存状态。
+   */
+  @GetMapping("/{documentId}/save-status")
+  public DocumentSaveStatusResponse saveStatus(@PathVariable String documentId) {
+    return documentStatusService.getStatus(documentId);
   }
 
   /**
@@ -151,9 +167,16 @@ public class DocumentController {
       @RequestBody OnlyofficeCallbackRequest request
   ) throws IOException {
     Integer status = request.status();
+    documentStatusService.recordCallbackReceived(documentId, status);
     if (status != null && (status == 2 || status == 6)) {
-      // 只有在文档确实可持久化时才去下载新文件，避免对其他状态做无意义请求。
-      documentStorageService.saveCallbackDocument(documentId, request.url());
+      try {
+        // 只有在文档确实可持久化时才去下载新文件，避免对其他状态做无意义请求。
+        documentStorageService.saveCallbackDocument(documentId, request.url());
+        documentStatusService.recordSaveSucceeded(documentId, status);
+      } catch (IOException ex) {
+        documentStatusService.recordSaveFailed(documentId, status, ex.getMessage());
+        throw ex;
+      }
     }
     // ONLYOFFICE 约定成功响应返回 {"error": 0}。
     return Map.of("error", 0);

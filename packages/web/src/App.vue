@@ -1,9 +1,9 @@
 <script setup>
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 
-// 前端通过环境变量决定后端地址，默认直连本地 Spring Boot。
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+// Docker + nginx 部署默认走同源 /api，避免浏览器直接访问不可达的 localhost:8080。
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
 // 当前正在编辑的文档信息。
 const currentDocumentId = ref("demo");
@@ -23,6 +23,8 @@ const isImportingDocument = ref(false);
 const errorMessage = ref("");
 const editorPayload = ref(null);
 const editorKey = ref(0);
+const saveStatus = ref(null);
+let saveStatusTimer = null;
 
 async function readErrorMessage(response, fallbackMessage) {
   try {
@@ -52,12 +54,25 @@ async function loadEditorConfig() {
 
     // 返回结果里同时包含 documentServerUrl 和 config，直接喂给官方组件即可。
     editorPayload.value = await response.json();
+    await loadSaveStatus();
     // ONLYOFFICE 不适合直接热切换 view/edit，切换模式后用 key 强制重建实例更稳定。
     editorKey.value += 1;
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "未知错误";
   } finally {
     isLoading.value = false;
+  }
+}
+
+async function loadSaveStatus() {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/documents/${currentDocumentId.value}/save-status`);
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
+    }
+    saveStatus.value = await response.json();
+  } catch (error) {
+    console.error("加载保存状态失败", error);
   }
 }
 
@@ -82,6 +97,7 @@ async function switchToDocument(documentSummary) {
   currentDocumentId.value = documentSummary.documentId;
   currentDocumentTitle.value = documentSummary.title;
   readonly.value = false;
+  saveStatus.value = null;
   await loadEditorConfig();
 }
 
@@ -193,6 +209,7 @@ async function insertRemoteImage() {
 function handleDocumentReady() {
   // 这里只做最小日志输出；真实项目里通常会在这里打埋点或更新业务状态。
   console.log("ONLYOFFICE 文档已加载完成");
+  startSaveStatusPolling();
 }
 
 function handleLoadComponentError(errorCode, errorDescription) {
@@ -200,8 +217,43 @@ function handleLoadComponentError(errorCode, errorDescription) {
   errorMessage.value = `ONLYOFFICE 组件加载失败（${errorCode}）：${errorDescription}`;
 }
 
+function startSaveStatusPolling() {
+  stopSaveStatusPolling();
+  saveStatusTimer = window.setInterval(() => {
+    loadSaveStatus();
+  }, 5000);
+}
+
+function stopSaveStatusPolling() {
+  if (saveStatusTimer !== null) {
+    window.clearInterval(saveStatusTimer);
+    saveStatusTimer = null;
+  }
+}
+
+function formatTimestamp(value) {
+  if (!value) {
+    return "暂无";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "medium"
+  }).format(new Date(value));
+}
+
+function saveStatusTone(state) {
+  return {
+    "is-idle": state === "idle",
+    "is-progress": state === "callback-received",
+    "is-success": state === "saved",
+    "is-error": state === "save-failed"
+  };
+}
+
 // 页面首次挂载后立即请求配置，用户打开页面就能看到编辑器。
 onMounted(loadEditorConfig);
+onBeforeUnmount(stopSaveStatusPolling);
 </script>
 
 <template>
@@ -213,8 +265,7 @@ onMounted(loadEditorConfig);
     <section v-else-if="errorMessage" class="state-card error">
       <p>{{ errorMessage }}</p>
       <p class="hint">
-        请确认 Spring Boot 已启动在 <code>{{ apiBaseUrl }}</code>，并且
-        <code>http://localhost:8088/</code> 可以访问。
+        请确认当前站点的 <code>/api</code> 反向代理可用，并且 ONLYOFFICE 相关路径已通过同源方式转发。
       </p>
     </section>
 
@@ -270,6 +321,25 @@ onMounted(loadEditorConfig);
           <p class="panel-section-title">当前文档</p>
           <p class="panel-document-title">{{ currentDocumentTitle }}</p>
           <p class="panel-document-meta">documentId: <code>{{ currentDocumentId }}</code></p>
+        </section>
+
+        <section class="panel-section" v-if="saveStatus">
+          <p class="panel-section-title">最近保存状态</p>
+          <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
+            <p class="save-status-headline">{{ saveStatus.message }}</p>
+            <p class="save-status-meta">
+              最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
+            </p>
+            <p class="save-status-meta">
+              最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackAt) }}</code>
+            </p>
+            <p class="save-status-meta">
+              最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedAt) }}</code>
+            </p>
+          </div>
+          <button class="ghost-button secondary" type="button" @click="loadSaveStatus">
+            刷新保存状态
+          </button>
         </section>
 
         <section class="panel-section">

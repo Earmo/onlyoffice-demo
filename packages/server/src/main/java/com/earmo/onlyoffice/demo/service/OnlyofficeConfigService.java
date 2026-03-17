@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
 /**
@@ -39,7 +40,11 @@ public class OnlyofficeConfigService {
    * 1. documentServerUrl：前端用来定位 ONLYOFFICE Docs；
    * 2. config：前端原样传给 ONLYOFFICE Vue 组件。
    */
-  public EditorConfigResponse buildEditorConfig(String documentId, boolean readonly) throws IOException {
+  public EditorConfigResponse buildEditorConfig(
+      String documentId,
+      boolean readonly,
+      jakarta.servlet.http.HttpServletRequest request
+  ) throws IOException {
     StoredDocument storedDocument = documentStorageService.getOrCreateDocument(documentId);
 
     Map<String, Object> config = new LinkedHashMap<>();
@@ -52,7 +57,7 @@ public class OnlyofficeConfigService {
     config.put("token", onlyofficeJwtService.sign(config));
 
     return new EditorConfigResponse(
-        demoProperties.getOnlyoffice().getDocumentServerUrl(),
+        resolveDocumentServerUrl(request),
         config
     );
   }
@@ -188,6 +193,25 @@ public class OnlyofficeConfigService {
         .path(path)
         .build()
         .toUriString();
+  }
+
+  /**
+   * 解析浏览器访问 ONLYOFFICE 时应使用的公开基地址。
+   *
+   * <p>优先使用显式配置；若未配置，则直接返回同源根路径 `/`。
+   * 由于浏览器访问前端、API 和 ONLYOFFICE 资源都统一经过同一个 nginx 入口，
+   * 使用相对路径比动态拼绝对地址更稳，不会再受 localhost、端口映射或反向代理头影响。
+   */
+  private String resolveDocumentServerUrl(jakarta.servlet.http.HttpServletRequest request) {
+    String configuredUrl = demoProperties.getOnlyoffice().getDocumentServerUrl();
+    if (StringUtils.hasText(configuredUrl)) {
+      return ensureTrailingSlash(configuredUrl);
+    }
+    return "/";
+  }
+
+  private String ensureTrailingSlash(String url) {
+    return url.endsWith("/") ? url : url + "/";
   }
 
 }

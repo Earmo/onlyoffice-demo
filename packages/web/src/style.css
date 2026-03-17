@@ -84,6 +84,46 @@ code {
   color: #42505a;
 }
 
+.save-status-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(23, 33, 38, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.save-status-card.is-idle {
+  border-color: rgba(113, 126, 136, 0.24);
+  background: rgba(244, 247, 249, 0.9);
+}
+
+.save-status-card.is-progress {
+  border-color: rgba(139, 94, 52, 0.28);
+  background: rgba(255, 244, 234, 0.92);
+}
+
+.save-status-card.is-success {
+  border-color: rgba(44, 126, 72, 0.24);
+  background: rgba(238, 249, 242, 0.94);
+}
+
+.save-status-card.is-error {
+  border-color: rgba(176, 41, 24, 0.24);
+  background: rgba(255, 241, 239, 0.94);
+}
+
+.save-status-headline,
+.save-status-meta {
+  margin: 0;
+  color: #42505a;
+}
+
+.save-status-headline {
+  font-weight: 600;
+  color: #172126;
+}
+
 .hidden-file-input {
   display: none;
 }

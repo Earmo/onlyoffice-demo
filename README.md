@@ -6,12 +6,20 @@
 - `packages/web`：Vue 3 + Vite 前端，负责拉取配置并挂载 ONLYOFFICE Vue 组件
 - `docker-compose.yml`：本地启动 ONLYOFFICE Docs
 
-默认跑通路径是编辑 `demo.docx`：
+默认跑通路径是编辑 `demo.docx`，浏览器侧入口统一只暴露一个端口：
+
+```text
+http://<当前访问域名>:12333/
+```
+
+无论是本机 `localhost`、局域网 IP、动态公网 IP，还是后面再挂域名，前端、后端和 ONLYOFFICE 浏览器资源都会跟随当前访问地址自动生成，不需要再额外改 `EXTERNAL_HOST`。
+
+默认跑通路径是：
 
 1. 浏览器打开 Vue 页面
 2. 前端请求后端 `/api/documents/demo/editor-config`
 3. 后端返回 ONLYOFFICE 所需 `config + token`
-4. 浏览器从 `http://localhost:8088/` 加载 ONLYOFFICE Docs
+4. 浏览器通过当前站点同源路径加载 ONLYOFFICE Docs
 5. ONLYOFFICE Docs 从后端下载文档，并在保存时回调后端
 
 ## 目录结构

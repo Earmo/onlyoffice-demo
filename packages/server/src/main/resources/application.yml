@@ -1,5 +1,6 @@
 server:
   port: 8080
+  forward-headers-strategy: framework
 
 spring:
   servlet:
@@ -9,7 +10,7 @@ spring:
 
 demo:
   onlyoffice:
-    document-server-url: http://localhost:8088/
+    document-server-url:
     internal-base-url: http://host.docker.internal:8080
     jwt-secret: 5d8fc72d49e070f303bb963f69902fe626eece4e
     default-language: zh

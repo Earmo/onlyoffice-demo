@@ -8,9 +8,10 @@
 
 ## 2. 默认端口
 
-- 前端：`5173`
-- 后端：`8080`
-- ONLYOFFICE Docs：`8088`
+- 对外统一入口：`12333`
+- 容器内 Spring Boot：`8080`
+- 容器内 nginx：`80`
+- 容器内 ONLYOFFICE Docs：`80`
 
 ## 3. 启动顺序
 
@@ -47,27 +48,27 @@ npm run dev
 
 ## 4. 本地网络说明
 
-这个示例把浏览器访问 ONLYOFFICE 的地址配置成：
+在 Docker 一体化部署场景下，这个示例把浏览器访问 ONLYOFFICE 的地址配置成“当前访问站点本身”：
 
 ```text
-http://localhost:8088/
+http://<当前访问域名>:<WEB_PORT>/
 ```
 
-但 ONLYOFFICE 容器回调 Spring Boot、下载文档时，使用的是：
+浏览器访问页面、调用 API、加载 ONLYOFFICE 静态资源时，统一走 nginx 同源反代。
+
+这意味着：
+
+- 本机访问时可以直接打开 `http://localhost:12333/`
+- 局域网访问时可以直接打开 `http://你的局域网IP:12333/`
+- 公网动态 IP 或域名访问时，也不需要再修改后端 `document-server-url`
+
+ONLYOFFICE 容器下载文档、插图、回调 Spring Boot 时，使用的是：
 
 ```text
-http://host.docker.internal:8080
+http://web:80
 ```
 
-这对 Docker Desktop（Windows / macOS）是最省事的本地方案。
-
-如果你在 Linux 上运行，通常需要自己覆盖后端配置，例如把：
-
-```text
-demo.onlyoffice.internal-base-url
-```
-
-改成宿主机的实际 IP，或者在 Compose 里补 `extra_hosts`。
+这样可以避免浏览器走一个地址、容器再走另一套 `localhost` / 宿主机地址，导致下载失败或连接被拒绝。
 
 ## 5. 关键接口
 
