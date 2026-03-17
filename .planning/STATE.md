@@ -4,15 +4,15 @@
 
 See: .planning/PROJECT.md (updated 2026-03-17)
 
-**Core value:** 用户必须能通过一个统一入口稳定地打开、编辑并保存文档，而不需要手动处理多套地址、端口或编辑器配置细节。
-**Current focus:** Phase 1: Secure Configuration Baseline
+**Core value:** 任意上层系统都应该能以低耦合方式接入一个可分布式部署的文档编辑服务，让用户先看到自己的文档列表，再安全地选择、上传、打开并保存文档。
+**Current focus:** Phase 1: Service Foundation
 
 ## Current Position
 
-Phase: 1 of 5 (Secure Configuration Baseline)
+Phase: 1 of 6 (Service Foundation)
 Plan: 0 of 3 in current phase
 Status: Ready to plan
-Last activity: 2026-03-17 — Initialized project context, requirements, roadmap, and state from the existing brownfield codebase
+Last activity: 2026-03-17 — Reframed the project from demo hardening into a distributed document service roadmap
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -40,8 +40,9 @@ Progress: [░░░░░░░░░░] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Init] Treat repository as a brownfield project with validated existing capabilities
-- [Init] Focus the first roadmap on hardening, maintainability, and verification rather than new surface-area features
+- [Init] Treat repository as a brownfield codebase with validated existing ONLYOFFICE integration capabilities
+- [Reset] Product direction is now a distributed document service, not just a hardened demo
+- [Reset] Homepage must become a document library, and user + storage integrations must stay low-coupled
 
 ### Pending Todos
 
@@ -49,10 +50,10 @@ None yet.
 
 ### Blockers/Concerns
 
-- Active roadmap assumes the next milestone is “demo hardening to MVP baseline”; revisit if product direction changes
+- Current planning has been reset around distributed deployment, pluggable storage, and decoupled user integration
 
 ## Session Continuity
 
-Last session: 2026-03-17 17:31
-Stopped at: Project initialization complete; Phase 1 ready for discussion/planning
+Last session: 2026-03-17 17:42
+Stopped at: Planning reset complete; Phase 1 ready for discussion/planning
 Resume file: None

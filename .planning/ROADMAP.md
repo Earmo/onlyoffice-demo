@@ -1,8 +1,8 @@
-# Roadmap: OnlyOffice Demo
+# Roadmap: OnlyOffice Document Service
 
 ## Overview
 
-这轮 roadmap 把当前仓库从“已可运行的 ONLYOFFICE 集成示例”推进到“更安全、更稳、更易维护、可验证的 MVP 基线”。顺序上先收敛配置和仓库卫生，再补安全边界与文档流程稳定性，之后处理前端结构，最后用自动化验证把关键路径锁住。
+这轮 roadmap 把当前仓库从“最小 ONLYOFFICE 集成示例”重构为“可独立部署、也可嵌入其他系统的分布式文档编辑服务”。顺序上先建立服务边界和共享数据基础，再落存储策略与用户适配层，随后重做首页文档列表与编辑入口，最后锁定分布式编辑链路和交付验证能力。
 
 ## Phases
 
@@ -10,96 +10,115 @@
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Secure Configuration Baseline** - 清理演示默认值依赖并收敛仓库基础卫生
-- [ ] **Phase 2: Trusted Integration Boundaries** - 为 callback 和远程资源访问补上可信边界
-- [ ] **Phase 3: Stable Document Workflow** - 让导入、保存状态和模式切换在用户视角下更可靠
-- [ ] **Phase 4: Frontend Host Refactor** - 把前端宿主页拆成更可维护、可扩展的结构
-- [ ] **Phase 5: Verification and Delivery Readiness** - 用自动化测试和统一验证入口锁定行为
+- [ ] **Phase 1: Service Foundation** - 建立独立服务与微服务接入所需的边界、配置和共享模型
+- [ ] **Phase 2: Storage Strategy Layer** - 抽象存储接口并落地 MinIO 作为首个可用实现
+- [ ] **Phase 3: User Context Integration** - 引入低耦合用户上下文接入能力
+- [ ] **Phase 4: Document Library Experience** - 把首页改为文档列表，并建立选择/上传后进入编辑器的流程
+- [ ] **Phase 5: Distributed Editing Flow** - 让元数据、编辑配置、回调与安全边界适配分布式部署
+- [ ] **Phase 6: Verification and Delivery** - 补齐自动化验证和接入文档，形成可交付服务基线
 
 ## Phase Details
 
-### Phase 1: Secure Configuration Baseline
-**Goal**: 清理仓库中依赖演示默认值的配置路径，并把基础仓库卫生问题先收住。
+### Phase 1: Service Foundation
+**Goal**: 明确这个项目作为独立服务和微服务的边界，建立可分布式部署所需的共享模型与基础配置结构。
 **Depends on**: Nothing (first phase)
-**Requirements**: [SEC-01, REPO-01, REPO-02]
+**Requirements**: [ARCH-01, ARCH-02, ARCH-03]
 **Success Criteria** (what must be TRUE):
-  1. 运维可以通过环境变量完成 ONLYOFFICE 关键配置，而无需依赖提交在仓库中的默认密钥。
-  2. 前端包管理策略明确，团队不会再面对多套锁文件并存的歧义。
-  3. 构建产物和测试报告不再作为源码长期跟踪，仓库输入更干净。
+  1. 服务可以清晰配置为前后端分离部署，而不是默认绑定单一演示形态。
+  2. 文档元数据与服务接口边界被定义清楚，便于其他系统接入。
+  3. 核心状态不再被设计为只能依赖单机内存或本地目录存在。
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: 盘点并调整服务端与 Docker 配置入口，收敛示例默认值使用方式
-- [ ] 01-02: 统一前端包管理器与锁文件策略，更新仓库说明
-- [ ] 01-03: 清理并忽略构建产物目录，确保仓库只跟踪源码和必要文档
+- [ ] 01-01: 重新定义服务部署模型与外部地址配置
+- [ ] 01-02: 建立文档元数据模型与共享持久化基础
+- [ ] 01-03: 梳理对外接口和微服务接入边界
 
-### Phase 2: Trusted Integration Boundaries
-**Goal**: 补齐 ONLYOFFICE callback 与远程资源导入的安全边界，避免危险请求直接进入核心流程。
+### Phase 2: Storage Strategy Layer
+**Goal**: 抽象存储能力并以 MinIO 跑通首个可用策略，为 COS / OSS 预留一致扩展面。
 **Depends on**: Phase 1
-**Requirements**: [SEC-02, SEC-03]
+**Requirements**: [STOR-01, STOR-02, STOR-03]
 **Success Criteria** (what must be TRUE):
-  1. 只有可信 callback 才会触发本地文档覆盖。
-  2. 远程文档和图片导入会拒绝本地回环、私网滥用或异常响应。
-  3. 用户在失败时能看到明确可操作的错误反馈，而不是无上下文失败。
-**Plans**: 2 plans
-
-Plans:
-- [ ] 02-01: 为 callback 增加可信性校验与失败路径处理
-- [ ] 02-02: 为远程文档和图片访问增加边界校验、超时和响应保护
-
-### Phase 3: Stable Document Workflow
-**Goal**: 提升文档导入、保存状态展示和模式切换的稳定性，减少用户看到的陈旧状态与歧义。
-**Depends on**: Phase 2
-**Requirements**: [DOC-01, DOC-02, DOC-03]
-**Success Criteria** (what must be TRUE):
-  1. 用户导入远程文档失败时能知道失败原因。
-  2. 保存状态能准确反映 callback、落盘成功和失败信息。
-  3. 切换文档、只读模式或重载配置后，不会残留旧错误或旧状态。
+  1. 文档读写、列举、上传和保存回写都通过统一存储接口工作。
+  2. MinIO 可以驱动文档列表和编辑文件读写。
+  3. 后续接入 COS / OSS 时不需要改动上层编辑流程。
 **Plans**: 3 plans
 
 Plans:
-- [ ] 03-01: 梳理并统一导入失败与错误消息反馈
-- [ ] 03-02: 规范保存状态模型和前端轮询呈现
-- [ ] 03-03: 收紧文档切换与模式切换时的状态重置逻辑
+- [ ] 02-01: 抽取统一存储策略接口与领域对象
+- [ ] 02-02: 实现 MinIO 文档存储与回写能力
+- [ ] 02-03: 固化多存储策略的配置和扩展约定
 
-### Phase 4: Frontend Host Refactor
-**Goal**: 拆解当前前端单文件宿主页，保留现有能力同时提升可维护性和响应式表现。
-**Depends on**: Phase 3
-**Requirements**: [HOST-01, HOST-02]
+### Phase 3: User Context Integration
+**Goal**: 引入真实用户上下文，并通过低耦合适配方式让外部系统用户身份进入文档服务。
+**Depends on**: Phase 2
+**Requirements**: [USER-01, USER-02, USER-03]
 **Success Criteria** (what must be TRUE):
-  1. 前端宿主页不再把全部逻辑堆在一个组件中。
-  2. 控制台在桌面和移动端都可稳定使用。
-  3. 编辑、导入、插图和状态查看能力在重构后保持可用。
-**Plans**: 2 plans
+  1. 编辑配置不再写死演示用户，而是可解析真实用户上下文。
+  2. 用户对接方式不会把具体认证方案耦合进文档核心逻辑。
+  3. 文档列表、编辑和审计都能感知当前用户身份。
+**Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: 拆分前端模块与共享状态边界
-- [ ] 04-02: 优化控制台布局、文案与交互稳定性
+- [ ] 03-01: 设计用户上下文抽象与接入契约
+- [ ] 03-02: 把用户上下文接入编辑配置和文档操作
+- [ ] 03-03: 预留外部微服务用户体系对接方式
 
-### Phase 5: Verification and Delivery Readiness
-**Goal**: 用自动化测试与统一验证入口锁住后端 HTTP 路由和前端关键流程。
+### Phase 4: Document Library Experience
+**Goal**: 把首页改造成文档列表入口，让用户选择或上传文档后再进入编辑器。
+**Depends on**: Phase 3
+**Requirements**: [LIB-01, LIB-02, LIB-03]
+**Success Criteria** (what must be TRUE):
+  1. 首页默认显示文档列表，而不是自动打开固定文档。
+  2. 用户可以从列表中选择文档进入编辑器。
+  3. 用户可以上传新文档并直接进入新文档编辑流程。
+**Plans**: 3 plans
+
+Plans:
+- [ ] 04-01: 建立文档列表 API 与前端列表页面
+- [ ] 04-02: 重构编辑入口，使选择文档后再加载编辑器
+- [ ] 04-03: 打通上传新文档并跳转编辑流程
+
+### Phase 5: Distributed Editing Flow
+**Goal**: 让文档元数据、ONLYOFFICE 编辑链路和安全边界适应分布式部署与共享状态。
 **Depends on**: Phase 4
+**Requirements**: [EDIT-01, EDIT-02, SAFE-01, SAFE-02, SAFE-03]
+**Success Criteria** (what must be TRUE):
+  1. 文档列表和文档文件依赖共享存储与元数据，而不是本地目录猜测。
+  2. ONLYOFFICE 配置、文件下载和回调在分布式部署下仍然闭环可用。
+  3. 回调安全、远程资源边界和保存状态在多实例场景下仍然可信。
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01: 把文档元数据与编辑链路切到共享存储模型
+- [ ] 05-02: 重做 ONLYOFFICE 分布式配置、下载与 callback 闭环
+- [ ] 05-03: 补齐安全边界和分布式保存状态能力
+
+### Phase 6: Verification and Delivery
+**Goal**: 用自动化测试、运行脚本和接入文档，把项目变成可交付的服务基线。
+**Depends on**: Phase 5
 **Requirements**: [QUAL-01, QUAL-02, QUAL-03]
 **Success Criteria** (what must be TRUE):
-  1. 后端关键 HTTP 路由具备自动化测试覆盖。
-  2. 前端核心宿主流程具备自动化测试覆盖。
-  3. 仓库有统一的本地验证入口，开发者能按文档运行构建与测试。
+  1. 后端关键服务和路由具备自动化测试覆盖。
+  2. 前端关键列表与编辑入口流程具备自动化测试覆盖。
+  3. 团队可以按文档把项目当独立服务部署，或作为微服务集成到外部系统。
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: 为后端控制器与集成边界补测试
-- [ ] 05-02: 为前端关键宿主流程补测试
-- [ ] 05-03: 统一并文档化本地验证命令
+- [ ] 06-01: 为后端关键路由、存储策略和用户上下文补测试
+- [ ] 06-02: 为前端列表与编辑流程补测试
+- [ ] 06-03: 统一验证命令并编写独立部署 / 微服务接入说明
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Secure Configuration Baseline | 0/3 | Not started | - |
-| 2. Trusted Integration Boundaries | 0/2 | Not started | - |
-| 3. Stable Document Workflow | 0/3 | Not started | - |
-| 4. Frontend Host Refactor | 0/2 | Not started | - |
-| 5. Verification and Delivery Readiness | 0/3 | Not started | - |
+| 1. Service Foundation | 0/3 | Not started | - |
+| 2. Storage Strategy Layer | 0/3 | Not started | - |
+| 3. User Context Integration | 0/3 | Not started | - |
+| 4. Document Library Experience | 0/3 | Not started | - |
+| 5. Distributed Editing Flow | 0/3 | Not started | - |
+| 6. Verification and Delivery | 0/3 | Not started | - |

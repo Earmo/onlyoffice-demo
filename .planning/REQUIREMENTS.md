@@ -1,54 +1,69 @@
-# Requirements: OnlyOffice Demo
+# Requirements: OnlyOffice Document Service
 
 **Defined:** 2026-03-17
-**Core Value:** 用户必须能通过一个统一入口稳定地打开、编辑并保存文档，而不需要手动处理多套地址、端口或编辑器配置细节。
+**Core Value:** 任意上层系统都应该能以低耦合方式接入一个可分布式部署的文档编辑服务，让用户先看到自己的文档列表，再安全地选择、上传、打开并保存文档。
 
 ## v1 Requirements
 
-### Security
+### Service Architecture
 
-- [ ] **SEC-01**: 运维可以仅通过环境变量提供 ONLYOFFICE JWT 密钥与相关地址配置，而不依赖仓库中的演示默认值
-- [ ] **SEC-02**: 服务端在处理 ONLYOFFICE 保存回调前会校验请求可信性，避免未授权请求触发文档覆盖
-- [ ] **SEC-03**: 服务端在导入远程文档和代理远程图片时会阻止本地回环、私网滥用和异常响应大小，并返回明确错误
+- [ ] **ARCH-01**: 服务可以以前后端分离方式独立部署，并通过配置声明 web、api、ONLYOFFICE 等外部地址
+- [ ] **ARCH-02**: 服务提供稳定的文档编辑接口与数据模型，便于被其他分布式系统作为文档微服务接入
+- [ ] **ARCH-03**: 服务在多实例部署场景下不依赖单机内存或本地文件路径作为核心共享状态
 
-### Document Workflow
+### Storage Strategy
 
-- [ ] **DOC-01**: 用户导入远程文档失败时能得到明确原因，而不会只看到模糊失败状态
-- [ ] **DOC-02**: 用户能看到准确的最近保存状态，包括回调到达、落盘成功和落盘失败原因
-- [ ] **DOC-03**: 用户在切换文档、切换只读模式和重新加载配置后，不会看到旧文档状态或错误残留
+- [ ] **STOR-01**: 系统具备统一的文档存储策略接口，文档读写、列举、上传和保存回写都通过该抽象完成
+- [ ] **STOR-02**: v1 提供 MinIO 存储策略实现，支持文档列表、文件读取、上传保存和 callback 回写
+- [ ] **STOR-03**: 存储扩展点足够稳定，使腾讯云 COS 和阿里云 OSS 后续可以作为新策略接入而不改动上层编辑流程
 
-### Frontend Host
+### User Context
 
-- [ ] **HOST-01**: 前端宿主页会被拆分为更易维护的模块，同时保留现有编辑、导入、插图和状态查看能力
-- [ ] **HOST-02**: 控制台界面在桌面端和移动端都能稳定使用，并且关键操作语义清晰
+- [ ] **USER-01**: 每次文档编辑会话都会使用真实用户上下文，而不是固定演示用户
+- [ ] **USER-02**: 用户接入层通过适配接口或上下文解析实现，能够对接外部系统已有的用户体系
+- [ ] **USER-03**: 文档列表、编辑配置和保存审计都能消费当前用户上下文，而不把认证实现耦合进文档核心逻辑
 
-### Quality
+### Document Library and Editing
 
-- [ ] **QUAL-01**: 后端 HTTP 路由层具备自动化测试，覆盖 editor-config、file、upload、import-remote、images、callback 和 save-status 关键路径
-- [ ] **QUAL-02**: 前端关键流程具备自动化测试，至少覆盖加载配置、展示错误、切换模式和触发导入/插图动作
-- [ ] **QUAL-03**: 仓库提供统一且可执行的本地验证入口，用于运行构建、测试和必要检查
+- [ ] **LIB-01**: 用户打开首页时先看到文档列表，而不是自动进入固定文档编辑页
+- [ ] **LIB-02**: 用户可以从文档列表中选择一个已有文档，再进入编辑器进行查看或编辑
+- [ ] **LIB-03**: 用户可以在列表页上传新文档，上传成功后立即进入该文档的编辑流程
+- [ ] **EDIT-01**: 文档元数据与文档列表信息会持久化到适合分布式部署的共享存储，而不是仅靠本地目录推导
+- [ ] **EDIT-02**: ONLYOFFICE editor config、文件下载和 callback 保存流程在前后端分离部署下仍然可用
 
-### Repository Hygiene
+### Security and Reliability
 
-- [ ] **REPO-01**: 前端包管理器策略明确，仓库不会同时维护多套互相竞争的锁文件
-- [ ] **REPO-02**: 构建产物和测试报告不会继续作为源码输入长期保留在仓库中
+- [ ] **SAFE-01**: ONLYOFFICE 保存回调会做可信性校验，避免未授权请求触发文档覆盖
+- [ ] **SAFE-02**: 远程资源导入与代理会阻止本地回环、私网滥用和异常响应大小，并返回明确错误
+- [ ] **SAFE-03**: 编辑状态和保存结果对当前用户可见，失败原因可追踪，不因实例切换而丢失关键状态
+
+### Quality and Delivery
+
+- [ ] **QUAL-01**: 后端关键路由与核心服务具备自动化测试，覆盖文档列表、编辑配置、上传、回调、存储策略和用户上下文
+- [ ] **QUAL-02**: 前端关键流程具备自动化测试，至少覆盖列表加载、选择文档、上传文档和进入编辑器
+- [ ] **QUAL-03**: 仓库提供统一且可执行的本地验证入口，并明确独立部署与微服务接入方式
 
 ## v2 Requirements
 
+### Storage Expansion
+
+- **STOR-04**: 提供腾讯云 COS 存储策略实现
+- **STOR-05**: 提供阿里云 OSS 存储策略实现
+
 ### Product Expansion
 
-- **PROD-01**: 用户具备登录态和文档权限控制
-- **PROD-02**: 文档元数据和保存状态持久化到数据库或其他共享存储
-- **PROD-03**: 支持历史版本、多人协作隔离和更完整的审计能力
+- **PROD-01**: 文档权限控制细化到共享、只读、协作者等更复杂模型
+- **PROD-02**: 支持历史版本、回滚和更完整的审计能力
+- **PROD-03**: 提供更完整的外部系统事件通知或 webhook 能力
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| 多租户权限平台 | 当前范围聚焦现有 demo 的集成硬化，而不是完整业务系统 |
-| 移动 App 客户端 | 本轮只处理 Web 宿主页和后端集成 |
-| 大规模对象存储/数据库重构 | 重要但不是初始化后第一批 phase 的最小必要条件 |
-| 新增复杂编辑器业务功能 | 当前优先级是把现有链路做安全、稳定、可维护 |
+| 移动 App 客户端 | 当前只聚焦 Web 服务和微服务接入 |
+| 完整企业 IAM / SSO 平台 | 当前只做低耦合接入点，不做整套身份产品 |
+| COS / OSS 的正式实现 | 先落地 MinIO 和存储策略抽象，再扩展云厂商实现 |
+| 复杂协同后台和版本中心 | 不是当前服务化改造的第一阶段核心价值 |
 
 ## Traceability
 
@@ -56,25 +71,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEC-01 | Phase 1 | Pending |
-| REPO-01 | Phase 1 | Pending |
-| REPO-02 | Phase 1 | Pending |
-| SEC-02 | Phase 2 | Pending |
-| SEC-03 | Phase 2 | Pending |
-| DOC-01 | Phase 3 | Pending |
-| DOC-02 | Phase 3 | Pending |
-| DOC-03 | Phase 3 | Pending |
-| HOST-01 | Phase 4 | Pending |
-| HOST-02 | Phase 4 | Pending |
-| QUAL-01 | Phase 5 | Pending |
-| QUAL-02 | Phase 5 | Pending |
-| QUAL-03 | Phase 5 | Pending |
+| ARCH-01 | Phase 1 | Pending |
+| ARCH-02 | Phase 1 | Pending |
+| ARCH-03 | Phase 1 | Pending |
+| STOR-01 | Phase 2 | Pending |
+| STOR-02 | Phase 2 | Pending |
+| STOR-03 | Phase 2 | Pending |
+| USER-01 | Phase 3 | Pending |
+| USER-02 | Phase 3 | Pending |
+| USER-03 | Phase 3 | Pending |
+| LIB-01 | Phase 4 | Pending |
+| LIB-02 | Phase 4 | Pending |
+| LIB-03 | Phase 4 | Pending |
+| EDIT-01 | Phase 5 | Pending |
+| EDIT-02 | Phase 5 | Pending |
+| SAFE-01 | Phase 5 | Pending |
+| SAFE-02 | Phase 5 | Pending |
+| SAFE-03 | Phase 5 | Pending |
+| QUAL-01 | Phase 6 | Pending |
+| QUAL-02 | Phase 6 | Pending |
+| QUAL-03 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 13 total
-- Mapped to phases: 13
+- v1 requirements: 20 total
+- Mapped to phases: 20
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after roadmap creation*
+*Last updated: 2026-03-17 after scope reset*
