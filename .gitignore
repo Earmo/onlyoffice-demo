@@ -29,8 +29,10 @@ packages/server/target/
 packages/server/storage/
 rebel.xml
 
+.vite/
 .idea/
 .vscode/
+
 .agent/
 .claude/
 .codex/
