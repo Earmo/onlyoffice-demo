@@ -5,6 +5,8 @@ import com.mybatisflex.annotation.Id;
 import com.mybatisflex.annotation.Table;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * 文档元数据实体。
@@ -15,6 +17,8 @@ import java.time.Instant;
  */
 @Schema(description = "文档元数据实体，用于持久化文档归属、来源、存储定位和编辑状态。")
 @Table("document_metadata")
+@Getter
+@Setter
 public class DocumentMetadataEntity {
 
   @Schema(description = "文档服务内部生成的稳定主键。", example = "demo")
@@ -85,140 +89,4 @@ public class DocumentMetadataEntity {
   @Schema(description = "最近一次成功保存回写时间。")
   @Column("last_saved_at")
   private Instant lastSavedAt;
-
-  public String getDocumentId() {
-    return documentId;
-  }
-
-  public void setDocumentId(String documentId) {
-    this.documentId = documentId;
-  }
-
-  public String getTenantId() {
-    return tenantId;
-  }
-
-  public void setTenantId(String tenantId) {
-    this.tenantId = tenantId;
-  }
-
-  public String getOwnerUserId() {
-    return ownerUserId;
-  }
-
-  public void setOwnerUserId(String ownerUserId) {
-    this.ownerUserId = ownerUserId;
-  }
-
-  public String getSourceSystem() {
-    return sourceSystem;
-  }
-
-  public void setSourceSystem(String sourceSystem) {
-    this.sourceSystem = sourceSystem;
-  }
-
-  public String getExternalDocumentId() {
-    return externalDocumentId;
-  }
-
-  public void setExternalDocumentId(String externalDocumentId) {
-    this.externalDocumentId = externalDocumentId;
-  }
-
-  public String getTitle() {
-    return title;
-  }
-
-  public void setTitle(String title) {
-    this.title = title;
-  }
-
-  public String getStorageKey() {
-    return storageKey;
-  }
-
-  public void setStorageKey(String storageKey) {
-    this.storageKey = storageKey;
-  }
-
-  public String getFileType() {
-    return fileType;
-  }
-
-  public void setFileType(String fileType) {
-    this.fileType = fileType;
-  }
-
-  public String getDocumentType() {
-    return documentType;
-  }
-
-  public void setDocumentType(String documentType) {
-    this.documentType = documentType;
-  }
-
-  public String getStatus() {
-    return status;
-  }
-
-  public void setStatus(String status) {
-    this.status = status;
-  }
-
-  public Integer getLastCallbackStatus() {
-    return lastCallbackStatus;
-  }
-
-  public void setLastCallbackStatus(Integer lastCallbackStatus) {
-    this.lastCallbackStatus = lastCallbackStatus;
-  }
-
-  public String getLastErrorMessage() {
-    return lastErrorMessage;
-  }
-
-  public void setLastErrorMessage(String lastErrorMessage) {
-    this.lastErrorMessage = lastErrorMessage;
-  }
-
-  public Instant getCreatedAt() {
-    return createdAt;
-  }
-
-  public void setCreatedAt(Instant createdAt) {
-    this.createdAt = createdAt;
-  }
-
-  public Instant getUpdatedAt() {
-    return updatedAt;
-  }
-
-  public void setUpdatedAt(Instant updatedAt) {
-    this.updatedAt = updatedAt;
-  }
-
-  public Instant getLastOpenedAt() {
-    return lastOpenedAt;
-  }
-
-  public void setLastOpenedAt(Instant lastOpenedAt) {
-    this.lastOpenedAt = lastOpenedAt;
-  }
-
-  public Instant getLastCallbackAt() {
-    return lastCallbackAt;
-  }
-
-  public void setLastCallbackAt(Instant lastCallbackAt) {
-    this.lastCallbackAt = lastCallbackAt;
-  }
-
-  public Instant getLastSavedAt() {
-    return lastSavedAt;
-  }
-
-  public void setLastSavedAt(Instant lastSavedAt) {
-    this.lastSavedAt = lastSavedAt;
-  }
 }

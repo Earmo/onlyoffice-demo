@@ -116,6 +116,8 @@
 - 后端 ORM 统一使用 MyBatis-Flex，不再继续扩展 Spring Data JPA
 - 对外接口涉及的 model、DTO、实体字段需要补齐 Swagger/OpenAPI 注解，并通过 Knife4j 管理接口文档
 - 新增或重构的后端核心代码应补详细中文注释，说明实现步骤、边界判断和关键设计原因，避免只写结论式注释
+- 后端优先使用 Lombok 简化 getter、setter、构造器等重复样板代码；配置类、实体类、纯依赖注入类可优先采用 `@Getter`、`@Setter`、`@RequiredArgsConstructor`
+- 使用 Lombok 时仍需兼顾可读性与调试体验，默认避免为了省代码而滥用 `@Data`
 
 ## Current Technical Decisions
 
@@ -123,6 +125,7 @@
 - 文档元数据访问层后续统一收敛到 MyBatis-Flex Mapper 模式
 - 接口文档统一采用 Knife4j + OpenAPI 3 方案维护，避免再引入第二套 Swagger 工具链
 - model 层不仅要求类级说明，也要求字段级 Swagger 描述，便于前后端和微服务接入方直接查阅契约
+- Lombok 是当前服务端允许的基础工具之一，但应主要用于压缩机械样板代码，不替代必要的显式业务方法
 
 ---
 

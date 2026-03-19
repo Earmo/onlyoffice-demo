@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.demo.web;
 import com.earmo.onlyoffice.demo.config.DemoProperties;
 import com.earmo.onlyoffice.demo.model.RequestContext;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -10,6 +11,7 @@ import org.springframework.util.StringUtils;
  * 解析文档服务消费的标准化请求上下文。
  */
 @Component
+@RequiredArgsConstructor
 public class RequestContextResolver {
 
   public static final String TENANT_HEADER = "X-Tenant-Id";
@@ -18,10 +20,6 @@ public class RequestContextResolver {
   public static final String DISPLAY_NAME_HEADER = "X-User-Display-Name";
 
   private final DemoProperties demoProperties;
-
-  public RequestContextResolver(DemoProperties demoProperties) {
-    this.demoProperties = demoProperties;
-  }
 
   public RequestContext resolve(HttpServletRequest request) {
     if (request == null) {

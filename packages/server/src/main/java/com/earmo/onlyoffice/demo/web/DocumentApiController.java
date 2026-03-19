@@ -19,6 +19,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,21 +40,12 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "文档主数据接口", description = "提供文档列表、详情、创建、上传和远程导入能力。")
 @RestController
 @RequestMapping("/api/documents")
+@RequiredArgsConstructor
 public class DocumentApiController {
 
   private final DocumentMetadataService documentMetadataService;
   private final DocumentStorageService documentStorageService;
   private final RequestContextResolver requestContextResolver;
-
-  public DocumentApiController(
-      DocumentMetadataService documentMetadataService,
-      DocumentStorageService documentStorageService,
-      RequestContextResolver requestContextResolver
-  ) {
-    this.documentMetadataService = documentMetadataService;
-    this.documentStorageService = documentStorageService;
-    this.requestContextResolver = requestContextResolver;
-  }
 
   @GetMapping
   @Operation(summary = "查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要列表。")

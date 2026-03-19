@@ -19,6 +19,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -44,6 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "文档运行时接口", description = "提供 ONLYOFFICE 编辑器配置、文件下载、回调和图片代理能力。")
 @RestController
 @RequestMapping("/api/documents")
+@RequiredArgsConstructor
 public class DocumentController {
 
   private final OnlyofficeConfigService onlyofficeConfigService;
@@ -51,20 +53,6 @@ public class DocumentController {
   private final OnlyofficeImageService onlyofficeImageService;
   private final DocumentStatusService documentStatusService;
   private final RequestContextResolver requestContextResolver;
-
-  public DocumentController(
-      OnlyofficeConfigService onlyofficeConfigService,
-      DocumentStorageService documentStorageService,
-      OnlyofficeImageService onlyofficeImageService,
-      DocumentStatusService documentStatusService,
-      RequestContextResolver requestContextResolver
-  ) {
-    this.onlyofficeConfigService = onlyofficeConfigService;
-    this.documentStorageService = documentStorageService;
-    this.onlyofficeImageService = onlyofficeImageService;
-    this.documentStatusService = documentStatusService;
-    this.requestContextResolver = requestContextResolver;
-  }
 
   @GetMapping("/{documentId}/editor-config")
   @Operation(summary = "获取编辑器配置", description = "根据内部 documentId 生成 ONLYOFFICE 可直接消费的 editor config。")

@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -25,6 +26,7 @@ import org.springframework.util.StringUtils;
  * 现在集中放回 service 中显式处理，这样实现步骤更清晰，也更容易追踪每次状态更新的副作用。
  */
 @Service
+@RequiredArgsConstructor
 public class DocumentMetadataService {
 
   public static final String STATUS_DRAFT = "draft";
@@ -34,10 +36,6 @@ public class DocumentMetadataService {
   public static final String STATUS_ARCHIVED = "archived";
 
   private final DocumentMetadataMapper documentMetadataMapper;
-
-  public DocumentMetadataService(DocumentMetadataMapper documentMetadataMapper) {
-    this.documentMetadataMapper = documentMetadataMapper;
-  }
 
   @Transactional(readOnly = true)
   public Optional<DocumentMetadataEntity> findDocument(String documentId) {
@@ -78,7 +76,17 @@ public class DocumentMetadataService {
     }
 
     return findDocument(documentId)
-        .orElseGet(() -> saveNewDocument(documentId, title, fileType, documentType, storageKey, requestContext, externalDocumentId));
+        .orElseGet(
+            () -> saveNewDocument(
+                documentId,
+                title,
+                fileType,
+                documentType,
+                storageKey,
+                requestContext,
+                externalDocumentId
+            )
+        );
   }
 
   @Transactional

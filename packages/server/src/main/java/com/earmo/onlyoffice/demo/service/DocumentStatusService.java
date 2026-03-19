@@ -1,19 +1,17 @@
 package com.earmo.onlyoffice.demo.service;
 
 import com.earmo.onlyoffice.demo.model.DocumentSaveStatusResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
  * 文档保存状态门面，底层状态由共享元数据承接。
  */
 @Service
+@RequiredArgsConstructor
 public class DocumentStatusService {
 
   private final DocumentMetadataService documentMetadataService;
-
-  public DocumentStatusService(DocumentMetadataService documentMetadataService) {
-    this.documentMetadataService = documentMetadataService;
-  }
 
   public DocumentSaveStatusResponse initialize(String documentId) {
     return documentMetadataService.markOpened(documentId);

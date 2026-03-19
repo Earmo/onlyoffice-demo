@@ -6,6 +6,7 @@ import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import javax.crypto.SecretKey;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
@@ -14,13 +15,10 @@ import org.springframework.stereotype.Service;
  * <p>这样编辑器初始化配置、insertImage 调用参数等都能复用同一套签名逻辑。
  */
 @Service
+@RequiredArgsConstructor
 public class OnlyofficeJwtService {
 
   private final DemoProperties demoProperties;
-
-  public OnlyofficeJwtService(DemoProperties demoProperties) {
-    this.demoProperties = demoProperties;
-  }
 
   public String sign(Map<String, Object> payload) {
     SecretKey key = Keys.hmacShaKeyFor(

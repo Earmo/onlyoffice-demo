@@ -7,6 +7,7 @@ import com.earmo.onlyoffice.demo.model.StoredDocument;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -16,21 +17,12 @@ import org.springframework.web.util.UriComponentsBuilder;
  * 负责拼装 ONLYOFFICE 编辑器初始化配置。
  */
 @Service
+@RequiredArgsConstructor
 public class OnlyofficeConfigService {
 
   private final DemoProperties demoProperties;
   private final DocumentStorageService documentStorageService;
   private final OnlyofficeJwtService onlyofficeJwtService;
-
-  public OnlyofficeConfigService(
-      DemoProperties demoProperties,
-      DocumentStorageService documentStorageService,
-      OnlyofficeJwtService onlyofficeJwtService
-  ) {
-    this.demoProperties = demoProperties;
-    this.documentStorageService = documentStorageService;
-    this.onlyofficeJwtService = onlyofficeJwtService;
-  }
 
   public EditorConfigResponse buildEditorConfig(
       String documentId,
