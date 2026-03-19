@@ -1,7 +1,9 @@
 package com.earmo.onlyoffice.demo.service;
 
 import com.earmo.onlyoffice.demo.config.DemoProperties;
+import com.earmo.onlyoffice.demo.model.RequestContext;
 import com.earmo.onlyoffice.demo.model.StoredDocument;
+import com.earmo.onlyoffice.demo.persistence.DocumentMetadataEntity;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
@@ -18,20 +20,11 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
 /**
- * 负责本地文档的创建、读取和保存。
- *
- * <p>这是示例项目里最接近“持久化层”的一层，职责只有两类：
- * 1. 如果文档不存在，就生成一个最小可编辑的 docx；
- * 2. 当 ONLYOFFICE 回调告知文档已可保存时，把最新文件覆盖到本地。
+ * 负责文档文件内容的创建、读取和保存。
  */
 @Service
 public class DocumentStorageService {
 
-  /**
-   * 默认文档扩展名。
-   *
-   * <p>这里固定用 docx，而不是 txt，是因为 docx 更符合 ONLYOFFICE 的主编辑场景。
-   */
   private static final String DEFAULT_EXTENSION = "docx";
   private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
       "doc", "docx", "odt", "rtf", "txt",
@@ -41,51 +34,63 @@ public class DocumentStorageService {
   );
 
   private final DemoProperties demoProperties;
+  private final DocumentMetadataService documentMetadataService;
   private final RestClient restClient;
 
-  public DocumentStorageService(DemoProperties demoProperties, RestClient.Builder restClientBuilder) {
+  public DocumentStorageService(
+      DemoProperties demoProperties,
+      DocumentMetadataService documentMetadataService,
+      RestClient.Builder restClientBuilder
+  ) {
     this.demoProperties = demoProperties;
+    this.documentMetadataService = documentMetadataService;
     this.restClient = restClientBuilder.build();
   }
 
-  /**
-   * 获取本地文档；如果不存在则现场创建。
-   *
-   * <p>这个示例没有文档元数据表，因此直接把 documentId 映射为本地文件名。
-   */
-  public StoredDocument getOrCreateDocument(String rawDocumentId) throws IOException {
+  public StoredDocument ensureBootstrapDocument(String rawDocumentId) throws IOException {
     String documentId = sanitizeDocumentId(rawDocumentId);
-    Path root = ensureStorageRoot();
-
-    Path path = findDocumentPath(documentId);
-    if (path == null) {
-      path = root.resolve(documentId + "." + DEFAULT_EXTENSION);
-      // 首次访问时自动生成一个最小 DOCX，保证前端不用额外上传样例文件。
-      createDemoDocx(path);
+    if (documentMetadataService.findDocument(documentId).isPresent()) {
+      return getRequiredDocument(documentId);
     }
 
-    return toStoredDocument(documentId, path);
+    RequestContext requestContext = defaultRequestContext();
+    String title = documentId + "." + DEFAULT_EXTENSION;
+    String storageKey = buildStorageKey(documentId, DEFAULT_EXTENSION);
+    Path path = resolveStoragePath(storageKey);
+    createDemoDocxIfMissing(path);
+
+    DocumentMetadataEntity entity = documentMetadataService.createDocument(
+        documentId,
+        title,
+        DEFAULT_EXTENSION,
+        resolveDocumentType(DEFAULT_EXTENSION),
+        storageKey,
+        requestContext,
+        null
+    );
+    return toStoredDocument(entity, path);
   }
 
-  /**
-   * 读取文档原始字节流，供 ONLYOFFICE Docs 下载源文件。
-   */
+  public StoredDocument getRequiredDocument(String rawDocumentId) throws IOException {
+    String documentId = sanitizeDocumentId(rawDocumentId);
+    DocumentMetadataEntity entity = documentMetadataService.requireDocument(documentId);
+    Path path = resolveStoragePath(entity.getStorageKey());
+    if (!Files.exists(path)) {
+      throw new IOException("文档内容不存在：" + entity.getStorageKey());
+    }
+    return toStoredDocument(entity, path);
+  }
+
   public byte[] readDocument(String rawDocumentId) throws IOException {
-    return Files.readAllBytes(getOrCreateDocument(rawDocumentId).path());
+    return Files.readAllBytes(getRequiredDocument(rawDocumentId).path());
   }
 
-  /**
-   * 把 ONLYOFFICE callback 中返回的最新文件覆盖保存到本地。
-   *
-   * <p>callback 只给下载地址，不直接给文件内容，所以这里需要二次发起 HTTP 请求。
-   */
   public void saveCallbackDocument(String rawDocumentId, String downloadUrl) throws IOException {
     if (!StringUtils.hasText(downloadUrl)) {
-      // 某些状态下 callback 不会带下载地址，直接忽略即可。
       return;
     }
 
-    StoredDocument storedDocument = getOrCreateDocument(rawDocumentId);
+    StoredDocument storedDocument = getRequiredDocument(rawDocumentId);
     byte[] latestFile = restClient.get()
         .uri(downloadUrl)
         .retrieve()
@@ -95,7 +100,6 @@ public class DocumentStorageService {
       throw new IOException("ONLYOFFICE callback did not return file bytes.");
     }
 
-    // 使用覆盖写入，保持同一个 documentId 始终指向最新版本的文件。
     Files.write(
         storedDocument.path(),
         latestFile,
@@ -104,27 +108,40 @@ public class DocumentStorageService {
     );
   }
 
-  /**
-   * 保存上传的本地文档，并返回新文档描述。
-   */
   public StoredDocument storeUploadedDocument(String originalFilename, byte[] body) throws IOException {
+    return storeUploadedDocument(originalFilename, body, defaultRequestContext());
+  }
+
+  public StoredDocument storeUploadedDocument(String originalFilename, byte[] body, RequestContext requestContext)
+      throws IOException {
     if (body == null || body.length == 0) {
       throw new IllegalArgumentException("上传文件不能为空。");
     }
 
-    Path root = ensureStorageRoot();
     String extension = requireSupportedExtension(originalFilename);
     String documentId = buildGeneratedDocumentId(stripExtension(originalFilename));
-    Path path = root.resolve(documentId + "." + extension);
+    String storageKey = buildStorageKey(documentId, extension);
+    Path path = resolveStoragePath(storageKey);
 
+    Files.createDirectories(path.getParent());
     Files.write(path, body, StandardOpenOption.CREATE_NEW);
-    return toStoredDocument(documentId, path);
+    DocumentMetadataEntity entity = documentMetadataService.createDocument(
+        documentId,
+        documentId + "." + extension,
+        extension,
+        resolveDocumentType(extension),
+        storageKey,
+        requestContext,
+        null
+    );
+    return toStoredDocument(entity, path);
   }
 
-  /**
-   * 下载网络文档并存入本地。
-   */
   public StoredDocument importRemoteDocument(String sourceUrl) throws IOException {
+    return importRemoteDocument(sourceUrl, defaultRequestContext());
+  }
+
+  public StoredDocument importRemoteDocument(String sourceUrl, RequestContext requestContext) throws IOException {
     URI remoteUri = parseAndValidateRemoteUrl(sourceUrl);
     String originalFilename = extractRemoteFilename(remoteUri);
     byte[] body = restClient.get()
@@ -136,23 +153,45 @@ public class DocumentStorageService {
       throw new IOException("远程文档下载失败，响应内容为空。");
     }
 
-    return storeUploadedDocument(originalFilename, body);
+    return storeUploadedDocument(originalFilename, body, requestContext);
   }
 
-  /**
-   * 把文件路径转换成业务层更容易消费的文档对象。
-   */
-  private StoredDocument toStoredDocument(String documentId, Path path) throws IOException {
-    String title = path.getFileName().toString();
-    String fileType = getFileExtension(title);
-    String documentType = resolveDocumentType(fileType);
+  public StoredDocument createNativeDocument(
+      String rawDocumentId,
+      String rawTitle,
+      RequestContext requestContext,
+      String externalDocumentId
+  ) throws IOException {
+    String title = StringUtils.hasText(rawTitle) ? rawTitle.trim() : "untitled.docx";
+    String extension = requireSupportedExtension(title);
+    if (!DEFAULT_EXTENSION.equals(extension)) {
+      throw new IllegalArgumentException("当前显式创建接口只支持 docx 文档。");
+    }
+
+    String documentId = StringUtils.hasText(rawDocumentId)
+        ? sanitizeDocumentId(rawDocumentId)
+        : buildGeneratedDocumentId(stripExtension(title));
+    String storageKey = buildStorageKey(documentId, extension);
+    Path path = resolveStoragePath(storageKey);
+
+    createDemoDocxIfMissing(path);
+    DocumentMetadataEntity entity = documentMetadataService.createDocument(
+        documentId,
+        title,
+        extension,
+        resolveDocumentType(extension),
+        storageKey,
+        requestContext,
+        externalDocumentId
+    );
+    return toStoredDocument(entity, path);
+  }
+
+  private StoredDocument toStoredDocument(DocumentMetadataEntity entity, Path path) throws IOException {
     Instant lastModified = Files.getLastModifiedTime(path).toInstant();
-    return new StoredDocument(documentId, title, fileType, documentType, path, lastModified);
+    return documentMetadataService.toStoredDocument(entity, path, lastModified);
   }
 
-  /**
-   * 根据文件名提取扩展名。
-   */
   private String getFileExtension(String filename) {
     int index = filename.lastIndexOf('.');
     if (index < 0 || index == filename.length() - 1) {
@@ -161,11 +200,6 @@ public class DocumentStorageService {
     return filename.substring(index + 1).toLowerCase(Locale.ROOT);
   }
 
-  /**
-   * 把具体扩展名归并成 ONLYOFFICE 识别的 documentType。
-   *
-   * <p>ONLYOFFICE 前端初始化时要求提供较粗粒度的类型，例如 word/cell/slide/pdf。
-   */
   private String resolveDocumentType(String fileType) {
     return switch (fileType) {
       case "csv", "xls", "xlsx", "ods" -> "cell";
@@ -175,9 +209,6 @@ public class DocumentStorageService {
     };
   }
 
-  /**
-   * 对外部传入的 documentId 做最小清洗，避免直接参与路径拼接。
-   */
   private String sanitizeDocumentId(String rawDocumentId) {
     if (!StringUtils.hasText(rawDocumentId)) {
       return "demo";
@@ -191,22 +222,6 @@ public class DocumentStorageService {
     Path root = demoProperties.getStorageRoot();
     Files.createDirectories(root);
     return root;
-  }
-
-  /**
-   * 按 documentId 搜索当前真实文件。
-   *
-   * <p>导入文档后扩展名可能是 xlsx/pptx/pdf，因此不能再假定永远是 docx。
-   */
-  private Path findDocumentPath(String documentId) throws IOException {
-    Path root = ensureStorageRoot();
-    try (var stream = Files.list(root)) {
-      return stream
-          .filter(Files::isRegularFile)
-          .filter(path -> path.getFileName().toString().startsWith(documentId + "."))
-          .findFirst()
-          .orElse(null);
-    }
   }
 
   private String requireSupportedExtension(String filename) {
@@ -277,12 +292,36 @@ public class DocumentStorageService {
     return filename;
   }
 
-  /**
-   * 生成一个最小可用的 DOCX 文件。
-   *
-   * <p>DOCX 本质上是 ZIP 包，这里直接写入必要的 OpenXML 文件，
-   * 省掉额外依赖，也让示例启动后立即可编辑。
-   */
+  private String buildStorageKey(String documentId, String extension) {
+    return "documents/" + documentId + "." + extension;
+  }
+
+  private Path resolveStoragePath(String storageKey) throws IOException {
+    Path root = ensureStorageRoot().toAbsolutePath().normalize();
+    Path resolved = root.resolve(storageKey).normalize();
+    if (!resolved.startsWith(root)) {
+      throw new IllegalArgumentException("非法存储路径：" + storageKey);
+    }
+    return resolved;
+  }
+
+  private RequestContext defaultRequestContext() {
+    return new RequestContext(
+        demoProperties.getDefaultTenantId(),
+        demoProperties.getDefaultSourceSystem(),
+        demoProperties.getDefaultUserId(),
+        demoProperties.getDefaultUserName()
+    );
+  }
+
+  private void createDemoDocxIfMissing(Path path) throws IOException {
+    if (Files.exists(path)) {
+      return;
+    }
+    Files.createDirectories(path.getParent());
+    createDemoDocx(path);
+  }
+
   private void createDemoDocx(Path path) throws IOException {
     try (OutputStream outputStream = Files.newOutputStream(path, StandardOpenOption.CREATE_NEW);
          ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream)) {
@@ -292,20 +331,12 @@ public class DocumentStorageService {
     }
   }
 
-  /**
-   * 向 DOCX ZIP 包中写入单个条目。
-   */
   private void addZipEntry(ZipOutputStream zipOutputStream, String name, String body) throws IOException {
     zipOutputStream.putNextEntry(new ZipEntry(name));
     zipOutputStream.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     zipOutputStream.closeEntry();
   }
 
-  /**
-   * DOCX 的内容类型声明文件。
-   *
-   * <p>告诉 Office/ONLYOFFICE 这个压缩包里各个扩展名和主文档入口分别是什么类型。
-   */
   private String contentTypesXml() {
     return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -317,11 +348,6 @@ public class DocumentStorageService {
         """;
   }
 
-  /**
-   * DOCX 根关系定义。
-   *
-   * <p>通过这个文件把整个文档包的入口指向 word/document.xml。
-   */
   private String rootRelationshipsXml() {
     return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -334,11 +360,6 @@ public class DocumentStorageService {
         """;
   }
 
-  /**
-   * 示例文档正文内容。
-   *
-   * <p>这里只保留最少的段落和页面配置，目标是让文件足够小、结构足够稳定。
-   */
   private String documentXml() {
     return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>

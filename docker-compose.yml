@@ -1,4 +1,21 @@
 services:
+  # -------- Shared metadata database --------
+  postgres:
+    image: postgres:16-alpine
+    container_name: onlyoffice-demo-postgres
+    environment:
+      POSTGRES_DB: onlyoffice_demo
+      POSTGRES_USER: onlyoffice
+      POSTGRES_PASSWORD: onlyoffice
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onlyoffice -d onlyoffice_demo"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   # -------- OnlyOffice Document Server --------
   onlyoffice:
     image: onlyoffice/documentserver:9.3
@@ -19,20 +36,30 @@ services:
       context: ./packages/server
     container_name: onlyoffice-demo-server
     environment:
-      # 浏览器侧的 ONLYOFFICE 地址改为按请求自动推导，不再依赖固定域名或 IP。
+      # 官方前端聚合入口可留空，由请求头或网关入口自动推导公开地址。
+      DEMO_PUBLIC_BASE_URL: ""
+      # 浏览器侧的 ONLYOFFICE 地址默认跟随官方前端聚合入口。
       DEMO_ONLYOFFICE_DOCUMENT_SERVER_URL: ""
-      # OnlyOffice 容器下载文档、插图、回调保存时仍走同一套 nginx 反代入口。
+      # ONLYOFFICE 容器下载文档、插图、回调保存时走同一套 nginx 聚合入口。
       DEMO_ONLYOFFICE_INTERNAL_BASE_URL: http://web:80
       DEMO_ONLYOFFICE_JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
+      DEMO_DEFAULT_TENANT_ID: native
+      DEMO_DEFAULT_SOURCE_SYSTEM: native
       DEMO_STORAGE_ROOT: /data/storage
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onlyoffice_demo
+      SPRING_DATASOURCE_USERNAME: onlyoffice
+      SPRING_DATASOURCE_PASSWORD: onlyoffice
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
     volumes:
       - storage-data:/data/storage
     depends_on:
       onlyoffice:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
-  # -------- Vue 前端（nginx 同时反向代理 /api/ 和 ONLYOFFICE）--------
+  # -------- Official web（nginx 聚合 /api/ 与 ONLYOFFICE 路径）--------
   web:
     build:
       context: ./packages/web
@@ -47,5 +74,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres-data:
   storage-data:
 

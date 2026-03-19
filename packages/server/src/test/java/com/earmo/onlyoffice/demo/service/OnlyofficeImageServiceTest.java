@@ -15,8 +15,8 @@ class OnlyofficeImageServiceTest {
   @Test
   void shouldBuildSignedInsertImagePayload() {
     DemoProperties properties = new DemoProperties();
-    properties.getOnlyoffice().setInternalBaseUrl("http://host.docker.internal:8080");
-    properties.getOnlyoffice().setJwtSecret("onlyoffice-demo-secret-2026-03-09-123456");
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setJwtSecret("onlyoffice-demo-secret-2026-03-09-123456");
 
     OnlyofficeJwtService jwtService = new OnlyofficeJwtService(properties);
     OnlyofficeImageService imageService = new OnlyofficeImageService(
@@ -33,7 +33,7 @@ class OnlyofficeImageServiceTest {
     Map<String, Object> payload = response.insertImage();
     assertEquals("add", payload.get("c"));
     assertEquals("png", payload.get("fileType"));
-    assertTrue(payload.get("url").toString().contains("/api/documents/demo/images/proxy"));
+    assertTrue(payload.get("url").toString().contains("http://internal.example.test/api/documents/demo/images/proxy"));
     assertTrue(payload.get("url").toString().contains("sourceUrl=https://example.com/assets/logo.png"));
     assertNotNull(payload.get("token"));
   }

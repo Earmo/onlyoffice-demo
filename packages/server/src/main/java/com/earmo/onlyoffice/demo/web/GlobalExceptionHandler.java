@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.demo.web;
 
 import com.earmo.onlyoffice.demo.model.ApiErrorResponse;
+import com.earmo.onlyoffice.demo.service.DocumentNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,6 +25,12 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
     return ResponseEntity.badRequest()
+        .body(new ApiErrorResponse(exception.getMessage()));
+  }
+
+  @ExceptionHandler(DocumentNotFoundException.class)
+  public ResponseEntity<ApiErrorResponse> handleDocumentNotFound(DocumentNotFoundException exception) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
         .body(new ApiErrorResponse(exception.getMessage()));
   }
 

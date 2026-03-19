@@ -1,100 +1,122 @@
-# 最小可运行说明
+# 文档服务最小接入说明
 
-## 1. 组件职责
+## 1. 服务角色
 
-- Vue：展示页面，调用后端拿编辑器配置
-- Spring Boot：生成 ONLYOFFICE `config`，提供文件流，处理回调保存
-- ONLYOFFICE Docs：真正的在线编辑器服务
+- `api service`
+  负责文档主数据、创建/上传/导入、ONLYOFFICE editor config、文件流和 callback
+- `official web`
+  官方前端客户端，默认通过 nginx 聚合同域访问 `/api` 与 ONLYOFFICE 资源
+- `compose demo`
+  便于本地联调的聚合部署形态，不代表唯一生产部署方式
 
-## 2. 默认端口
+## 2. 地址语义
 
-- 对外统一入口：`12333`
-- 容器内 Spring Boot：`8080`
-- 容器内 nginx：`80`
-- 容器内 ONLYOFFICE Docs：`80`
+- `publicBaseUrl`
+  浏览器、外部系统或跳转入口使用的公开服务地址
+- `internalBaseUrl`
+  ONLYOFFICE 容器拉取文件、插图代理、保存回调时访问 API 的内部地址
+- `documentServerUrl`
+  浏览器加载 ONLYOFFICE 静态资源时使用的地址；在聚合部署场景下可复用官方前端入口
 
-## 3. 启动顺序
+`editor-config`、`file`、`callback` 的绝对地址都由后端生成，前端不需要自行拼接。
 
-### 3.1 启动 ONLYOFFICE Docs
+## 3. 最小部署
+
+### 3.1 Compose demo
 
 ```bash
 docker compose up -d
 ```
 
-默认使用固定 JWT：
+当前 compose demo 会启动：
+
+- `postgres`
+- `onlyoffice`
+- `server`
+- `web`
+
+对外统一入口默认是：
 
 ```text
-onlyoffice-demo-secret-2026-03-09-123456
+http://localhost:12333/
 ```
 
-### 3.2 启动 Spring Boot
+### 3.2 单独启动后端
 
 ```bash
 cd packages/server
 mvn spring-boot:run
 ```
 
-后端默认会在 `packages/server/storage/demo.docx` 不存在时自动创建示例文档。
+后端默认使用本地 H2 作为开发环境元数据存储；在 compose demo 中会切到 PostgreSQL。
 
-### 3.3 启动 Vue
+### 3.3 单独启动官方前端
 
 ```bash
 cd packages/web
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
-打开 `http://localhost:5173`。
+## 4. 推荐接入流程
 
-## 4. 本地网络说明
+上游系统应先调用服务端 API 建立文档上下文，再拿到内部 `documentId`。不要直接假定“打开文档”会自动创建文档，系统不会隐式 auto-create。
 
-在 Docker 一体化部署场景下，这个示例把浏览器访问 ONLYOFFICE 的地址配置成“当前访问站点本身”：
+推荐顺序：
 
-```text
-http://<当前访问域名>:<WEB_PORT>/
-```
+1. 调用 `POST /api/documents`
+   显式创建原生文档，或建立需要编辑的文档上下文
+2. 或调用 `POST /api/documents/upload`
+   上传本地文档并生成内部 `documentId`
+3. 或调用 `POST /api/documents/import-remote`
+   导入网络文档并生成内部 `documentId`
+4. 调用 `GET /api/documents/{documentId}/editor-config`
+   获取 ONLYOFFICE 初始化配置
+5. 再决定：
+   - 跳转/嵌入官方前端
+   - 或由上游系统自己的前端消费该配置
 
-浏览器访问页面、调用 API、加载 ONLYOFFICE 静态资源时，统一走 nginx 同源反代。
+## 5. 核心 API
 
-这意味着：
-
-- 本机访问时可以直接打开 `http://localhost:12333/`
-- 局域网访问时可以直接打开 `http://你的局域网IP:12333/`
-- 公网动态 IP 或域名访问时，也不需要再修改后端 `document-server-url`
-
-ONLYOFFICE 容器下载文档、插图、回调 Spring Boot 时，使用的是：
-
-```text
-http://web:80
-```
-
-这样可以避免浏览器走一个地址、容器再走另一套 `localhost` / 宿主机地址，导致下载失败或连接被拒绝。
-
-## 5. 关键接口
-
+- `GET /api/documents`
+  - 按当前 `tenantId` 返回文档列表
+- `GET /api/documents/{documentId}`
+  - 返回文档详情
+- `POST /api/documents`
+  - 显式创建文档，不会隐式 auto-create
+- `POST /api/documents/upload`
+  - 上传本地文档并返回内部 `documentId`
+- `POST /api/documents/import-remote`
+  - 导入网络文档并返回内部 `documentId`
 - `GET /api/documents/{documentId}/editor-config`
   - 返回 ONLYOFFICE Vue 组件所需 `documentServerUrl` 和 `config`
 - `GET /api/documents/{documentId}/file`
-  - 给 ONLYOFFICE 下载源文件
+  - 给 ONLYOFFICE 拉取源文件
 - `POST /api/documents/{documentId}/callback`
-  - 接收 ONLYOFFICE 保存回调，在 `status=2` 或 `status=6` 时拉取新文件并覆盖本地存储
+  - 接收 ONLYOFFICE 保存回调并更新共享元数据状态
 
-## 6. 最小实现取舍
+## 6. 用户上下文透传
 
-这个仓库刻意只保留最少闭环，不做这些事情：
+v1 以服务到服务透传为主，默认支持这些请求头：
 
-- 用户鉴权
-- 文档权限模型
-- 数据库存储
-- 历史版本
-- 多人协同隔离
-- 回调验签校验
+- `X-Tenant-Id`
+- `X-Source-System`
+- `X-External-User-Id`
+- `X-User-Display-Name`
 
-如果要上生产，至少要继续补：
+如果上游系统未透传，服务会回退到 demo 默认值。`tenantId`、`sourceSystem` 和当前用户都会进入文档元数据或编辑配置，而不是写死在文档核心逻辑里。
 
-- 登录态和文档授权
-- 回调请求验签
-- 文档元数据持久化
-- 对象存储或文件服务
-- 多租户唯一 `document.key`
-- HTTPS 和跨域白名单
+## 7. 现阶段取舍
+
+这个仓库现在已经具备：
+
+- 共享元数据持久化基础
+- 官方前端聚合入口
+- API-first 的文档创建 / 上传 / 导入 / 编辑配置边界
+
+但还没有完成：
+
+- MinIO / COS / OSS 正式存储策略
+- 完整用户认证体系接入
+- 首页文档列表 UI 重构
+- 分布式 callback 安全校验和更细的保存状态审计

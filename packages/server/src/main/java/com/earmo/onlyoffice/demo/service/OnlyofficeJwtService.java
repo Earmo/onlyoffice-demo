@@ -24,7 +24,7 @@ public class OnlyofficeJwtService {
 
   public String sign(Map<String, Object> payload) {
     SecretKey key = Keys.hmacShaKeyFor(
-        demoProperties.getOnlyoffice().getJwtSecret().getBytes(StandardCharsets.UTF_8)
+        demoProperties.getJwtSecret().getBytes(StandardCharsets.UTF_8)
     );
 
     return Jwts.builder()

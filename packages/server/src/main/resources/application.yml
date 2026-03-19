@@ -3,18 +3,31 @@ server:
   forward-headers-strategy: framework
 
 spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./data/onlyoffice-demo;MODE=PostgreSQL;AUTO_SERVER=TRUE;DB_CLOSE_DELAY=-1}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+  flyway:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
 
 demo:
-  onlyoffice:
-    document-server-url:
-    internal-base-url: http://host.docker.internal:8080
-    jwt-secret: 5d8fc72d49e070f303bb963f69902fe626eece4e
-    default-language: zh
-    default-region: zh-CN
-    default-user-id: demo-user
-    default-user-name: 演示用户
-  storage-root: ./storage
+  public-base-url: ${DEMO_PUBLIC_BASE_URL:}
+  internal-base-url: ${DEMO_INTERNAL_BASE_URL:http://host.docker.internal:8080}
+  document-server-url: ${DEMO_ONLYOFFICE_DOCUMENT_SERVER_URL:}
+  jwt-secret: ${DEMO_ONLYOFFICE_JWT_SECRET:5d8fc72d49e070f303bb963f69902fe626eece4e}
+  default-language: ${DEMO_DEFAULT_LANGUAGE:zh}
+  default-region: ${DEMO_DEFAULT_REGION:zh-CN}
+  default-tenant-id: ${DEMO_DEFAULT_TENANT_ID:native}
+  default-source-system: ${DEMO_DEFAULT_SOURCE_SYSTEM:native}
+  default-user-id: ${DEMO_DEFAULT_USER_ID:demo-user}
+  default-user-name: ${DEMO_DEFAULT_USER_NAME:演示用户}
+  storage-root: ${DEMO_STORAGE_ROOT:./storage}

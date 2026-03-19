@@ -111,7 +111,7 @@ public class OnlyofficeImageService {
   }
 
   private String buildInternalImageProxyUrl(String documentId, String sourceUrl) {
-    return UriComponentsBuilder.fromHttpUrl(demoProperties.getOnlyoffice().getInternalBaseUrl())
+    return UriComponentsBuilder.fromHttpUrl(demoProperties.getInternalBaseUrl())
         .path("/api/documents/{documentId}/images/proxy")
         .queryParam("sourceUrl", sourceUrl)
         .buildAndExpand(documentId)

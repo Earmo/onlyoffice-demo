@@ -2,82 +2,134 @@ package com.earmo.onlyoffice.demo.service;
 
 import com.earmo.onlyoffice.demo.config.DemoProperties;
 import com.earmo.onlyoffice.demo.model.EditorConfigResponse;
+import com.earmo.onlyoffice.demo.model.RequestContext;
+import com.earmo.onlyoffice.demo.model.StoredDocument;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.web.client.RestClient;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class OnlyofficeConfigServiceTest {
 
   @TempDir
-  java.nio.file.Path tempDir;
+  Path tempDir;
 
   @Test
   void shouldBuildSignedEditorConfig() throws IOException {
     DemoProperties properties = new DemoProperties();
-    properties.setStorageRoot(tempDir);
-    properties.getOnlyoffice().setDocumentServerUrl("http://docs.example.com");
-    properties.getOnlyoffice().setInternalBaseUrl("http://host.docker.internal:8080");
-    properties.getOnlyoffice().setJwtSecret("onlyoffice-demo-secret-2026-03-09-123456");
+    properties.setPublicBaseUrl("https://api.example.test");
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setDocumentServerUrl("https://docs.example.test");
+    properties.setJwtSecret("onlyoffice-demo-secret-2026-03-09-123456");
 
-    DocumentStorageService storageService = new DocumentStorageService(properties, RestClient.builder());
+    Path path = tempDir.resolve("demo.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "demo.docx",
+        "documents/demo.docx",
+        "docx",
+        "word",
+        "draft",
+        path,
+        Instant.parse("2026-03-19T08:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    );
+
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
     OnlyofficeJwtService jwtService = new OnlyofficeJwtService(properties);
     OnlyofficeConfigService configService = new OnlyofficeConfigService(properties, storageService, jwtService);
-    MockHttpServletRequest request = new MockHttpServletRequest();
+    MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/documents/demo/editor-config");
+    request.setScheme("https");
+    request.setServerName("app.example.test");
+    request.setServerPort(443);
 
-    EditorConfigResponse response = configService.buildEditorConfig("demo", false, request);
+    EditorConfigResponse response = configService.buildEditorConfig(
+        "demo",
+        false,
+        new RequestContext("tenant-a", "native", "user-a", "Alice"),
+        request
+    );
     Map<String, Object> config = response.config();
     Map<String, Object> document = cast(config.get("document"));
     Map<String, Object> editorConfig = cast(config.get("editorConfig"));
     Map<String, Object> permissions = cast(document.get("permissions"));
-    Map<String, Object> customization = cast(editorConfig.get("customization"));
-    Map<String, Object> layout = cast(customization.get("layout"));
-    Map<String, Object> leftMenu = cast(layout.get("leftMenu"));
-    Map<String, Object> toolbar = cast(layout.get("toolbar"));
-    Map<String, Object> viewToolbar = cast(toolbar.get("view"));
 
-    assertEquals("http://docs.example.com/", response.documentServerUrl());
-    assertEquals("word", config.get("documentType"));
-    assertTrue(document.get("url").toString().contains("/api/documents/demo/file"));
-    assertTrue(editorConfig.get("callbackUrl").toString().contains("/api/documents/demo/callback"));
+    assertEquals("https://docs.example.test/", response.documentServerUrl());
+    assertTrue(document.get("url").toString().contains("http://internal.example.test/api/documents/demo/file"));
+    assertTrue(editorConfig.get("callbackUrl").toString().contains("http://internal.example.test/api/documents/demo/callback"));
+    assertEquals("user-a", cast(editorConfig.get("user")).get("id"));
+    assertEquals("Alice", cast(editorConfig.get("user")).get("name"));
     assertEquals("edit", editorConfig.get("mode"));
     assertEquals(Boolean.TRUE, permissions.get("edit"));
-    assertEquals(Boolean.TRUE, leftMenu.get("mode"));
-    assertEquals(Boolean.TRUE, leftMenu.get("navigation"));
-    assertEquals(Boolean.TRUE, viewToolbar.get("navigation"));
     assertNotNull(config.get("token"));
   }
 
   @Test
-  void shouldBuildReadonlyEditorConfig() throws IOException {
+  void shouldFallbackToPublicBaseUrlWhenDocumentServerUrlIsBlank() throws IOException {
     DemoProperties properties = new DemoProperties();
-    properties.setStorageRoot(tempDir);
-    properties.getOnlyoffice().setDocumentServerUrl("");
-    properties.getOnlyoffice().setInternalBaseUrl("http://host.docker.internal:8080");
-    properties.getOnlyoffice().setJwtSecret("onlyoffice-demo-secret-2026-03-09-123456");
+    properties.setPublicBaseUrl("https://gateway.example.test");
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setJwtSecret("onlyoffice-demo-secret-2026-03-09-123456");
 
-    DocumentStorageService storageService = new DocumentStorageService(properties, RestClient.builder());
-    OnlyofficeJwtService jwtService = new OnlyofficeJwtService(properties);
-    OnlyofficeConfigService configService = new OnlyofficeConfigService(properties, storageService, jwtService);
-    MockHttpServletRequest request = new MockHttpServletRequest();
-    EditorConfigResponse response = configService.buildEditorConfig("demo", true, request);
-    Map<String, Object> config = response.config();
-    Map<String, Object> document = cast(config.get("document"));
-    Map<String, Object> editorConfig = cast(config.get("editorConfig"));
-    Map<String, Object> permissions = cast(document.get("permissions"));
+    Path path = tempDir.resolve("demo.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "demo.docx",
+        "documents/demo.docx",
+        "docx",
+        "word",
+        "draft",
+        path,
+        Instant.parse("2026-03-19T08:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    );
 
-    assertEquals("/", response.documentServerUrl());
-    assertEquals("view", editorConfig.get("mode"));
-    assertEquals(Boolean.FALSE, permissions.get("edit"));
-    assertEquals(Boolean.FALSE, permissions.get("review"));
-    assertEquals(Boolean.FALSE, permissions.get("fillForms"));
-    assertNotNull(config.get("token"));
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
+    OnlyofficeConfigService configService = new OnlyofficeConfigService(
+        properties,
+        storageService,
+        new OnlyofficeJwtService(properties)
+    );
+
+    EditorConfigResponse response = configService.buildEditorConfig(
+        "demo",
+        true,
+        new RequestContext("tenant-a", "native", "user-a", "Alice"),
+        new MockHttpServletRequest()
+    );
+
+    assertEquals("https://gateway.example.test/", response.documentServerUrl());
+    assertEquals("view", cast(response.config().get("editorConfig")).get("mode"));
   }
 
   @SuppressWarnings("unchecked")

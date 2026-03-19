@@ -1,18 +1,21 @@
 package com.earmo.onlyoffice.demo.model;
 
+import java.time.Instant;
+
 /**
  * 返回给前端的文档概要。
- *
- * @param documentId 当前文档 ID
- * @param title 当前文档标题
- * @param fileType 当前文档扩展名
- * @param documentType ONLYOFFICE 文档大类
  */
 public record DocumentSummaryResponse(
     String documentId,
     String title,
     String fileType,
-    String documentType
+    String documentType,
+    String status,
+    String tenantId,
+    String ownerUserId,
+    String sourceSystem,
+    String externalDocumentId,
+    Instant lastOpenedAt,
+    Instant lastSavedAt
 ) {
 }
-

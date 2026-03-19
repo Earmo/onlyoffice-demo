@@ -1,22 +1,21 @@
 package com.earmo.onlyoffice.demo.web;
 
-import com.earmo.onlyoffice.demo.model.DocumentImportRequest;
 import com.earmo.onlyoffice.demo.model.DocumentSaveStatusResponse;
-import com.earmo.onlyoffice.demo.model.DocumentSummaryResponse;
 import com.earmo.onlyoffice.demo.model.EditorConfigResponse;
 import com.earmo.onlyoffice.demo.model.InsertImageRequest;
 import com.earmo.onlyoffice.demo.model.InsertImageResponse;
 import com.earmo.onlyoffice.demo.model.OnlyofficeCallbackRequest;
+import com.earmo.onlyoffice.demo.model.RequestContext;
 import com.earmo.onlyoffice.demo.model.RemoteImageResource;
 import com.earmo.onlyoffice.demo.model.StoredDocument;
+import com.earmo.onlyoffice.demo.service.DocumentStatusService;
 import com.earmo.onlyoffice.demo.service.DocumentStorageService;
 import com.earmo.onlyoffice.demo.service.OnlyofficeConfigService;
 import com.earmo.onlyoffice.demo.service.OnlyofficeImageService;
-import com.earmo.onlyoffice.demo.service.DocumentStatusService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.Map;
-import jakarta.validation.Valid;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -30,14 +29,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 暴露给前端和 ONLYOFFICE Docs 的文档接口。
- *
- * <p>这里把两类调用统一放在一个控制器里：
- * 1. 前端浏览器调用 editor-config 获取初始化参数；
- * 2. ONLYOFFICE Docs 调用 file 和 callback 完成下载与保存。
+ * 暴露给前端和 ONLYOFFICE Docs 的运行时接口。
  */
 @RestController
 @RequestMapping("/api/documents")
@@ -47,48 +41,41 @@ public class DocumentController {
   private final DocumentStorageService documentStorageService;
   private final OnlyofficeImageService onlyofficeImageService;
   private final DocumentStatusService documentStatusService;
+  private final RequestContextResolver requestContextResolver;
 
   public DocumentController(
       OnlyofficeConfigService onlyofficeConfigService,
       DocumentStorageService documentStorageService,
       OnlyofficeImageService onlyofficeImageService,
-      DocumentStatusService documentStatusService
+      DocumentStatusService documentStatusService,
+      RequestContextResolver requestContextResolver
   ) {
     this.onlyofficeConfigService = onlyofficeConfigService;
     this.documentStorageService = documentStorageService;
     this.onlyofficeImageService = onlyofficeImageService;
     this.documentStatusService = documentStatusService;
+    this.requestContextResolver = requestContextResolver;
   }
 
-  /**
-   * 返回前端初始化 ONLYOFFICE 编辑器所需的配置。
-   */
   @GetMapping("/{documentId}/editor-config")
   public EditorConfigResponse editorConfig(
       @PathVariable String documentId,
       @RequestParam(defaultValue = "false") boolean readonly,
       HttpServletRequest request
   ) throws IOException {
+    RequestContext requestContext = requestContextResolver.resolve(request);
     documentStatusService.initialize(documentId);
-    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, request);
+    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, requestContext, request);
   }
 
-  /**
-   * 返回当前文档最近一次保存状态。
-   */
   @GetMapping("/{documentId}/save-status")
   public DocumentSaveStatusResponse saveStatus(@PathVariable String documentId) {
     return documentStatusService.getStatus(documentId);
   }
 
-  /**
-   * 向 ONLYOFFICE Docs 提供文档原始字节流。
-   *
-   * <p>当编辑器初始化时，ONLYOFFICE 服务端会访问这个地址拉取源文件。
-   */
   @GetMapping("/{documentId}/file")
   public ResponseEntity<ByteArrayResource> file(@PathVariable String documentId) throws IOException {
-    StoredDocument storedDocument = documentStorageService.getOrCreateDocument(documentId);
+    StoredDocument storedDocument = documentStorageService.getRequiredDocument(documentId);
     byte[] body = documentStorageService.readDocument(documentId);
     MediaType mediaType = MediaTypeFactory.getMediaType(storedDocument.title())
         .orElse(MediaType.APPLICATION_OCTET_STREAM);
@@ -102,33 +89,6 @@ public class DocumentController {
         .body(new ByteArrayResource(body));
   }
 
-  /**
-   * 上传本地文档并返回新文档信息。
-   */
-  @PostMapping("/upload")
-  public DocumentSummaryResponse upload(@RequestParam("file") MultipartFile file) throws IOException {
-    if (file.isEmpty()) {
-      throw new IllegalArgumentException("上传文件不能为空。");
-    }
-
-    StoredDocument storedDocument = documentStorageService.storeUploadedDocument(
-        file.getOriginalFilename(),
-        file.getBytes()
-    );
-    return toSummary(storedDocument);
-  }
-
-  /**
-   * 导入网络文档并返回新文档信息。
-   */
-  @PostMapping("/import-remote")
-  public DocumentSummaryResponse importRemote(@Valid @RequestBody DocumentImportRequest request) throws IOException {
-    return toSummary(documentStorageService.importRemoteDocument(request.sourceUrl()));
-  }
-
-  /**
-   * 生成前端调用 docEditor.insertImage(...) 所需的签名参数。
-   */
   @PostMapping("/{documentId}/images/insert")
   public InsertImageResponse insertImage(
       @PathVariable String documentId,
@@ -137,9 +97,6 @@ public class DocumentController {
     return onlyofficeImageService.buildInsertImageResponse(documentId, request.sourceUrl());
   }
 
-  /**
-   * 代理远程图片给 ONLYOFFICE Docs 下载。
-   */
   @GetMapping("/{documentId}/images/proxy")
   public ResponseEntity<ByteArrayResource> proxyImage(
       @PathVariable String documentId,
@@ -155,12 +112,6 @@ public class DocumentController {
         .body(new ByteArrayResource(resource.body()));
   }
 
-  /**
-   * 接收 ONLYOFFICE 的保存回调。
-   *
-   * <p>示例里只处理 status=2 和 status=6：
-   * 这两个状态都代表已经拿到可下载的最新文件，可以安全覆盖本地文档。
-   */
   @PostMapping("/{documentId}/callback")
   public Map<String, Integer> callback(
       @PathVariable String documentId,
@@ -170,7 +121,6 @@ public class DocumentController {
     documentStatusService.recordCallbackReceived(documentId, status);
     if (status != null && (status == 2 || status == 6)) {
       try {
-        // 只有在文档确实可持久化时才去下载新文件，避免对其他状态做无意义请求。
         documentStorageService.saveCallbackDocument(documentId, request.url());
         documentStatusService.recordSaveSucceeded(documentId, status);
       } catch (IOException ex) {
@@ -178,16 +128,6 @@ public class DocumentController {
         throw ex;
       }
     }
-    // ONLYOFFICE 约定成功响应返回 {"error": 0}。
     return Map.of("error", 0);
-  }
-
-  private DocumentSummaryResponse toSummary(StoredDocument storedDocument) {
-    return new DocumentSummaryResponse(
-        storedDocument.documentId(),
-        storedDocument.title(),
-        storedDocument.fileType(),
-        storedDocument.documentType()
-    );
   }
 }

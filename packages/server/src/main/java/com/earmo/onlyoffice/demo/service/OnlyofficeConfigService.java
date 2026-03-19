@@ -2,19 +2,18 @@ package com.earmo.onlyoffice.demo.service;
 
 import com.earmo.onlyoffice.demo.config.DemoProperties;
 import com.earmo.onlyoffice.demo.model.EditorConfigResponse;
+import com.earmo.onlyoffice.demo.model.RequestContext;
 import com.earmo.onlyoffice.demo.model.StoredDocument;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * 负责拼装 ONLYOFFICE 编辑器初始化配置。
- *
- * <p>前端真正需要的不是文档字节，而是一份符合 ONLYOFFICE 约定的 config。
- * 这份配置里同时包含文档元信息、回调地址、用户信息以及 JWT 签名。
  */
 @Service
 public class OnlyofficeConfigService {
@@ -33,19 +32,13 @@ public class OnlyofficeConfigService {
     this.onlyofficeJwtService = onlyofficeJwtService;
   }
 
-  /**
-   * 构造前端初始化编辑器所需的完整响应。
-   *
-   * <p>返回结果分成两层：
-   * 1. documentServerUrl：前端用来定位 ONLYOFFICE Docs；
-   * 2. config：前端原样传给 ONLYOFFICE Vue 组件。
-   */
   public EditorConfigResponse buildEditorConfig(
       String documentId,
       boolean readonly,
+      RequestContext requestContext,
       jakarta.servlet.http.HttpServletRequest request
   ) throws IOException {
-    StoredDocument storedDocument = documentStorageService.getOrCreateDocument(documentId);
+    StoredDocument storedDocument = documentStorageService.getRequiredDocument(documentId);
 
     Map<String, Object> config = new LinkedHashMap<>();
     config.put("documentType", storedDocument.documentType());
@@ -53,55 +46,41 @@ public class OnlyofficeConfigService {
     config.put("width", "100%");
     config.put("height", "100%");
     config.put("document", buildDocumentSection(storedDocument, readonly));
-    config.put("editorConfig", buildEditorSection(storedDocument, readonly));
+    config.put("editorConfig", buildEditorSection(storedDocument, readonly, requestContext));
     config.put("token", onlyofficeJwtService.sign(config));
 
-    return new EditorConfigResponse(
-        resolveDocumentServerUrl(request),
-        config
-    );
+    return new EditorConfigResponse(resolveDocumentServerUrl(request), config);
   }
 
-  /**
-   * 生成 config.document 段。
-   *
-   * <p>这里主要告诉 ONLYOFFICE：
-   * 当前文件叫什么、是什么类型、从哪里下载、有哪些权限。
-   */
   private Map<String, Object> buildDocumentSection(StoredDocument storedDocument, boolean readonly) {
     Map<String, Object> permissions = new LinkedHashMap<>();
     permissions.put("edit", !readonly);
     permissions.put("download", true);
-    // 关闭打印能力后，相关入口会被禁用或隐藏。
     permissions.put("print", false);
     permissions.put("review", false);
     permissions.put("fillForms", false);
-    // 关闭评论能力，减少顶部和侧边栏相关 UI。
     permissions.put("comment", false);
     permissions.put("chat", false);
 
     Map<String, Object> document = new LinkedHashMap<>();
     document.put("title", storedDocument.title());
     document.put("fileType", storedDocument.fileType());
-    // key 是 ONLYOFFICE 用于区分文档版本的重要字段，这里用“文档 ID + 最后修改时间”构造。
     document.put("key", storedDocument.documentId() + "-" + storedDocument.lastModified().toEpochMilli());
     document.put("url", buildInternalUrl("/api/documents/%s/file".formatted(storedDocument.documentId())));
     document.put("permissions", permissions);
     return document;
   }
 
-  /**
-   * 生成 config.editorConfig 段。
-   *
-   * <p>这里定义编辑模式、保存回调地址，以及展示给编辑器的当前用户信息。
-   */
-  private Map<String, Object> buildEditorSection(StoredDocument storedDocument, boolean readonly) {
+  private Map<String, Object> buildEditorSection(
+      StoredDocument storedDocument,
+      boolean readonly,
+      RequestContext requestContext
+  ) {
     Map<String, Object> user = new LinkedHashMap<>();
-    user.put("id", demoProperties.getOnlyoffice().getDefaultUserId());
-    user.put("name", demoProperties.getOnlyoffice().getDefaultUserName());
+    user.put("id", requestContext.externalUserId());
+    user.put("name", requestContext.displayName());
 
     Map<String, Object> header = new LinkedHashMap<>();
-    // 以下 layout.* 多数属于白标能力；Community 版通常会忽略不支持的字段。
     header.put("editMode", false);
     header.put("save", false);
     header.put("user", false);
@@ -114,7 +93,6 @@ public class OnlyofficeConfigService {
     fileToolbar.put("settings", false);
 
     Map<String, Object> viewToolbar = new LinkedHashMap<>();
-    // 打开导航入口，便于在左侧展示文档目录。
     viewToolbar.put("navigation", true);
 
     Map<String, Object> toolbar = new LinkedHashMap<>();
@@ -129,7 +107,6 @@ public class OnlyofficeConfigService {
     toolbar.put("collaboration", false);
 
     Map<String, Object> leftMenu = new LinkedHashMap<>();
-    // 默认显示左侧菜单，并启用文档目录/导航面板。
     leftMenu.put("mode", true);
     leftMenu.put("navigation", true);
     leftMenu.put("spellcheck", false);
@@ -173,11 +150,8 @@ public class OnlyofficeConfigService {
     customization.put("toolbarHideFileName", true);
 
     Map<String, Object> editorConfig = new LinkedHashMap<>();
-    // lang 控制编辑器界面语言；简体中文使用 zh。
-    editorConfig.put("lang", demoProperties.getOnlyoffice().getDefaultLanguage());
-    // region 主要影响日期、时间、货币等本地化格式，尤其是表格编辑器。
-    editorConfig.put("region", demoProperties.getOnlyoffice().getDefaultRegion());
-    // 只读切换通过重新初始化编辑器完成，因此这里直接输出最终 mode。
+    editorConfig.put("lang", demoProperties.getDefaultLanguage());
+    editorConfig.put("region", demoProperties.getDefaultRegion());
     editorConfig.put("mode", readonly ? "view" : "edit");
     editorConfig.put("callbackUrl", buildInternalUrl("/api/documents/%s/callback".formatted(storedDocument.documentId())));
     editorConfig.put("user", user);
@@ -185,33 +159,35 @@ public class OnlyofficeConfigService {
     return editorConfig;
   }
 
-  /**
-   * 基于内部访问地址拼出 ONLYOFFICE 容器实际会调用的完整 URL。
-   */
   private String buildInternalUrl(String path) {
-    return UriComponentsBuilder.fromHttpUrl(demoProperties.getOnlyoffice().getInternalBaseUrl())
+    return UriComponentsBuilder.fromHttpUrl(demoProperties.getInternalBaseUrl())
         .path(path)
         .build()
         .toUriString();
   }
 
-  /**
-   * 解析浏览器访问 ONLYOFFICE 时应使用的公开基地址。
-   *
-   * <p>优先使用显式配置；若未配置，则直接返回同源根路径 `/`。
-   * 由于浏览器访问前端、API 和 ONLYOFFICE 资源都统一经过同一个 nginx 入口，
-   * 使用相对路径比动态拼绝对地址更稳，不会再受 localhost、端口映射或反向代理头影响。
-   */
   private String resolveDocumentServerUrl(jakarta.servlet.http.HttpServletRequest request) {
-    String configuredUrl = demoProperties.getOnlyoffice().getDocumentServerUrl();
-    if (StringUtils.hasText(configuredUrl)) {
-      return ensureTrailingSlash(configuredUrl);
+    if (StringUtils.hasText(demoProperties.getDocumentServerUrl())) {
+      return ensureTrailingSlash(demoProperties.getDocumentServerUrl());
     }
-    return "/";
+
+    if (StringUtils.hasText(demoProperties.getPublicBaseUrl())) {
+      return ensureTrailingSlash(demoProperties.getPublicBaseUrl());
+    }
+
+    if (request == null) {
+      return "/";
+    }
+
+    String requestBaseUrl = UriComponentsBuilder.fromHttpRequest(new ServletServerHttpRequest(request))
+        .replacePath(null)
+        .replaceQuery(null)
+        .build()
+        .toUriString();
+    return ensureTrailingSlash(requestBaseUrl);
   }
 
   private String ensureTrailingSlash(String url) {
     return url.endsWith("/") ? url : url + "/";
   }
-
 }

@@ -23,7 +23,6 @@ public class OnlyofficeDemoApplication {
 
   @Bean
   CommandLineRunner seedDemoDocument(DocumentStorageService documentStorageService) {
-    // 应用启动后预热一个默认文档，避免首次访问时由接口触发创建带来额外分支。
-    return args -> documentStorageService.getOrCreateDocument("demo");
+    return args -> documentStorageService.ensureBootstrapDocument("demo");
   }
 }
