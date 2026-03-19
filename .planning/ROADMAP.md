@@ -10,7 +10,7 @@
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Service Foundation** - 建立独立服务与微服务接入所需的边界、配置和共享模型
+- [x] **Phase 1: Service Foundation** - 建立独立服务与微服务接入所需的边界、配置和共享模型 (completed 2026-03-19)
 - [ ] **Phase 2: Storage Strategy Layer** - 抽象存储接口并落地 MinIO 作为首个可用实现
 - [ ] **Phase 3: User Context Integration** - 引入低耦合用户上下文接入能力
 - [ ] **Phase 4: Document Library Experience** - 把首页改为文档列表，并建立选择/上传后进入编辑器的流程
@@ -30,9 +30,9 @@
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: 重新定义服务部署模型与外部地址配置
-- [ ] 01-02: 建立文档元数据模型与共享持久化基础
-- [ ] 01-03: 梳理对外接口和微服务接入边界
+- [x] 01-01: 重新定义服务部署模型与外部地址配置
+- [x] 01-02: 建立文档元数据模型与共享持久化基础
+- [x] 01-03: 梳理对外接口和微服务接入边界
 
 ### Phase 2: Storage Strategy Layer
 **Goal**: 抽象存储能力并以 MinIO 跑通首个可用策略，为 COS / OSS 预留一致扩展面。
@@ -116,7 +116,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Service Foundation | 0/3 | Not started | - |
+| 1. Service Foundation | 3/3 | Complete    | 2026-03-19 |
 | 2. Storage Strategy Layer | 0/3 | Not started | - |
 | 3. User Context Integration | 0/3 | Not started | - |
 | 4. Document Library Experience | 0/3 | Not started | - |

@@ -7,9 +7,9 @@
 
 ### Service Architecture
 
-- [ ] **ARCH-01**: 服务可以以前后端分离方式独立部署，并通过配置声明 web、api、ONLYOFFICE 等外部地址
-- [ ] **ARCH-02**: 服务提供稳定的文档编辑接口与数据模型，便于被其他分布式系统作为文档微服务接入
-- [ ] **ARCH-03**: 服务在多实例部署场景下不依赖单机内存或本地文件路径作为核心共享状态
+- [x] **ARCH-01**: 服务可以以前后端分离方式独立部署，并通过配置声明 web、api、ONLYOFFICE 等外部地址
+- [x] **ARCH-02**: 服务提供稳定的文档编辑接口与数据模型，便于被其他分布式系统作为文档微服务接入
+- [x] **ARCH-03**: 服务在多实例部署场景下不依赖单机内存或本地文件路径作为核心共享状态
 
 ### Storage Strategy
 
@@ -71,9 +71,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ARCH-01 | Phase 1 | Pending |
-| ARCH-02 | Phase 1 | Pending |
-| ARCH-03 | Phase 1 | Pending |
+| ARCH-01 | Phase 1 | Complete |
+| ARCH-02 | Phase 1 | Complete |
+| ARCH-03 | Phase 1 | Complete |
 | STOR-01 | Phase 2 | Pending |
 | STOR-02 | Phase 2 | Pending |
 | STOR-03 | Phase 2 | Pending |
@@ -99,4 +99,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after scope reset*
+*Last updated: 2026-03-19 after Phase 1 execution*
