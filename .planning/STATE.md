@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 Phase: 1 of 6 (Service Foundation)
 Plan: 0 of 3 in current phase
 Status: Ready to plan
-Last activity: 2026-03-17 — Reframed the project from demo hardening into a distributed document service roadmap
+Last activity: 2026-03-19 — Captured Phase 1 service foundation context and locked service-boundary decisions
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -54,6 +54,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17 17:42
-Stopped at: Planning reset complete; Phase 1 ready for discussion/planning
-Resume file: None
+Last session: 2026-03-19 15:58
+Stopped at: Phase 1 context gathered
+Resume file: .planning/phases/01-service-foundation/01-CONTEXT.md
