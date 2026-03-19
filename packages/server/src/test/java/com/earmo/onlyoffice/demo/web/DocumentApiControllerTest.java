@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.demo.web;
 import com.earmo.onlyoffice.demo.model.RequestContext;
 import com.earmo.onlyoffice.demo.model.StoredDocument;
 import com.earmo.onlyoffice.demo.persistence.DocumentMetadataEntity;
+import com.earmo.onlyoffice.demo.persistence.DocumentMetadataMapper;
 import com.earmo.onlyoffice.demo.service.DocumentMetadataService;
 import com.earmo.onlyoffice.demo.service.DocumentStorageService;
 import java.time.Instant;
@@ -36,6 +37,9 @@ class DocumentApiControllerTest {
 
   @MockBean
   private RequestContextResolver requestContextResolver;
+
+  @MockBean
+  private DocumentMetadataMapper documentMetadataMapper;
 
   @Test
   void shouldListDocumentsForCurrentTenant() throws Exception {

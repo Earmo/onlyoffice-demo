@@ -4,7 +4,7 @@ import com.earmo.onlyoffice.demo.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.demo.model.RequestContext;
 import com.earmo.onlyoffice.demo.model.StoredDocument;
 import com.earmo.onlyoffice.demo.persistence.DocumentMetadataEntity;
-import com.earmo.onlyoffice.demo.persistence.DocumentMetadataRepository;
+import com.earmo.onlyoffice.demo.persistence.DocumentMetadataMapper;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -15,6 +15,14 @@ import org.springframework.util.StringUtils;
 
 /**
  * 承载文档主数据与共享状态流转。
+ *
+ * <p>这个服务专门负责“元数据真相源”这一层：
+ * 1. 明确文档是否存在、属于谁、来源于哪里；
+ * 2. 统一维护 editing/saved/failed 等主状态；
+ * 3. 为文件存储层提供可复用的主数据读取和转换能力。
+ *
+ * <p>在从 JPA 切到 MyBatis-Flex 后，原来由实体生命周期回调自动完成的时间戳维护，
+ * 现在集中放回 service 中显式处理，这样实现步骤更清晰，也更容易追踪每次状态更新的副作用。
  */
 @Service
 public class DocumentMetadataService {
@@ -25,15 +33,15 @@ public class DocumentMetadataService {
   public static final String STATUS_FAILED = "failed";
   public static final String STATUS_ARCHIVED = "archived";
 
-  private final DocumentMetadataRepository documentMetadataRepository;
+  private final DocumentMetadataMapper documentMetadataMapper;
 
-  public DocumentMetadataService(DocumentMetadataRepository documentMetadataRepository) {
-    this.documentMetadataRepository = documentMetadataRepository;
+  public DocumentMetadataService(DocumentMetadataMapper documentMetadataMapper) {
+    this.documentMetadataMapper = documentMetadataMapper;
   }
 
   @Transactional(readOnly = true)
   public Optional<DocumentMetadataEntity> findDocument(String documentId) {
-    return documentMetadataRepository.findById(documentId);
+    return Optional.ofNullable(documentMetadataMapper.selectOneById(documentId));
   }
 
   @Transactional(readOnly = true)
@@ -44,7 +52,7 @@ public class DocumentMetadataService {
 
   @Transactional(readOnly = true)
   public List<DocumentMetadataEntity> listDocuments(String tenantId) {
-    return documentMetadataRepository.findAllByTenantIdOrderByUpdatedAtDesc(tenantId);
+    return documentMetadataMapper.selectByTenantIdOrderByUpdatedAtDesc(tenantId);
   }
 
   @Transactional
@@ -58,27 +66,32 @@ public class DocumentMetadataService {
       String externalDocumentId
   ) {
     if (StringUtils.hasText(externalDocumentId)) {
-      Optional<DocumentMetadataEntity> mapped = documentMetadataRepository.findBySourceSystemAndExternalDocumentId(
-          requestContext.sourceSystem(),
-          externalDocumentId
+      Optional<DocumentMetadataEntity> mapped = Optional.ofNullable(
+          documentMetadataMapper.selectBySourceSystemAndExternalDocumentId(
+              requestContext.sourceSystem(),
+              externalDocumentId
+          )
       );
       if (mapped.isPresent()) {
         return mapped.get();
       }
     }
 
-    return documentMetadataRepository.findById(documentId)
+    return findDocument(documentId)
         .orElseGet(() -> saveNewDocument(documentId, title, fileType, documentType, storageKey, requestContext, externalDocumentId));
   }
 
   @Transactional
   public DocumentSaveStatusResponse markOpened(String documentId) {
     DocumentMetadataEntity entity = requireDocument(documentId);
+    Instant now = Instant.now();
     entity.setLastOpenedAt(Instant.now());
     if (!StringUtils.hasText(entity.getStatus())) {
       entity.setStatus(STATUS_DRAFT);
     }
-    return toSaveStatus(documentMetadataRepository.save(entity));
+    entity.setUpdatedAt(now);
+    updateEntity(entity);
+    return toSaveStatus(entity);
   }
 
   @Transactional
@@ -89,7 +102,9 @@ public class DocumentMetadataService {
     entity.setLastCallbackStatus(callbackStatus);
     entity.setLastCallbackAt(now);
     entity.setLastErrorMessage(null);
-    return toSaveStatus(documentMetadataRepository.save(entity));
+    entity.setUpdatedAt(now);
+    updateEntity(entity);
+    return toSaveStatus(entity);
   }
 
   @Transactional
@@ -101,7 +116,9 @@ public class DocumentMetadataService {
     entity.setLastCallbackAt(entity.getLastCallbackAt() == null ? now : entity.getLastCallbackAt());
     entity.setLastSavedAt(now);
     entity.setLastErrorMessage(null);
-    return toSaveStatus(documentMetadataRepository.save(entity));
+    entity.setUpdatedAt(now);
+    updateEntity(entity);
+    return toSaveStatus(entity);
   }
 
   @Transactional
@@ -112,7 +129,9 @@ public class DocumentMetadataService {
     entity.setLastCallbackStatus(callbackStatus);
     entity.setLastCallbackAt(entity.getLastCallbackAt() == null ? now : entity.getLastCallbackAt());
     entity.setLastErrorMessage(message);
-    return toSaveStatus(documentMetadataRepository.save(entity));
+    entity.setUpdatedAt(now);
+    updateEntity(entity);
+    return toSaveStatus(entity);
   }
 
   @Transactional(readOnly = true)
@@ -150,6 +169,7 @@ public class DocumentMetadataService {
       RequestContext requestContext,
       String externalDocumentId
   ) {
+    Instant now = Instant.now();
     DocumentMetadataEntity entity = new DocumentMetadataEntity();
     entity.setDocumentId(documentId);
     entity.setTenantId(requestContext.tenantId());
@@ -161,7 +181,10 @@ public class DocumentMetadataService {
     entity.setFileType(fileType);
     entity.setDocumentType(documentType);
     entity.setStatus(STATUS_DRAFT);
-    return documentMetadataRepository.save(entity);
+    entity.setCreatedAt(now);
+    entity.setUpdatedAt(now);
+    insertEntity(entity);
+    return entity;
   }
 
   private DocumentSaveStatusResponse toSaveStatus(DocumentMetadataEntity entity) {
@@ -190,5 +213,22 @@ public class DocumentMetadataService {
       case STATUS_ARCHIVED -> "文档已归档。";
       default -> "文档已创建，尚未进入编辑会话。";
     };
+  }
+
+  /**
+   * 统一封装 insert，目的是把 ORM 框架差异压缩在一个地方。
+   *
+   * <p>后续如果需要补充审计字段、租户插件或数据权限逻辑，
+   * 可以直接从这里下手，而不用到处散改 service 里的业务方法。
+   */
+  private void insertEntity(DocumentMetadataEntity entity) {
+    documentMetadataMapper.insert(entity);
+  }
+
+  /**
+   * 统一封装 updateById，保证所有状态流转都显式走主键更新。
+   */
+  private void updateEntity(DocumentMetadataEntity entity) {
+    documentMetadataMapper.update(entity);
   }
 }

@@ -1,94 +1,90 @@
 package com.earmo.onlyoffice.demo.persistence;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.mybatisflex.annotation.Column;
+import com.mybatisflex.annotation.Id;
+import com.mybatisflex.annotation.Table;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 
 /**
- * 文档主数据实体。
+ * 文档元数据实体。
+ *
+ * <p>这个实体既承载数据库持久化映射，也作为接口层和服务层之间的主数据载体。
+ * 因为后续会有微服务接入、对象存储策略切换、编辑状态回写等能力，
+ * 所以这里把“谁的文档、从哪来、存在哪里、当前状态如何”集中在一个实体里维护。
  */
-@Entity
-@Table(
-    name = "document_metadata",
-    indexes = {
-        @Index(name = "idx_document_metadata_tenant_updated", columnList = "tenant_id, updated_at"),
-        @Index(name = "idx_document_metadata_source_external", columnList = "source_system, external_document_id")
-    }
-)
+@Schema(description = "文档元数据实体，用于持久化文档归属、来源、存储定位和编辑状态。")
+@Table("document_metadata")
 public class DocumentMetadataEntity {
 
+  @Schema(description = "文档服务内部生成的稳定主键。", example = "demo")
   @Id
-  @Column(name = "document_id", nullable = false, updatable = false, length = 128)
+  @Column("document_id")
   private String documentId;
 
-  @Column(name = "tenant_id", nullable = false, length = 128)
+  @Schema(description = "文档所属租户标识。", example = "native")
+  @Column("tenant_id")
   private String tenantId;
 
-  @Column(name = "owner_user_id", nullable = false, length = 128)
+  @Schema(description = "文档 owner 用户标识。", example = "demo-user")
+  @Column("owner_user_id")
   private String ownerUserId;
 
-  @Column(name = "source_system", nullable = false, length = 128)
+  @Schema(description = "文档来源系统标识。", example = "native")
+  @Column("source_system")
   private String sourceSystem;
 
-  @Column(name = "external_document_id", length = 256)
+  @Schema(description = "上游系统传入的外部文档 ID。", example = "external-1")
+  @Column("external_document_id")
   private String externalDocumentId;
 
-  @Column(name = "title", nullable = false, length = 512)
+  @Schema(description = "展示给用户的文档标题。", example = "demo.docx")
+  @Column("title")
   private String title;
 
-  @Column(name = "storage_key", nullable = false, length = 512)
+  @Schema(description = "文档在存储系统中的稳定对象键。", example = "documents/demo.docx")
+  @Column("storage_key")
   private String storageKey;
 
-  @Column(name = "file_type", nullable = false, length = 32)
+  @Schema(description = "文件扩展名。", example = "docx")
+  @Column("file_type")
   private String fileType;
 
-  @Column(name = "document_type", nullable = false, length = 32)
+  @Schema(description = "ONLYOFFICE 文档类型。", example = "word")
+  @Column("document_type")
   private String documentType;
 
-  @Column(name = "status", nullable = false, length = 32)
+  @Schema(description = "文档当前主状态。", example = "draft")
+  @Column("status")
   private String status;
 
-  @Column(name = "last_callback_status")
+  @Schema(description = "最近一次 ONLYOFFICE callback 的状态码。", example = "2")
+  @Column("last_callback_status")
   private Integer lastCallbackStatus;
 
-  @Column(name = "last_error_message", length = 1024)
+  @Schema(description = "最近一次保存失败原因。", example = "下载失败")
+  @Column("last_error_message")
   private String lastErrorMessage;
 
-  @Column(name = "created_at", nullable = false)
+  @Schema(description = "文档元数据创建时间。")
+  @Column("created_at")
   private Instant createdAt;
 
-  @Column(name = "updated_at", nullable = false)
+  @Schema(description = "文档元数据最近更新时间。")
+  @Column("updated_at")
   private Instant updatedAt;
 
-  @Column(name = "last_opened_at")
+  @Schema(description = "最近一次打开编辑器的时间。")
+  @Column("last_opened_at")
   private Instant lastOpenedAt;
 
-  @Column(name = "last_callback_at")
+  @Schema(description = "最近一次收到 ONLYOFFICE callback 的时间。")
+  @Column("last_callback_at")
   private Instant lastCallbackAt;
 
-  @Column(name = "last_saved_at")
+  @Schema(description = "最近一次成功保存回写时间。")
+  @Column("last_saved_at")
   private Instant lastSavedAt;
-
-  @PrePersist
-  void prePersist() {
-    Instant now = Instant.now();
-    if (createdAt == null) {
-      createdAt = now;
-    }
-    if (updatedAt == null) {
-      updatedAt = now;
-    }
-  }
-
-  @PreUpdate
-  void preUpdate() {
-    updatedAt = Instant.now();
-  }
 
   public String getDocumentId() {
     return documentId;

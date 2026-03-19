@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.demo.persistence;
 
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -8,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
-class DocumentMetadataRepositoryTest {
+class DocumentMetadataMapperTest {
 
   @Autowired
-  private DocumentMetadataRepository documentMetadataRepository;
+  private DocumentMetadataMapper documentMetadataMapper;
 
   @Test
   void shouldPersistDocumentMetadata() {
@@ -26,14 +27,15 @@ class DocumentMetadataRepositoryTest {
     entity.setFileType("docx");
     entity.setDocumentType("word");
     entity.setStatus("draft");
+    entity.setCreatedAt(Instant.parse("2026-03-19T08:00:00Z"));
+    entity.setUpdatedAt(Instant.parse("2026-03-19T08:00:00Z"));
 
-    documentMetadataRepository.save(entity);
+    documentMetadataMapper.insert(entity);
 
-    assertTrue(documentMetadataRepository.findById("doc-1").isPresent());
+    assertTrue(documentMetadataMapper.selectOneById("doc-1") != null);
     assertEquals(
         "external-1",
-        documentMetadataRepository.findBySourceSystemAndExternalDocumentId("native", "external-1")
-            .orElseThrow()
+        documentMetadataMapper.selectBySourceSystemAndExternalDocumentId("native", "external-1")
             .getExternalDocumentId()
     );
   }

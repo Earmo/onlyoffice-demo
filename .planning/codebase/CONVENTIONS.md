@@ -110,7 +110,19 @@
 
 - `AGENTS.md` 要求优先使用 `fd`、`rg`、`sg` 搜索，并排除 `.git`、`node_modules`、`dist`、`coverage`
 - 仓库说明建议新增功能至少补 1 条正常路径测试，修 bug 要补回归测试
+- 本仓库后续 `git commit` 提交信息不要求全文中文，但关键信息应使用中文；可保留英文前缀或 Conventional Commit 结构，例如 `docs(state): 记录 phase 1上下文会话`
 - GSD 指令存在于 `.github/` 与 `.codex/`，做自动化协作时应尽量遵循这些本地规范
+- 后端数据库基线以 PostgreSQL 为准；本地或测试辅助数据库不能替代 PostgreSQL 兼容性设计
+- 后端 ORM 统一使用 MyBatis-Flex，不再继续扩展 Spring Data JPA
+- 对外接口涉及的 model、DTO、实体字段需要补齐 Swagger/OpenAPI 注解，并通过 Knife4j 管理接口文档
+- 新增或重构的后端核心代码应补详细中文注释，说明实现步骤、边界判断和关键设计原因，避免只写结论式注释
+
+## Current Technical Decisions
+
+- PostgreSQL 是当前服务端的正式数据库目标，相关配置、迁移与 SQL 设计优先保证 PG 兼容
+- 文档元数据访问层后续统一收敛到 MyBatis-Flex Mapper 模式
+- 接口文档统一采用 Knife4j + OpenAPI 3 方案维护，避免再引入第二套 Swagger 工具链
+- model 层不仅要求类级说明，也要求字段级 Swagger 描述，便于前后端和微服务接入方直接查阅契约
 
 ---
 

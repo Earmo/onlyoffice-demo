@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.demo.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 
 /**
@@ -12,12 +13,19 @@ import java.time.Instant;
  * @param lastCallbackAt 最近一次收到 callback 的时间
  * @param lastSavedAt 最近一次成功落盘的时间
  */
+@Schema(description = "文档最近一次保存状态响应。")
 public record DocumentSaveStatusResponse(
+    @Schema(description = "当前文档 ID。", example = "demo")
     String documentId,
+    @Schema(description = "当前主状态。", example = "saved")
     String state,
+    @Schema(description = "给前端展示的状态说明。", example = "最新修改已成功回写到共享存储。")
     String message,
+    @Schema(description = "最近一次 ONLYOFFICE callback 状态码。", example = "2")
     Integer lastCallbackStatus,
+    @Schema(description = "最近一次收到 callback 的时间。")
     Instant lastCallbackAt,
+    @Schema(description = "最近一次成功保存回写的时间。")
     Instant lastSavedAt
 ) {
 }

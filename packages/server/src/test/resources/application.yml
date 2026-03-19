@@ -6,10 +6,13 @@ spring:
     password:
   flyway:
     enabled: true
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
+
+knife4j:
+  enable: true
+
+mybatis-flex:
+  configuration:
+    map-underscore-to-camel-case: true
 
 demo:
   public-base-url: http://localhost:12333

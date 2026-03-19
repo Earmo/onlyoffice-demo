@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.demo.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.MediaType;
 
 /**
@@ -9,6 +10,14 @@ import org.springframework.http.MediaType;
  * @param mediaType 图片媒体类型
  * @param filename 返回给浏览器或 ONLYOFFICE 的文件名
  */
-public record RemoteImageResource(byte[] body, MediaType mediaType, String filename) {
+@Schema(description = "代理远程图片后的内部资源对象。")
+public record RemoteImageResource(
+    @Schema(description = "图片的二进制内容。")
+    byte[] body,
+    @Schema(description = "图片媒体类型。")
+    MediaType mediaType,
+    @Schema(description = "返回给浏览器或 ONLYOFFICE 的文件名。", example = "logo.png")
+    String filename
+) {
 }
 

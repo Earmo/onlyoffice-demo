@@ -3,20 +3,20 @@ package com.earmo.onlyoffice.demo.service;
 import com.earmo.onlyoffice.demo.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.demo.model.RequestContext;
 import com.earmo.onlyoffice.demo.persistence.DocumentMetadataEntity;
-import com.earmo.onlyoffice.demo.persistence.DocumentMetadataRepository;
-import java.util.Optional;
+import com.earmo.onlyoffice.demo.persistence.DocumentMetadataMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class DocumentMetadataServiceTest {
 
   @Test
-  void shouldPersistStateTransitionsThroughRepository() {
-    DocumentMetadataRepository repository = mock(DocumentMetadataRepository.class);
+  void shouldPersistStateTransitionsThroughMapper() {
+    DocumentMetadataMapper mapper = mock(DocumentMetadataMapper.class);
     DocumentMetadataEntity entity = new DocumentMetadataEntity();
     entity.setDocumentId("demo");
     entity.setTenantId("tenant-a");
@@ -28,10 +28,10 @@ class DocumentMetadataServiceTest {
     entity.setDocumentType("word");
     entity.setStatus("draft");
 
-    when(repository.findById("demo")).thenReturn(Optional.of(entity));
-    when(repository.save(any(DocumentMetadataEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    when(mapper.selectOneById("demo")).thenReturn(entity);
+    when(mapper.update(any(DocumentMetadataEntity.class))).thenReturn(1);
 
-    DocumentMetadataService service = new DocumentMetadataService(repository);
+    DocumentMetadataService service = new DocumentMetadataService(mapper);
 
     DocumentSaveStatusResponse callback = service.recordCallbackReceived("demo", 2);
     DocumentSaveStatusResponse saved = service.markSaved("demo", 2);
@@ -45,11 +45,12 @@ class DocumentMetadataServiceTest {
 
   @Test
   void shouldCreateDocumentWithSharedMetadataFields() {
-    DocumentMetadataRepository repository = mock(DocumentMetadataRepository.class);
-    when(repository.findById("doc-1")).thenReturn(Optional.empty());
-    when(repository.save(any(DocumentMetadataEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    DocumentMetadataMapper mapper = mock(DocumentMetadataMapper.class);
+    when(mapper.selectOneById("doc-1")).thenReturn(null);
+    when(mapper.selectBySourceSystemAndExternalDocumentId(eq("native"), eq("external-1"))).thenReturn(null);
+    when(mapper.insert(any(DocumentMetadataEntity.class))).thenReturn(1);
 
-    DocumentMetadataService service = new DocumentMetadataService(repository);
+    DocumentMetadataService service = new DocumentMetadataService(mapper);
     DocumentMetadataEntity entity = service.createDocument(
         "doc-1",
         "alpha.docx",
@@ -65,5 +66,6 @@ class DocumentMetadataServiceTest {
     assertEquals("native", entity.getSourceSystem());
     assertEquals("external-1", entity.getExternalDocumentId());
     assertEquals("draft", entity.getStatus());
+    assertEquals("doc-1", entity.getDocumentId());
   }
 }

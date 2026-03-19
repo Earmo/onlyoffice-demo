@@ -9,6 +9,12 @@ import com.earmo.onlyoffice.demo.model.StoredDocument;
 import com.earmo.onlyoffice.demo.persistence.DocumentMetadataEntity;
 import com.earmo.onlyoffice.demo.service.DocumentMetadataService;
 import com.earmo.onlyoffice.demo.service.DocumentStorageService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.io.IOException;
@@ -24,7 +30,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 对外暴露文档主数据和接入 API。
+ *
+ * <p>这个控制器面向“上游系统如何使用文档服务”这个问题，
+ * 所以只处理列表、详情、创建、上传、远程导入这些主数据入口。
+ * 运行时编辑、回调、文件下载等 ONLYOFFICE 协议接口，统一放到 {@link DocumentController} 中，
+ * 避免 headless-first 的 API 契约和编辑运行时协议搅在一起。
  */
+@Tag(name = "文档主数据接口", description = "提供文档列表、详情、创建、上传和远程导入能力。")
 @RestController
 @RequestMapping("/api/documents")
 public class DocumentApiController {
@@ -44,6 +56,7 @@ public class DocumentApiController {
   }
 
   @GetMapping
+  @Operation(summary = "查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要列表。")
   public DocumentListResponse list(HttpServletRequest request) {
     RequestContext requestContext = requestContextResolver.resolve(request);
     List<DocumentSummaryResponse> documents = documentMetadataService.listDocuments(requestContext.tenantId()).stream()
@@ -53,17 +66,35 @@ public class DocumentApiController {
   }
 
   @GetMapping("/{documentId}")
-  public DocumentSummaryResponse detail(@PathVariable String documentId) {
+  @Operation(summary = "查询文档详情", description = "根据内部 documentId 查询文档概要信息。")
+  public DocumentSummaryResponse detail(
+      @Parameter(description = "文档内部主键。", example = "demo")
+      @PathVariable String documentId
+  ) {
     return toSummary(documentMetadataService.requireDocument(documentId));
   }
 
   @PostMapping
+  @Operation(
+      summary = "显式创建文档",
+      description = "创建一个新的 docx 文档上下文。该接口不会在 open 时隐式 auto-create。",
+      responses = {
+          @ApiResponse(responseCode = "200", description = "创建成功"),
+          @ApiResponse(
+              responseCode = "400",
+              description = "参数不合法",
+              content = @Content(schema = @Schema(implementation = com.earmo.onlyoffice.demo.model.ApiErrorResponse.class))
+          )
+      }
+  )
   public DocumentSummaryResponse create(
       @RequestBody(required = false) CreateDocumentRequest request,
       HttpServletRequest httpServletRequest
   ) throws IOException {
     RequestContext requestContext = requestContextResolver.resolve(httpServletRequest);
+    // 这里统一把空请求体收敛成一个安全对象，避免后面出现多处分支判断。
     CreateDocumentRequest safeRequest = request == null ? new CreateDocumentRequest(null, null, null) : request;
+    // 真正的文档初始化步骤放在存储服务中执行，控制器只负责收集上下文与返回摘要。
     StoredDocument storedDocument = documentStorageService.createNativeDocument(
         safeRequest.documentId(),
         safeRequest.title(),
@@ -74,7 +105,9 @@ public class DocumentApiController {
   }
 
   @PostMapping("/upload")
+  @Operation(summary = "上传文档", description = "上传本地文件并建立文档元数据，返回内部 documentId。")
   public DocumentSummaryResponse upload(
+      @Parameter(description = "要上传的文档文件。")
       @RequestParam("file") MultipartFile file,
       HttpServletRequest request
   ) throws IOException {
@@ -92,6 +125,7 @@ public class DocumentApiController {
   }
 
   @PostMapping("/import-remote")
+  @Operation(summary = "导入远程文档", description = "从公网 URL 下载文档并建立内部文档上下文。")
   public DocumentSummaryResponse importRemote(
       @Valid @RequestBody DocumentImportRequest request,
       HttpServletRequest httpServletRequest
@@ -101,6 +135,7 @@ public class DocumentApiController {
   }
 
   private DocumentSummaryResponse toSummary(DocumentMetadataEntity entity) {
+    // 这里把数据库实体压平为对外 DTO，避免把持久化细节直接暴露给 API 调用方。
     return new DocumentSummaryResponse(
         entity.getDocumentId(),
         entity.getTitle(),
@@ -117,6 +152,7 @@ public class DocumentApiController {
   }
 
   private DocumentSummaryResponse toSummary(StoredDocument storedDocument) {
+    // 上传、显式创建等流程拿到的是聚合视图，这里复用同一份摘要映射，保证接口响应结构稳定。
     return new DocumentSummaryResponse(
         storedDocument.documentId(),
         storedDocument.title(),

@@ -48,7 +48,7 @@ cd packages/server
 mvn spring-boot:run
 ```
 
-后端默认使用本地 H2 作为开发环境元数据存储；在 compose demo 中会切到 PostgreSQL。
+后端当前以 PostgreSQL 作为正式数据库基线；测试环境仍使用 H2 内存库辅助自动化测试。
 
 ### 3.3 单独启动官方前端
 
@@ -78,6 +78,10 @@ pnpm dev
 
 ## 5. 核心 API
 
+- `GET /doc.html`
+  - 打开 Knife4j 接口文档页面
+- `GET /v3/api-docs`
+  - 返回原始 OpenAPI 文档
 - `GET /api/documents`
   - 按当前 `tenantId` 返回文档列表
 - `GET /api/documents/{documentId}`
@@ -111,6 +115,8 @@ v1 以服务到服务透传为主，默认支持这些请求头：
 这个仓库现在已经具备：
 
 - 共享元数据持久化基础
+- PostgreSQL + MyBatis-Flex 的后端数据访问基线
+- Knife4j 管理的 OpenAPI 文档入口
 - 官方前端聚合入口
 - API-first 的文档创建 / 上传 / 导入 / 编辑配置边界
 
