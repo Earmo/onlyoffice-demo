@@ -29,7 +29,7 @@
 ## Frameworks
 
 **Core:**
-- Spring Boot 3.3.12 - `packages/server/pom.xml` 中的后端 Web 应用框架
+- Spring Boot 3.5.8 - `packages/server/pom.xml` 中的后端 Web 应用框架
 - Vue 3.5.x - `packages/web/package.json` 中的前端 UI 框架
 - ONLYOFFICE Vue SDK 1.4.x - `@onlyoffice/document-editor-vue` 负责挂载编辑器
 
