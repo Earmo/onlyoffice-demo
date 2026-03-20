@@ -15,6 +15,9 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -23,6 +26,7 @@ import org.springframework.web.client.RestClient;
  * 负责文档文件内容的创建、读取和保存。
  */
 @Service
+@RequiredArgsConstructor
 public class DocumentStorageService {
 
   private static final String DEFAULT_EXTENSION = "docx";
@@ -35,17 +39,10 @@ public class DocumentStorageService {
 
   private final DemoProperties demoProperties;
   private final DocumentMetadataService documentMetadataService;
-  private final RestClient restClient;
+  private final RestClient.Builder restClientBuilder;
 
-  public DocumentStorageService(
-      DemoProperties demoProperties,
-      DocumentMetadataService documentMetadataService,
-      RestClient.Builder restClientBuilder
-  ) {
-    this.demoProperties = demoProperties;
-    this.documentMetadataService = documentMetadataService;
-    this.restClient = restClientBuilder.build();
-  }
+  @Getter(value = AccessLevel.PRIVATE, lazy = true)
+  private final RestClient restClient = buildRestClient();
 
   public StoredDocument ensureBootstrapDocument(String rawDocumentId) throws IOException {
     String documentId = sanitizeDocumentId(rawDocumentId);
@@ -91,7 +88,7 @@ public class DocumentStorageService {
     }
 
     StoredDocument storedDocument = getRequiredDocument(rawDocumentId);
-    byte[] latestFile = restClient.get()
+    byte[] latestFile = getRestClient().get()
         .uri(downloadUrl)
         .retrieve()
         .body(byte[].class);
@@ -144,7 +141,7 @@ public class DocumentStorageService {
   public StoredDocument importRemoteDocument(String sourceUrl, RequestContext requestContext) throws IOException {
     URI remoteUri = parseAndValidateRemoteUrl(sourceUrl);
     String originalFilename = extractRemoteFilename(remoteUri);
-    byte[] body = restClient.get()
+    byte[] body = getRestClient().get()
         .uri(remoteUri)
         .retrieve()
         .body(byte[].class);
@@ -185,6 +182,13 @@ public class DocumentStorageService {
         externalDocumentId
     );
     return toStoredDocument(entity, path);
+  }
+
+  /**
+   * 通过懒加载方式初始化 RestClient，避免每次请求都重复 build，也避免为此保留样板构造器。
+   */
+  private RestClient buildRestClient() {
+    return restClientBuilder.build();
   }
 
   private StoredDocument toStoredDocument(DocumentMetadataEntity entity, Path path) throws IOException {

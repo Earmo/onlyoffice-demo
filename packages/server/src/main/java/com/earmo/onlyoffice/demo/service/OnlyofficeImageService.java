@@ -10,6 +10,9 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.MediaTypeFactory;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,7 @@ import org.springframework.web.util.UriComponentsBuilder;
  * docEditor.insertImage(...) 所需的签名参数，并在需要时代理下载远程图片。
  */
 @Service
+@RequiredArgsConstructor
 public class OnlyofficeImageService {
 
   private static final Set<String> SUPPORTED_FILE_TYPES = Set.of(
@@ -32,17 +36,10 @@ public class OnlyofficeImageService {
 
   private final DemoProperties demoProperties;
   private final OnlyofficeJwtService onlyofficeJwtService;
-  private final RestClient restClient;
+  private final RestClient.Builder restClientBuilder;
 
-  public OnlyofficeImageService(
-      DemoProperties demoProperties,
-      OnlyofficeJwtService onlyofficeJwtService,
-      RestClient.Builder restClientBuilder
-  ) {
-    this.demoProperties = demoProperties;
-    this.onlyofficeJwtService = onlyofficeJwtService;
-    this.restClient = restClientBuilder.build();
-  }
+  @Getter(value = AccessLevel.PRIVATE, lazy = true)
+  private final RestClient restClient = buildRestClient();
 
   /**
    * 构造 ONLYOFFICE insertImage 方法所需的参数。
@@ -69,7 +66,7 @@ public class OnlyofficeImageService {
    */
   public RemoteImageResource proxyRemoteImage(String sourceUrl) throws IOException {
     URI remoteUri = parseAndValidateSourceUrl(sourceUrl);
-    byte[] body = restClient.get()
+    byte[] body = getRestClient().get()
         .uri(remoteUri)
         .retrieve()
         .body(byte[].class);
@@ -83,6 +80,13 @@ public class OnlyofficeImageService {
         .orElse(MediaType.APPLICATION_OCTET_STREAM);
 
     return new RemoteImageResource(body, mediaType, filename);
+  }
+
+  /**
+   * 通过懒加载方式初始化 RestClient，既保留单例复用，又不需要手写注入构造器。
+   */
+  private RestClient buildRestClient() {
+    return restClientBuilder.build();
   }
 
   private URI parseAndValidateSourceUrl(String sourceUrl) {
