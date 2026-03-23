@@ -16,7 +16,7 @@
 - [ ] **Phase 4: Document Library Experience** - 把首页改为文档列表，并建立选择/上传后进入编辑器的流程
 - [ ] **Phase 5: Distributed Editing Flow** - 让元数据、编辑配置、回调与安全边界适配分布式部署
 - [ ] **Phase 6: Verification and Delivery** - 补齐自动化验证和接入文档，形成可交付服务基线
-- [ ] **Phase 7: 模块拆分、命名规范收敛与数据访问层重构** - 清理 demo 命名、拆分数据库模块，并把自定义查询与字段命名收敛到统一规范
+- [x] **Phase 7: 模块拆分、命名规范收敛与数据访问层重构** - 清理 demo 命名、拆分数据库模块，并把自定义查询与字段命名收敛到统一规范 (completed 2026-03-23)
 
 ## Phase Details
 
@@ -124,9 +124,9 @@ Plans:
   4. 项目命名从 `onlyoffice-demo` / `demo` 风格收敛到 `onlyoffice-integration-starter` 方向，不再继续扩散旧命名。
 
 Plans:
-- [ ] 07-01: 创建后端多模块骨架与构建边界
-- [ ] 07-02: 重构数据访问层并统一字段命名
-- [ ] 07-03: 清理 demo 命名并接通 starter 服务模块
+- [x] 07-01: 创建后端多模块骨架与构建边界
+- [x] 07-02: 重构数据访问层并统一字段命名
+- [x] 07-03: 清理 demo 命名并接通 starter 服务模块
 
 ## Progress
 
@@ -141,4 +141,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Document Library Experience | 0/3 | Not started | - |
 | 5. Distributed Editing Flow | 0/3 | Not started | - |
 | 6. Verification and Delivery | 0/3 | Not started | - |
-| 7. 模块拆分、命名规范收敛与数据访问层重构 | 0/3 | Not started | - |
+| 7. 模块拆分、命名规范收敛与数据访问层重构 | 3/3 | Complete    | 2026-03-23 |
