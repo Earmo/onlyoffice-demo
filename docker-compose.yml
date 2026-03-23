@@ -1,14 +1,15 @@
+name: onlyoffice-integration-starter
+
 services:
-  # -------- Shared metadata database --------
   postgres:
     image: postgres:16-alpine
-    container_name: onlyoffice-demo-postgres
+    container_name: onlyoffice-integration-postgres
     environment:
-      POSTGRES_DB: onlyoffice_demo
+      POSTGRES_DB: onlyoffice
       POSTGRES_USER: onlyoffice
       POSTGRES_PASSWORD: onlyoffice
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U onlyoffice -d onlyoffice_demo"]
+      test: ["CMD-SHELL", "pg_isready -U onlyoffice -d onlyoffice"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -16,10 +17,9 @@ services:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
 
-  # -------- OnlyOffice Document Server --------
   onlyoffice:
     image: onlyoffice/documentserver:9.3
-    container_name: onlyoffice-demo-docs
+    container_name: onlyoffice-integration-docs
     environment:
       JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
     healthcheck:
@@ -30,23 +30,21 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  # -------- Spring Boot 后端 --------
   server:
     build:
       context: ./packages/server
-    container_name: onlyoffice-demo-server
+    container_name: onlyoffice-integration-starter
     environment:
-      # 官方前端聚合入口可留空，由请求头或网关入口自动推导公开地址。
-      DEMO_PUBLIC_BASE_URL: ""
-      # 浏览器侧的 ONLYOFFICE 地址默认跟随官方前端聚合入口。
-      DEMO_ONLYOFFICE_DOCUMENT_SERVER_URL: ""
-      # ONLYOFFICE 容器下载文档、插图、回调保存时走同一套 nginx 聚合入口。
-      DEMO_ONLYOFFICE_INTERNAL_BASE_URL: http://web:80
-      DEMO_ONLYOFFICE_JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
-      DEMO_DEFAULT_TENANT_ID: native
-      DEMO_DEFAULT_SOURCE_SYSTEM: native
-      DEMO_STORAGE_ROOT: /data/storage
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onlyoffice_demo
+      ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL: ""
+      ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL: ""
+      ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL: http://web:80
+      ONLYOFFICE_INTEGRATION_JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
+      ONLYOFFICE_INTEGRATION_DEFAULT_TENANT_ID: native
+      ONLYOFFICE_INTEGRATION_DEFAULT_SOURCE_SYSTEM: native
+      ONLYOFFICE_INTEGRATION_DEFAULT_USER: starter-user
+      ONLYOFFICE_INTEGRATION_DEFAULT_USER_NAME: 默认用户
+      ONLYOFFICE_INTEGRATION_STORAGE_ROOT: /data/storage
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onlyoffice
       SPRING_DATASOURCE_USERNAME: onlyoffice
       SPRING_DATASOURCE_PASSWORD: onlyoffice
       SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
@@ -59,11 +57,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # -------- Official web（nginx 聚合 /api/ 与 ONLYOFFICE 路径）--------
   web:
     build:
       context: ./packages/web
-    container_name: onlyoffice-demo-web
+    container_name: onlyoffice-integration-web
     ports:
       - "${WEB_PORT:-12333}:80"
     depends_on:
@@ -76,4 +73,3 @@ services:
 volumes:
   postgres-data:
   storage-data:
-

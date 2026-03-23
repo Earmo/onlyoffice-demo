@@ -26,8 +26,8 @@ replay_pid*
 packages/web/node_modules/
 packages/web/dist/
 packages/server/target/
+packages/server/**/target/
 packages/server/storage/
-rebel.xml
 
 .vite/
 .idea/
@@ -42,4 +42,7 @@ rebel.xml
 .qoder/
 .trae/
 .kiro/
+
+**/rebel.xml
 *.iml
+*.env
