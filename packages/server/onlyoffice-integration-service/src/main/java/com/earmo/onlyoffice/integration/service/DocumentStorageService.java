@@ -4,13 +4,18 @@ import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
+import com.earmo.onlyoffice.integration.storage.DocumentStorageStrategy;
+import com.earmo.onlyoffice.integration.storage.StorageKeyFactory;
+import com.earmo.onlyoffice.integration.storage.StorageProvider;
+import com.earmo.onlyoffice.integration.storage.StorageProviderResolver;
+import com.earmo.onlyoffice.integration.storage.StorageWriteRequest;
+import com.earmo.onlyoffice.integration.storage.StoredObjectResource;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -18,12 +23,20 @@ import java.util.zip.ZipOutputStream;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
 /**
  * 负责文档文件内容的创建、读取和保存。
+ *
+ * <p>Phase 2 之后，这个服务不再自己直接读写本地文件系统，而是只负责编排：
+ * 1. 根据文档上下文选择 storage provider；
+ * 2. 生成稳定 storage key；
+ * 3. 组织建档、上传、导入和 callback 回写的补偿语义；
+ * 4. 把对象内容与数据库元数据重新聚合成 `StoredDocument`。
  */
 @Service
 @RequiredArgsConstructor
@@ -40,6 +53,9 @@ public class DocumentStorageService {
   private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
   private final DocumentMetadataService documentMetadataService;
   private final RestClient.Builder restClientBuilder;
+  private final List<DocumentStorageStrategy> documentStorageStrategies;
+  private final StorageProviderResolver storageProviderResolver;
+  private final StorageKeyFactory storageKeyFactory;
 
   @Getter(value = AccessLevel.PRIVATE, lazy = true)
   private final RestClient restClient = buildRestClient();
@@ -52,34 +68,45 @@ public class DocumentStorageService {
 
     RequestContext requestContext = defaultRequestContext();
     String title = documentId + "." + DEFAULT_EXTENSION;
-    String storageKey = buildStorageKey(documentId, DEFAULT_EXTENSION);
-    Path path = resolveStoragePath(storageKey);
-    createBootstrapDocxIfMissing(path);
+    String storageKey = storageKeyFactory.build(requestContext, documentId, DEFAULT_EXTENSION);
+    DocumentStorageStrategy strategy = resolveStrategy(requestContext);
 
-    DocumentMetadataEntity entity = documentMetadataService.createDocument(
-        documentId,
-        title,
-        DEFAULT_EXTENSION,
-        resolveDocumentType(DEFAULT_EXTENSION),
-        storageKey,
-        requestContext,
-        null
-    );
-    return toStoredDocument(entity, path);
+    if (!strategy.exists(storageKey)) {
+      strategy.writeNew(new StorageWriteRequest(storageKey, contentTypeFor(title), createBootstrapDocx()));
+    }
+
+    try {
+      DocumentMetadataEntity entity = documentMetadataService.createDocument(
+          documentId,
+          title,
+          DEFAULT_EXTENSION,
+          resolveDocumentType(DEFAULT_EXTENSION),
+          storageKey,
+          requestContext,
+          null
+      );
+      return getRequiredDocument(entity.getDocumentId());
+    } catch (RuntimeException ex) {
+      deleteQuietly(strategy, storageKey);
+      throw ex;
+    }
   }
 
   public StoredDocument getRequiredDocument(String rawDocumentId) throws IOException {
     String documentId = sanitizeDocumentId(rawDocumentId);
     DocumentMetadataEntity entity = documentMetadataService.requireDocument(documentId);
-    Path path = resolveStoragePath(entity.getStorageKey());
-    if (!Files.exists(path)) {
+    DocumentStorageStrategy strategy = resolveStrategy(entity);
+    if (!strategy.exists(entity.getStorageKey())) {
       throw new IOException("文档内容不存在：" + entity.getStorageKey());
     }
-    return toStoredDocument(entity, path);
+    return toStoredDocument(entity, strategy.read(entity.getStorageKey()));
   }
 
   public byte[] readDocument(String rawDocumentId) throws IOException {
-    return Files.readAllBytes(getRequiredDocument(rawDocumentId).path());
+    String documentId = sanitizeDocumentId(rawDocumentId);
+    DocumentMetadataEntity entity = documentMetadataService.requireDocument(documentId);
+    DocumentStorageStrategy strategy = resolveStrategy(entity);
+    return strategy.read(entity.getStorageKey()).body();
   }
 
   public void saveCallbackDocument(String rawDocumentId, String downloadUrl) throws IOException {
@@ -87,7 +114,9 @@ public class DocumentStorageService {
       return;
     }
 
-    StoredDocument storedDocument = getRequiredDocument(rawDocumentId);
+    String documentId = sanitizeDocumentId(rawDocumentId);
+    DocumentMetadataEntity entity = documentMetadataService.requireDocument(documentId);
+    DocumentStorageStrategy strategy = resolveStrategy(entity);
     byte[] latestFile = getRestClient().get()
         .uri(downloadUrl)
         .retrieve()
@@ -97,12 +126,7 @@ public class DocumentStorageService {
       throw new IOException("ONLYOFFICE callback did not return file bytes.");
     }
 
-    Files.write(
-        storedDocument.path(),
-        latestFile,
-        StandardOpenOption.CREATE,
-        StandardOpenOption.TRUNCATE_EXISTING
-    );
+    strategy.overwrite(new StorageWriteRequest(entity.getStorageKey(), contentTypeFor(entity.getTitle()), latestFile));
   }
 
   public StoredDocument storeUploadedDocument(String originalFilename, byte[] body) throws IOException {
@@ -117,21 +141,25 @@ public class DocumentStorageService {
 
     String extension = requireSupportedExtension(originalFilename);
     String documentId = buildGeneratedDocumentId(stripExtension(originalFilename));
-    String storageKey = buildStorageKey(documentId, extension);
-    Path path = resolveStoragePath(storageKey);
+    String storageKey = storageKeyFactory.build(requestContext, documentId, extension);
+    DocumentStorageStrategy strategy = resolveStrategy(requestContext);
+    strategy.writeNew(new StorageWriteRequest(storageKey, contentTypeFor(originalFilename), body));
 
-    Files.createDirectories(path.getParent());
-    Files.write(path, body, StandardOpenOption.CREATE_NEW);
-    DocumentMetadataEntity entity = documentMetadataService.createDocument(
-        documentId,
-        documentId + "." + extension,
-        extension,
-        resolveDocumentType(extension),
-        storageKey,
-        requestContext,
-        null
-    );
-    return toStoredDocument(entity, path);
+    try {
+      DocumentMetadataEntity entity = documentMetadataService.createDocument(
+          documentId,
+          documentId + "." + extension,
+          extension,
+          resolveDocumentType(extension),
+          storageKey,
+          requestContext,
+          null
+      );
+      return getRequiredDocument(entity.getDocumentId());
+    } catch (RuntimeException ex) {
+      deleteQuietly(strategy, storageKey);
+      throw ex;
+    }
   }
 
   public StoredDocument importRemoteDocument(String sourceUrl) throws IOException {
@@ -168,20 +196,39 @@ public class DocumentStorageService {
     String documentId = StringUtils.hasText(rawDocumentId)
         ? sanitizeDocumentId(rawDocumentId)
         : buildGeneratedDocumentId(stripExtension(title));
-    String storageKey = buildStorageKey(documentId, extension);
-    Path path = resolveStoragePath(storageKey);
+    if (documentMetadataService.findDocument(documentId).isPresent()) {
+      return getRequiredDocument(documentId);
+    }
 
-    createBootstrapDocxIfMissing(path);
-    DocumentMetadataEntity entity = documentMetadataService.createDocument(
-        documentId,
-        title,
-        extension,
-        resolveDocumentType(extension),
-        storageKey,
-        requestContext,
-        externalDocumentId
-    );
-    return toStoredDocument(entity, path);
+    String storageKey = storageKeyFactory.build(requestContext, documentId, extension);
+    DocumentStorageStrategy strategy = resolveStrategy(requestContext);
+    if (!strategy.exists(storageKey)) {
+      strategy.writeNew(new StorageWriteRequest(storageKey, contentTypeFor(title), createBootstrapDocx()));
+    }
+
+    try {
+      DocumentMetadataEntity entity = documentMetadataService.createDocument(
+          documentId,
+          title,
+          extension,
+          resolveDocumentType(extension),
+          storageKey,
+          requestContext,
+          externalDocumentId
+      );
+      return getRequiredDocument(entity.getDocumentId());
+    } catch (RuntimeException ex) {
+      deleteQuietly(strategy, storageKey);
+      throw ex;
+    }
+  }
+
+  public boolean exists(DocumentMetadataEntity entity) throws IOException {
+    return resolveStrategy(entity).exists(entity.getStorageKey());
+  }
+
+  public StorageProvider resolveProvider(DocumentMetadataEntity entity) {
+    return storageProviderResolver.resolve(entity);
   }
 
   /**
@@ -191,9 +238,35 @@ public class DocumentStorageService {
     return restClientBuilder.build();
   }
 
-  private StoredDocument toStoredDocument(DocumentMetadataEntity entity, Path path) throws IOException {
-    Instant lastModified = Files.getLastModifiedTime(path).toInstant();
-    return documentMetadataService.toStoredDocument(entity, path, lastModified);
+  private StoredDocument toStoredDocument(DocumentMetadataEntity entity, StoredObjectResource objectResource) {
+    return documentMetadataService.toStoredDocument(
+        entity,
+        objectResource.localPath(),
+        objectResource.lastModified()
+    );
+  }
+
+  private DocumentStorageStrategy resolveStrategy(RequestContext requestContext) {
+    return resolveStrategy(storageProviderResolver.resolve(requestContext));
+  }
+
+  private DocumentStorageStrategy resolveStrategy(DocumentMetadataEntity entity) {
+    return resolveStrategy(storageProviderResolver.resolve(entity));
+  }
+
+  private DocumentStorageStrategy resolveStrategy(StorageProvider provider) {
+    return documentStorageStrategies.stream()
+        .filter(strategy -> strategy.provider() == provider)
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("未找到存储 provider 实现：" + provider));
+  }
+
+  private void deleteQuietly(DocumentStorageStrategy strategy, String storageKey) {
+    try {
+      strategy.delete(storageKey);
+    } catch (IOException ignored) {
+      // 这里只做 best-effort 补偿，真正的建档失败原因仍以前面的主异常为准。
+    }
   }
 
   private String getFileExtension(String filename) {
@@ -220,12 +293,6 @@ public class DocumentStorageService {
 
     String sanitized = rawDocumentId.trim().replaceAll("[^a-zA-Z0-9_-]", "-");
     return StringUtils.hasText(sanitized) ? sanitized : "sample";
-  }
-
-  private Path ensureStorageRoot() throws IOException {
-    Path root = onlyofficeIntegrationProperties.getStorageRoot();
-    Files.createDirectories(root);
-    return root;
   }
 
   private String requireSupportedExtension(String filename) {
@@ -296,19 +363,6 @@ public class DocumentStorageService {
     return filename;
   }
 
-  private String buildStorageKey(String documentId, String extension) {
-    return "documents/" + documentId + "." + extension;
-  }
-
-  private Path resolveStoragePath(String storageKey) throws IOException {
-    Path root = ensureStorageRoot().toAbsolutePath().normalize();
-    Path resolved = root.resolve(storageKey).normalize();
-    if (!resolved.startsWith(root)) {
-      throw new IllegalArgumentException("非法存储路径：" + storageKey);
-    }
-    return resolved;
-  }
-
   private RequestContext defaultRequestContext() {
     return new RequestContext(
         onlyofficeIntegrationProperties.getDefaultTenantId(),
@@ -318,20 +372,20 @@ public class DocumentStorageService {
     );
   }
 
-  private void createBootstrapDocxIfMissing(Path path) throws IOException {
-    if (Files.exists(path)) {
-      return;
-    }
-    Files.createDirectories(path.getParent());
-    createBootstrapDocx(path);
+  private String contentTypeFor(String filename) {
+    return MediaTypeFactory.getMediaType(filename)
+        .orElse(MediaType.APPLICATION_OCTET_STREAM)
+        .toString();
   }
 
-  private void createBootstrapDocx(Path path) throws IOException {
-    try (OutputStream outputStream = Files.newOutputStream(path, StandardOpenOption.CREATE_NEW);
+  private byte[] createBootstrapDocx() throws IOException {
+    try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
          ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream)) {
       addZipEntry(zipOutputStream, "[Content_Types].xml", contentTypesXml());
       addZipEntry(zipOutputStream, "_rels/.rels", rootRelationshipsXml());
       addZipEntry(zipOutputStream, "word/document.xml", documentXml());
+      zipOutputStream.finish();
+      return outputStream.toByteArray();
     }
   }
 
@@ -416,5 +470,3 @@ public class DocumentStorageService {
         """;
   }
 }
-
-

@@ -1,7 +1,11 @@
 package com.earmo.onlyoffice.integration.config;
 
+import com.earmo.onlyoffice.integration.storage.StorageProvider;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -47,6 +51,67 @@ public class OnlyofficeIntegrationProperties {
   @NotBlank
   private String defaultUserName = "默认用户";
 
-  private Path storageRoot = Path.of("./storage");
+  @Valid
+  private StorageProperties storage = new StorageProperties();
+
+  /**
+   * 兼容现有 local 开发路径读取，避免在 Phase 2 的 provider 重构过程中到处直接访问旧字段。
+   */
+  public Path getStorageRoot() {
+    return storage.getLocal().getRoot();
+  }
+
+  @Getter
+  @Setter
+  public static class StorageProperties {
+
+    private StorageProvider defaultProvider = StorageProvider.LOCAL;
+
+    @Valid
+    private RoutingProperties routing = new RoutingProperties();
+
+    @Valid
+    private LocalStorageProperties local = new LocalStorageProperties();
+
+    @Valid
+    private MinioStorageProperties minio = new MinioStorageProperties();
+  }
+
+  @Getter
+  @Setter
+  public static class RoutingProperties {
+
+    private Map<String, StorageProvider> tenants = new LinkedHashMap<>();
+
+    private Map<String, StorageProvider> sourceSystems = new LinkedHashMap<>();
+  }
+
+  @Getter
+  @Setter
+  public static class LocalStorageProperties {
+
+    private Path root = Path.of("./storage");
+  }
+
+  @Getter
+  @Setter
+  public static class MinioStorageProperties {
+
+    @NotBlank
+    private String endpoint = "http://localhost:9000";
+
+    @NotBlank
+    private String bucket = "onlyoffice-documents";
+
+    @NotBlank
+    private String accessKey = "onlyoffice";
+
+    @NotBlank
+    private String secretKey = "onlyoffice123";
+
+    private boolean pathStyleAccess = true;
+
+    private boolean secure = false;
+  }
 }
 

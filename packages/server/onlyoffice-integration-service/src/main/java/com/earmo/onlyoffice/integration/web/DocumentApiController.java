@@ -9,6 +9,7 @@ import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
+import java.io.IOException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -17,7 +18,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -120,6 +120,7 @@ public class DocumentApiController {
   }
 
   private DocumentSummaryResponse toSummary(DocumentMetadataEntity entity) {
+    boolean storageAvailable = isStorageAvailable(entity);
     return new DocumentSummaryResponse(
         entity.getDocumentId(),
         entity.getTitle(),
@@ -130,6 +131,7 @@ public class DocumentApiController {
         entity.getOwnerUser(),
         entity.getSourceSystem(),
         entity.getExternalDocumentId(),
+        storageAvailable,
         entity.getLastOpenedTime(),
         entity.getLastSavedTime()
     );
@@ -146,8 +148,23 @@ public class DocumentApiController {
         storedDocument.ownerUser(),
         storedDocument.sourceSystem(),
         storedDocument.externalDocumentId(),
+        true,
         storedDocument.lastOpenedTime(),
         storedDocument.lastSavedTime()
     );
+  }
+
+  /**
+   * 列表和详情接口只投影“对象当前是否可读”，避免异常文档被静默隐藏。
+   *
+   * <p>如果底层存储探测本身抛错，这里也按不可用处理；真正打开文件或生成 editor-config 时，
+   * 仍由业务接口返回明确错误，而不是在摘要接口里尝试自动修复。
+   */
+  private boolean isStorageAvailable(DocumentMetadataEntity entity) {
+    try {
+      return documentStorageService.exists(entity);
+    } catch (IOException ex) {
+      return false;
+    }
   }
 }

@@ -30,6 +30,23 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  minio:
+    image: minio/minio:RELEASE.2025-02-07T23-21-09Z
+    container_name: onlyoffice-integration-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: onlyoffice
+      MINIO_ROOT_PASSWORD: onlyoffice123
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
   server:
     build:
       context: ./packages/server
@@ -43,7 +60,13 @@ services:
       ONLYOFFICE_INTEGRATION_DEFAULT_SOURCE_SYSTEM: native
       ONLYOFFICE_INTEGRATION_DEFAULT_USER: starter-user
       ONLYOFFICE_INTEGRATION_DEFAULT_USER_NAME: 默认用户
-      ONLYOFFICE_INTEGRATION_STORAGE_ROOT: /data/storage
+      ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER: minio
+      ONLYOFFICE_INTEGRATION_STORAGE_LOCAL_ROOT: /data/storage
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ENDPOINT: http://minio:9000
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_BUCKET: onlyoffice-documents
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ACCESS_KEY: onlyoffice
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECRET_KEY: onlyoffice123
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_PATH_STYLE_ACCESS: "true"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onlyoffice
       SPRING_DATASOURCE_USERNAME: onlyoffice
       SPRING_DATASOURCE_PASSWORD: onlyoffice
@@ -52,6 +75,8 @@ services:
       - storage-data:/data/storage
     depends_on:
       onlyoffice:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -72,4 +97,5 @@ services:
 
 volumes:
   postgres-data:
+  minio-data:
   storage-data:

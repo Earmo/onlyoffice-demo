@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.config;
 
+import com.earmo.onlyoffice.integration.storage.StorageProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -22,7 +23,14 @@ class OnlyofficeIntegrationPropertiesTest {
           "onlyoffice.integration.default-source-system=erp",
           "onlyoffice.integration.default-user=user-a",
           "onlyoffice.integration.default-user-name=Alice",
-          "onlyoffice.integration.storage-root=./tmp/storage"
+          "onlyoffice.integration.storage.default-provider=minio",
+          "onlyoffice.integration.storage.local.root=./tmp/storage",
+          "onlyoffice.integration.storage.minio.endpoint=http://minio.example.test:9000",
+          "onlyoffice.integration.storage.minio.bucket=docs",
+          "onlyoffice.integration.storage.minio.access-key=minio-user",
+          "onlyoffice.integration.storage.minio.secret-key=minio-pass",
+          "onlyoffice.integration.storage.routing.tenants.tenant-a=minio",
+          "onlyoffice.integration.storage.routing.source-systems.erp=local"
       );
 
   @Test
@@ -39,7 +47,14 @@ class OnlyofficeIntegrationPropertiesTest {
       assertEquals("erp", properties.getDefaultSourceSystem());
       assertEquals("user-a", properties.getDefaultUser());
       assertEquals("Alice", properties.getDefaultUserName());
-      assertEquals("tmp/storage", properties.getStorageRoot().toString().replace("\\", "/"));
+      assertEquals(StorageProvider.MINIO, properties.getStorage().getDefaultProvider());
+      assertEquals("tmp/storage", properties.getStorage().getLocal().getRoot().toString().replace("\\", "/"));
+      assertEquals("http://minio.example.test:9000", properties.getStorage().getMinio().getEndpoint());
+      assertEquals("docs", properties.getStorage().getMinio().getBucket());
+      assertEquals("minio-user", properties.getStorage().getMinio().getAccessKey());
+      assertEquals("minio-pass", properties.getStorage().getMinio().getSecretKey());
+      assertEquals(StorageProvider.MINIO, properties.getStorage().getRouting().getTenants().get("tenant-a"));
+      assertEquals(StorageProvider.LOCAL, properties.getStorage().getRouting().getSourceSystems().get("erp"));
     });
   }
 

@@ -41,4 +41,17 @@ onlyoffice:
     default-source-system: ${ONLYOFFICE_INTEGRATION_DEFAULT_SOURCE_SYSTEM:native}
     default-user: ${ONLYOFFICE_INTEGRATION_DEFAULT_USER:starter-user}
     default-user-name: ${ONLYOFFICE_INTEGRATION_DEFAULT_USER_NAME:默认用户}
-    storage-root: ${ONLYOFFICE_INTEGRATION_STORAGE_ROOT:./storage}
+    storage:
+      default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:local}
+      routing:
+        tenants:
+        source-systems:
+      local:
+        root: ${ONLYOFFICE_INTEGRATION_STORAGE_LOCAL_ROOT:${ONLYOFFICE_INTEGRATION_STORAGE_ROOT:./storage}}
+      minio:
+        endpoint: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ENDPOINT:http://localhost:9000}
+        bucket: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_BUCKET:onlyoffice-documents}
+        access-key: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ACCESS_KEY:onlyoffice}
+        secret-key: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECRET_KEY:onlyoffice123}
+        path-style-access: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_PATH_STYLE_ACCESS:true}
+        secure: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECURE:false}

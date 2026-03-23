@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -45,12 +46,25 @@ class DocumentApiControllerTest {
   void shouldListDocumentsForCurrentTenant() throws Exception {
     when(requestContextResolver.resolve(any())).thenReturn(new RequestContext("tenant-a", "native", "user-a", "Alice"));
     when(documentMetadataService.listDocuments("tenant-a")).thenReturn(List.of(entity("sample")));
+    when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
 
     mockMvc.perform(get("/api/documents"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.documents[0].documentId").value("sample"))
         .andExpect(jsonPath("$.documents[0].tenantId").value("tenant-a"))
-        .andExpect(jsonPath("$.documents[0].sourceSystem").value("native"));
+        .andExpect(jsonPath("$.documents[0].sourceSystem").value("native"))
+        .andExpect(jsonPath("$.documents[0].storageAvailable").value(true));
+  }
+
+  @Test
+  void shouldExposeStorageAvailabilityForDocumentDetail() throws Exception {
+    when(documentMetadataService.requireDocument("sample")).thenReturn(entity("sample"));
+    when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(false);
+
+    mockMvc.perform(get("/api/documents/sample"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documentId").value("sample"))
+        .andExpect(jsonPath("$.storageAvailable").value(false));
   }
 
   @Test
@@ -71,7 +85,10 @@ class DocumentApiControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.documentId").value("doc-1"))
         .andExpect(jsonPath("$.title").value("alpha.docx"))
-        .andExpect(jsonPath("$.ownerUser").value("user-a"));
+        .andExpect(jsonPath("$.ownerUser").value("user-a"))
+        .andExpect(jsonPath("$.storageAvailable").value(true));
+
+    verify(documentStorageService).createNativeDocument(anyString(), anyString(), any(RequestContext.class), anyString());
   }
 
   private DocumentMetadataEntity entity(String documentId) {

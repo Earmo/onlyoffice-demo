@@ -31,6 +31,7 @@ docker compose up -d
 当前 compose demo 会启动：
 
 - `postgres`
+- `minio`
 - `onlyoffice`
 - `server`
 - `web`
@@ -49,6 +50,16 @@ mvn -pl onlyoffice-integration-service spring-boot:run
 ```
 
 后端当前以 PostgreSQL 作为正式数据库基线；测试环境仍使用 H2 内存库辅助自动化测试。
+
+## 3.4 存储基线
+
+- 正式联调和默认服务基线使用 `minio`
+- `local` 仅保留给 `dev/test` 或迁移过渡场景
+- 存储对象键统一为 `tenant/sourceSystem/documentId.ext`
+- `tenant` 路由优先级高于 `sourceSystem`，都未命中时回退到默认 provider
+- 未来接入腾讯云 `COS` 或阿里云 `OSS` 时，只需要新增 provider 实现和配置映射，不需要改 controller 或上层 API 流程
+
+创建、上传、导入文档时，服务会先写对象再落元数据；如果元数据创建失败，会尽量回滚对象写入，避免留下半成品文档。ONLYOFFICE callback 回写失败时，会保留最近一次成功版本，并把文档主状态标记为 `failed`。
 
 ### 3.3 单独启动官方前端
 

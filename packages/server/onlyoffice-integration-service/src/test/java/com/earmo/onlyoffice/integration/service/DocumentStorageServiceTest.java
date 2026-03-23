@@ -4,10 +4,12 @@ import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
+import com.earmo.onlyoffice.integration.storage.StorageKeyFactory;
+import com.earmo.onlyoffice.integration.storage.StorageProviderResolver;
+import com.earmo.onlyoffice.integration.storage.local.LocalDocumentStorageStrategy;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HexFormat;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,12 +30,15 @@ class DocumentStorageServiceTest {
   Path tempDir;
 
   @Test
-  @DisplayName("首次预热引导文档时创建最小 docx 并写入元数据")
+  @DisplayName("首次预热引导文档时通过统一存储策略写入 docx 和元数据")
   void shouldCreateDefaultBootstrapDocument() throws IOException {
-    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
-    properties.setStorageRoot(tempDir);
+    OnlyofficeIntegrationProperties properties = properties();
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
 
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    DocumentMetadataEntity entity = entity("sample", "sample.docx", "native/native/sample.docx", "docx", "word");
     when(metadataService.findDocument("sample")).thenReturn(Optional.empty());
     when(metadataService.createDocument(
         anyString(),
@@ -43,29 +48,24 @@ class DocumentStorageServiceTest {
         anyString(),
         any(RequestContext.class),
         nullable(String.class)
-    )).thenAnswer(invocation -> entity(
-        invocation.getArgument(0, String.class),
-        invocation.getArgument(1, String.class),
-        invocation.getArgument(4, String.class),
-        invocation.getArgument(2, String.class),
-        invocation.getArgument(3, String.class)
-    ));
-    when(metadataService.toStoredDocument(any(DocumentMetadataEntity.class), any(Path.class), any()))
+    )).thenReturn(entity);
+    when(metadataService.requireDocument("sample")).thenReturn(entity);
+    when(metadataService.toStoredDocument(any(DocumentMetadataEntity.class), any(), any()))
         .thenAnswer(invocation -> {
-          DocumentMetadataEntity entity = invocation.getArgument(0, DocumentMetadataEntity.class);
-          Path path = invocation.getArgument(1, Path.class);
+          DocumentMetadataEntity actual = invocation.getArgument(0, DocumentMetadataEntity.class);
+          Path localPath = invocation.getArgument(1, Path.class);
           return new StoredDocument(
-              entity.getDocumentId(),
-              entity.getTenantId(),
-              entity.getOwnerUser(),
-              entity.getSourceSystem(),
-              entity.getExternalDocumentId(),
-              entity.getTitle(),
-              entity.getStorageKey(),
-              entity.getFileType(),
-              entity.getDocumentType(),
-              entity.getStatus(),
-              path,
+              actual.getDocumentId(),
+              actual.getTenantId(),
+              actual.getOwnerUser(),
+              actual.getSourceSystem(),
+              actual.getExternalDocumentId(),
+              actual.getTitle(),
+              actual.getStorageKey(),
+              actual.getFileType(),
+              actual.getDocumentType(),
+              actual.getStatus(),
+              localPath,
               invocation.getArgument(2, java.time.Instant.class),
               null,
               null,
@@ -74,22 +74,30 @@ class DocumentStorageServiceTest {
           );
         });
 
-    DocumentStorageService service = new DocumentStorageService(properties, metadataService, RestClient.builder());
+    DocumentStorageService service = new DocumentStorageService(
+        properties,
+        metadataService,
+        RestClient.builder(),
+        List.of(localStrategy),
+        resolver,
+        keyFactory
+    );
+
     StoredDocument document = service.ensureBootstrapDocument("sample");
 
     assertEquals("sample.docx", document.title());
-    assertEquals("documents/sample.docx", document.storageKey());
-    assertTrue(Files.exists(document.path()));
-    byte[] bytes = Files.readAllBytes(document.path());
-    assertTrue(bytes.length > 4);
-    assertEquals("504b0304", HexFormat.of().formatHex(bytes, 0, 4));
+    assertEquals("native/native/sample.docx", document.storageKey());
+    assertTrue(document.path().toString().replace("\\", "/").endsWith("native/native/sample.docx"));
+    assertTrue(java.nio.file.Files.exists(document.path()));
   }
 
   @Test
-  @DisplayName("上传文档后保留原始扩展名并生成新的 documentId")
-  void shouldStoreUploadedDocumentWithOriginalExtension() throws IOException {
-    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
-    properties.setStorageRoot(tempDir);
+  @DisplayName("上传文档后保留扩展名并使用 tenant/sourceSystem/documentId 作为 storage key")
+  void shouldStoreUploadedDocumentWithProviderNeutralStorageKey() throws IOException {
+    OnlyofficeIntegrationProperties properties = properties();
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
 
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     when(metadataService.createDocument(
@@ -108,22 +116,33 @@ class DocumentStorageServiceTest {
       String documentType = invocation.getArgument(3, String.class);
       return entity(documentId, title, storageKey, fileType, documentType);
     });
-    when(metadataService.toStoredDocument(any(DocumentMetadataEntity.class), any(Path.class), any()))
+    when(metadataService.requireDocument(anyString()))
         .thenAnswer(invocation -> {
-          DocumentMetadataEntity entity = invocation.getArgument(0, DocumentMetadataEntity.class);
-          Path path = invocation.getArgument(1, Path.class);
+          String documentId = invocation.getArgument(0, String.class);
+          return entity(
+              documentId,
+              documentId + ".xlsx",
+              "tenant-a/native/" + documentId + ".xlsx",
+              "xlsx",
+              "cell"
+          );
+        });
+    when(metadataService.toStoredDocument(any(DocumentMetadataEntity.class), any(), any()))
+        .thenAnswer(invocation -> {
+          DocumentMetadataEntity actual = invocation.getArgument(0, DocumentMetadataEntity.class);
+          Path localPath = invocation.getArgument(1, Path.class);
           return new StoredDocument(
-              entity.getDocumentId(),
-              entity.getTenantId(),
-              entity.getOwnerUser(),
-              entity.getSourceSystem(),
-              entity.getExternalDocumentId(),
-              entity.getTitle(),
-              entity.getStorageKey(),
-              entity.getFileType(),
-              entity.getDocumentType(),
-              entity.getStatus(),
-              path,
+              actual.getDocumentId(),
+              actual.getTenantId(),
+              actual.getOwnerUser(),
+              actual.getSourceSystem(),
+              actual.getExternalDocumentId(),
+              actual.getTitle(),
+              actual.getStorageKey(),
+              actual.getFileType(),
+              actual.getDocumentType(),
+              actual.getStatus(),
+              localPath,
               invocation.getArgument(2, java.time.Instant.class),
               null,
               null,
@@ -132,15 +151,35 @@ class DocumentStorageServiceTest {
           );
         });
 
-    DocumentStorageService service = new DocumentStorageService(properties, metadataService, RestClient.builder());
-    StoredDocument document = service.storeUploadedDocument("sales-report.xlsx", "xlsx-demo".getBytes());
+    DocumentStorageService service = new DocumentStorageService(
+        properties,
+        metadataService,
+        RestClient.builder(),
+        List.of(localStrategy),
+        resolver,
+        keyFactory
+    );
+
+    StoredDocument document = service.storeUploadedDocument(
+        "sales-report.xlsx",
+        "xlsx-demo".getBytes(),
+        new RequestContext("tenant-a", "native", "user-a", "Alice")
+    );
 
     assertTrue(document.title().startsWith("sales-report-"));
     assertTrue(document.title().endsWith(".xlsx"));
     assertEquals("xlsx", document.fileType());
     assertEquals("cell", document.documentType());
     assertTrue(document.documentId().startsWith("sales-report-"));
-    assertTrue(Files.exists(document.path()));
+    assertTrue(document.storageKey().startsWith("tenant-a/native/"));
+    assertTrue(document.storageKey().endsWith(".xlsx"));
+    assertTrue(java.nio.file.Files.exists(document.path()));
+  }
+
+  private OnlyofficeIntegrationProperties properties() {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.getStorage().getLocal().setRoot(tempDir);
+    return properties;
   }
 
   private DocumentMetadataEntity entity(
@@ -152,7 +191,7 @@ class DocumentStorageServiceTest {
   ) {
     DocumentMetadataEntity entity = new DocumentMetadataEntity();
     entity.setDocumentId(documentId);
-    entity.setTenantId("native");
+    entity.setTenantId(storageKey.startsWith("tenant-a/") ? "tenant-a" : "native");
     entity.setOwnerUser("starter-user");
     entity.setSourceSystem("native");
     entity.setTitle(title);
