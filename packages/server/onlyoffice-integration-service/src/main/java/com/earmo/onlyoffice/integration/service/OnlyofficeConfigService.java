@@ -1,8 +1,8 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
-import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -27,7 +27,7 @@ public class OnlyofficeConfigService {
   public EditorConfigResponse buildEditorConfig(
       String documentId,
       boolean readonly,
-      RequestContext requestContext,
+      AccessContext accessContext,
       jakarta.servlet.http.HttpServletRequest request
   ) throws IOException {
     StoredDocument storedDocument = documentStorageService.getRequiredDocument(documentId);
@@ -37,21 +37,26 @@ public class OnlyofficeConfigService {
     config.put("type", "desktop");
     config.put("width", "100%");
     config.put("height", "100%");
-    config.put("document", buildDocumentSection(storedDocument, readonly));
-    config.put("editorConfig", buildEditorSection(storedDocument, readonly, requestContext));
+    config.put("document", buildDocumentSection(storedDocument, readonly, accessContext));
+    config.put("editorConfig", buildEditorSection(storedDocument, readonly, accessContext));
     config.put("token", onlyofficeJwtService.sign(config));
 
     return new EditorConfigResponse(resolveDocumentServerUrl(request), config);
   }
 
-  private Map<String, Object> buildDocumentSection(StoredDocument storedDocument, boolean readonly) {
+  private Map<String, Object> buildDocumentSection(
+      StoredDocument storedDocument,
+      boolean readonly,
+      AccessContext accessContext
+  ) {
+    boolean canEdit = !readonly && accessContext.permission("edit", true);
     Map<String, Object> permissions = new LinkedHashMap<>();
-    permissions.put("edit", !readonly);
-    permissions.put("download", true);
-    permissions.put("print", false);
+    permissions.put("edit", canEdit);
+    permissions.put("download", accessContext.permission("download", true));
+    permissions.put("print", accessContext.permission("print", false));
     permissions.put("review", false);
     permissions.put("fillForms", false);
-    permissions.put("comment", false);
+    permissions.put("comment", accessContext.permission("comment", false));
     permissions.put("chat", false);
 
     Map<String, Object> document = new LinkedHashMap<>();
@@ -66,11 +71,11 @@ public class OnlyofficeConfigService {
   private Map<String, Object> buildEditorSection(
       StoredDocument storedDocument,
       boolean readonly,
-      RequestContext requestContext
+      AccessContext accessContext
   ) {
     Map<String, Object> user = new LinkedHashMap<>();
-    user.put("id", requestContext.externalUser());
-    user.put("name", requestContext.displayName());
+    user.put("id", accessContext.externalUserId());
+    user.put("name", accessContext.displayName());
 
     Map<String, Object> header = new LinkedHashMap<>();
     header.put("editMode", false);
@@ -144,7 +149,7 @@ public class OnlyofficeConfigService {
     Map<String, Object> editorConfig = new LinkedHashMap<>();
     editorConfig.put("lang", onlyofficeIntegrationProperties.getDefaultLanguage());
     editorConfig.put("region", onlyofficeIntegrationProperties.getDefaultRegion());
-    editorConfig.put("mode", readonly ? "view" : "edit");
+    editorConfig.put("mode", readonly || !accessContext.permission("edit", true) ? "view" : "edit");
     editorConfig.put("callbackUrl", buildInternalUrl("/api/documents/%s/callback".formatted(storedDocument.documentId())));
     editorConfig.put("user", user);
     editorConfig.put("customization", customization);

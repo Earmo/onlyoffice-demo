@@ -1,0 +1,50 @@
+package com.earmo.onlyoffice.integration.service;
+
+import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.data.entity.AccessAuditEventEntity;
+import com.earmo.onlyoffice.integration.data.repository.AccessAuditEventRepository;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+
+class AccessAuditServiceTest {
+
+  @Test
+  void shouldRecordDocumentCreatedWithActorInfo() {
+    AccessAuditEventRepository repository = mock(AccessAuditEventRepository.class);
+    AccessAuditService service = new AccessAuditService(repository);
+
+    service.recordDocumentCreated(
+        "doc-1",
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of(), "header")
+    );
+
+    ArgumentCaptor<AccessAuditEventEntity> captor = ArgumentCaptor.forClass(AccessAuditEventEntity.class);
+    verify(repository).save(captor.capture());
+    assertEquals("doc-1", captor.getValue().getDocumentId());
+    assertEquals("tenant-a", captor.getValue().getTenantId());
+    assertEquals("user-a", captor.getValue().getActorUser());
+    assertEquals("document_created", captor.getValue().getEventType());
+    assertEquals("header", captor.getValue().getEventSource());
+  }
+
+  @Test
+  void shouldRecordCallbackAsSystemEvent() {
+    AccessAuditEventRepository repository = mock(AccessAuditEventRepository.class);
+    AccessAuditService service = new AccessAuditService(repository);
+
+    service.recordCallbackReceived("doc-2", 2);
+
+    ArgumentCaptor<AccessAuditEventEntity> captor = ArgumentCaptor.forClass(AccessAuditEventEntity.class);
+    verify(repository).save(captor.capture());
+    assertEquals("callback_received", captor.getValue().getEventType());
+    assertEquals("system", captor.getValue().getEventSource());
+    assertNull(captor.getValue().getActorUser());
+    assertTrue(captor.getValue().getMessage().contains("status=2"));
+  }
+}

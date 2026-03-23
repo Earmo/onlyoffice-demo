@@ -1,15 +1,17 @@
 package com.earmo.onlyoffice.integration.web;
 
+import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.model.InsertImageRequest;
 import com.earmo.onlyoffice.integration.model.InsertImageResponse;
 import com.earmo.onlyoffice.integration.model.OnlyofficeCallbackRequest;
-import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.RemoteImageResource;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
+import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeConfigService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeImageService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -52,7 +54,8 @@ public class DocumentController {
   private final DocumentStorageService documentStorageService;
   private final OnlyofficeImageService onlyofficeImageService;
   private final DocumentStatusService documentStatusService;
-  private final RequestContextResolver requestContextResolver;
+  private final AccessAuditService accessAuditService;
+  private final AccessContextResolver accessContextResolver;
 
   @GetMapping("/{documentId}/editor-config")
   @Operation(summary = "获取编辑器配置", description = "根据内部 documentId 生成 ONLYOFFICE 可直接消费的 editor config。")
@@ -63,10 +66,11 @@ public class DocumentController {
       @RequestParam(defaultValue = "false") boolean readonly,
       HttpServletRequest request
   ) throws IOException {
-    RequestContext requestContext = requestContextResolver.resolve(request);
+    AccessContext accessContext = accessContextResolver.resolve(request);
     // 打开编辑器前先初始化文档状态，保证前端一进页面就能看到一致的保存状态信息。
     documentStatusService.initialize(documentId);
-    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, requestContext, request);
+    accessAuditService.recordEditorConfigRequested(documentId, accessContext);
+    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, accessContext, request);
   }
 
   @GetMapping("/{documentId}/save-status")
@@ -136,6 +140,7 @@ public class DocumentController {
     Integer status = request.status();
     // 第一步先记录 callback 已到达，哪怕后续下载或保存失败，也能在状态接口里看见这次回调轨迹。
     documentStatusService.recordCallbackReceived(documentId, status);
+    accessAuditService.recordCallbackReceived(documentId, status);
     if (status != null && (status == 2 || status == 6)) {
       try {
         // 只有在 ONLYOFFICE 告知文档可持久化时，才真正拉取最新文件并覆盖存储内容。

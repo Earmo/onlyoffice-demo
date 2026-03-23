@@ -1,12 +1,14 @@
 package com.earmo.onlyoffice.integration.web;
 
+import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.model.CreateDocumentRequest;
 import com.earmo.onlyoffice.integration.model.DocumentImportRequest;
 import com.earmo.onlyoffice.integration.model.DocumentListResponse;
 import com.earmo.onlyoffice.integration.model.DocumentSummaryResponse;
-import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
+import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import java.io.IOException;
@@ -40,14 +42,15 @@ public class DocumentApiController {
 
   private final DocumentMetadataService documentMetadataService;
   private final DocumentStorageService documentStorageService;
-  private final RequestContextResolver requestContextResolver;
+  private final AccessAuditService accessAuditService;
+  private final AccessContextResolver accessContextResolver;
 
   @GetMapping
   @Operation(summary = "查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要列表。")
   public DocumentListResponse list(HttpServletRequest request) {
-    RequestContext requestContext = requestContextResolver.resolve(request);
-    List<DocumentSummaryResponse> documents = documentMetadataService.listDocuments(requestContext.tenantId()).stream()
-        .map(this::toSummary)
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    List<DocumentSummaryResponse> documents = documentMetadataService.listDocuments(accessContext.tenantId()).stream()
+        .map(entity -> toSummary(entity, accessContext))
         .toList();
     return new DocumentListResponse(documents);
   }
@@ -56,9 +59,11 @@ public class DocumentApiController {
   @Operation(summary = "查询文档详情", description = "根据内部 documentId 查询文档概要信息。")
   public DocumentSummaryResponse detail(
       @Parameter(description = "文档内部主键。", example = "sample")
-      @PathVariable String documentId
+      @PathVariable String documentId,
+      HttpServletRequest request
   ) {
-    return toSummary(documentMetadataService.requireDocument(documentId));
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    return toSummary(documentMetadataService.requireDocument(documentId), accessContext);
   }
 
   @PostMapping
@@ -78,15 +83,16 @@ public class DocumentApiController {
       @RequestBody(required = false) CreateDocumentRequest request,
       HttpServletRequest httpServletRequest
   ) throws IOException {
-    RequestContext requestContext = requestContextResolver.resolve(httpServletRequest);
+    AccessContext accessContext = accessContextResolver.resolve(httpServletRequest);
     CreateDocumentRequest safeRequest = request == null ? new CreateDocumentRequest(null, null, null) : request;
     StoredDocument storedDocument = documentStorageService.createNativeDocument(
         safeRequest.documentId(),
         safeRequest.title(),
-        requestContext,
+        accessContext.toRequestContext(),
         safeRequest.externalDocumentId()
     );
-    return toSummary(storedDocument);
+    accessAuditService.recordDocumentCreated(storedDocument.documentId(), accessContext);
+    return toSummary(storedDocument, accessContext);
   }
 
   @PostMapping("/upload")
@@ -100,13 +106,14 @@ public class DocumentApiController {
       throw new IllegalArgumentException("上传文件不能为空。");
     }
 
-    RequestContext requestContext = requestContextResolver.resolve(request);
+    AccessContext accessContext = accessContextResolver.resolve(request);
     StoredDocument storedDocument = documentStorageService.storeUploadedDocument(
         file.getOriginalFilename(),
         file.getBytes(),
-        requestContext
+        accessContext.toRequestContext()
     );
-    return toSummary(storedDocument);
+    accessAuditService.recordDocumentUploaded(storedDocument.documentId(), accessContext);
+    return toSummary(storedDocument, accessContext);
   }
 
   @PostMapping("/import-remote")
@@ -115,11 +122,16 @@ public class DocumentApiController {
       @Valid @RequestBody DocumentImportRequest request,
       HttpServletRequest httpServletRequest
   ) throws IOException {
-    RequestContext requestContext = requestContextResolver.resolve(httpServletRequest);
-    return toSummary(documentStorageService.importRemoteDocument(request.sourceUrl(), requestContext));
+    AccessContext accessContext = accessContextResolver.resolve(httpServletRequest);
+    StoredDocument storedDocument = documentStorageService.importRemoteDocument(
+        request.sourceUrl(),
+        accessContext.toRequestContext()
+    );
+    accessAuditService.recordDocumentImported(storedDocument.documentId(), accessContext);
+    return toSummary(storedDocument, accessContext);
   }
 
-  private DocumentSummaryResponse toSummary(DocumentMetadataEntity entity) {
+  private DocumentSummaryResponse toSummary(DocumentMetadataEntity entity, AccessContext accessContext) {
     boolean storageAvailable = isStorageAvailable(entity);
     return new DocumentSummaryResponse(
         entity.getDocumentId(),
@@ -129,6 +141,8 @@ public class DocumentApiController {
         entity.getStatus(),
         entity.getTenantId(),
         entity.getOwnerUser(),
+        accessContext.actorUser(),
+        accessContext.actorName(),
         entity.getSourceSystem(),
         entity.getExternalDocumentId(),
         storageAvailable,
@@ -137,7 +151,7 @@ public class DocumentApiController {
     );
   }
 
-  private DocumentSummaryResponse toSummary(StoredDocument storedDocument) {
+  private DocumentSummaryResponse toSummary(StoredDocument storedDocument, AccessContext accessContext) {
     return new DocumentSummaryResponse(
         storedDocument.documentId(),
         storedDocument.title(),
@@ -146,6 +160,8 @@ public class DocumentApiController {
         storedDocument.status(),
         storedDocument.tenantId(),
         storedDocument.ownerUser(),
+        accessContext.actorUser(),
+        accessContext.actorName(),
         storedDocument.sourceSystem(),
         storedDocument.externalDocumentId(),
         true,

@@ -1,8 +1,8 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
-import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -66,7 +66,14 @@ class OnlyofficeConfigServiceTest {
     EditorConfigResponse response = configService.buildEditorConfig(
         "demo",
         false,
-        new RequestContext("tenant-a", "native", "user-a", "Alice"),
+        new AccessContext(
+            "tenant-a",
+            "native",
+            "user-a",
+            "Alice",
+            Map.of("edit", true, "comment", true, "download", true, "print", false),
+            "header"
+        ),
         request
     );
     Map<String, Object> config = response.config();
@@ -81,6 +88,9 @@ class OnlyofficeConfigServiceTest {
     assertEquals("Alice", cast(editorConfig.get("user")).get("name"));
     assertEquals("edit", editorConfig.get("mode"));
     assertEquals(Boolean.TRUE, permissions.get("edit"));
+    assertEquals(Boolean.TRUE, permissions.get("comment"));
+    assertEquals(Boolean.TRUE, permissions.get("download"));
+    assertEquals(Boolean.FALSE, permissions.get("print"));
     assertNotNull(config.get("token"));
   }
 
@@ -124,12 +134,73 @@ class OnlyofficeConfigServiceTest {
     EditorConfigResponse response = configService.buildEditorConfig(
         "demo",
         true,
-        new RequestContext("tenant-a", "native", "user-a", "Alice"),
+        new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
         new MockHttpServletRequest()
     );
 
     assertEquals("https://gateway.example.test/", response.documentServerUrl());
     assertEquals("view", cast(response.config().get("editorConfig")).get("mode"));
+  }
+
+  @Test
+  void shouldForceViewModeWhenEditPermissionIsFalse() throws IOException {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
+
+    Path path = tempDir.resolve("demo.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "demo.docx",
+        "documents/demo.docx",
+        "docx",
+        "word",
+        "draft",
+        path,
+        Instant.parse("2026-03-19T08:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    );
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
+    OnlyofficeConfigService configService = new OnlyofficeConfigService(
+        properties,
+        storageService,
+        new OnlyofficeJwtService(properties)
+    );
+
+    EditorConfigResponse response = configService.buildEditorConfig(
+        "demo",
+        false,
+        new AccessContext(
+            "tenant-a",
+            "native",
+            "user-a",
+            "Alice",
+            Map.of("edit", false, "comment", false, "download", false, "print", true),
+            "jwt"
+        ),
+        new MockHttpServletRequest()
+    );
+
+    Map<String, Object> config = response.config();
+    Map<String, Object> document = cast(config.get("document"));
+    Map<String, Object> editorConfig = cast(config.get("editorConfig"));
+    Map<String, Object> permissions = cast(document.get("permissions"));
+
+    assertEquals("view", editorConfig.get("mode"));
+    assertEquals(Boolean.FALSE, permissions.get("edit"));
+    assertEquals(Boolean.FALSE, permissions.get("download"));
+    assertEquals(Boolean.FALSE, permissions.get("comment"));
+    assertEquals(Boolean.TRUE, permissions.get("print"));
   }
 
   @SuppressWarnings("unchecked")

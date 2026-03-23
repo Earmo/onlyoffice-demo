@@ -41,6 +41,32 @@ onlyoffice:
     default-source-system: ${ONLYOFFICE_INTEGRATION_DEFAULT_SOURCE_SYSTEM:native}
     default-user: ${ONLYOFFICE_INTEGRATION_DEFAULT_USER:starter-user}
     default-user-name: ${ONLYOFFICE_INTEGRATION_DEFAULT_USER_NAME:默认用户}
+    access-context:
+      # provider 顺序同时作用于内置 provider 和外部自定义 provider。
+      # 后续接外部用户中心时，只需要新增 AccessContextProvider Bean 并把名称放进顺序配置，
+      # 不需要修改 controller 或文档业务调用链。
+      enabled-providers: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ENABLED_PROVIDERS:header,jwt,default}
+      resolution-order: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_RESOLUTION_ORDER:header,jwt,default}
+      # 默认保持严格：完全没有用户上下文时直接返回 4xx。
+      require-explicit-context: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_REQUIRE_EXPLICIT_CONTEXT:true}
+      # 建议仅在 dev/test profile 显式开启，允许使用默认值补齐缺失字段。
+      allow-default-context: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ALLOW_DEFAULT_CONTEXT:false}
+      header:
+        enabled: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_ENABLED:true}
+        tenant-id-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_TENANT_ID:X-Tenant-Id}
+        source-system-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_SOURCE_SYSTEM:X-Source-System}
+        external-user-id-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_EXTERNAL_USER_ID:X-External-User-Id}
+        display-name-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_DISPLAY_NAME:X-User-Display-Name}
+        permissions-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_PERMISSIONS:X-Access-Permissions}
+      jwt:
+        enabled: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_ENABLED:true}
+        header-name: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_HEADER_NAME:Authorization}
+        claim-mappings:
+          tenant-id: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_TENANT_ID:tenantId}
+          source-system: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_SOURCE_SYSTEM:sourceSystem}
+          external-user-id: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_EXTERNAL_USER_ID:externalUserId}
+          display-name: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_DISPLAY_NAME:displayName}
+          permissions: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_PERMISSIONS:permissions}
     storage:
       default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:local}
       routing:

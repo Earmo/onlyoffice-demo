@@ -64,6 +64,36 @@ public class DocumentMetadataService {
       RequestContext requestContext,
       String externalDocumentId
   ) {
+    return createDocument(
+        documentId,
+        title,
+        fileType,
+        documentType,
+        storageKey,
+        requestContext,
+        requestContext.ownerUser(),
+        externalDocumentId
+    );
+  }
+
+  /**
+   * 显式区分“文档归属 owner”和“当前操作者 actor”。
+   *
+   * <p>当前阶段大多数入口还没有单独的 owner 参数，因此会继续使用兼容重载。
+   * 但从这个重载开始，service 层已经不再把 `owner=request.user` 当作唯一形态写死，
+   * 后续接外部业务归属时可以直接传入稳定 owner，而不需要推翻整个建档链路。
+   */
+  @Transactional
+  public DocumentMetadataEntity createDocument(
+      String documentId,
+      String title,
+      String fileType,
+      String documentType,
+      String storageKey,
+      RequestContext requestContext,
+      String ownerUser,
+      String externalDocumentId
+  ) {
     if (StringUtils.hasText(externalDocumentId)) {
       Optional<DocumentMetadataEntity> mapped = documentMetadataRepository.findBySourceSystemAndExternalDocument(
           requestContext.sourceSystem(),
@@ -83,6 +113,7 @@ public class DocumentMetadataService {
                 documentType,
                 storageKey,
                 requestContext,
+                ownerUser,
                 externalDocumentId
             )
         );
@@ -174,13 +205,14 @@ public class DocumentMetadataService {
       String documentType,
       String storageKey,
       RequestContext requestContext,
+      String ownerUser,
       String externalDocumentId
   ) {
     Instant now = Instant.now();
     DocumentMetadataEntity entity = new DocumentMetadataEntity();
     entity.setDocumentId(documentId);
     entity.setTenantId(requestContext.tenantId());
-    entity.setOwnerUser(requestContext.ownerUser());
+    entity.setOwnerUser(ownerUser);
     entity.setSourceSystem(requestContext.sourceSystem());
     entity.setExternalDocumentId(externalDocumentId);
     entity.setTitle(title);

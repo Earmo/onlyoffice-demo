@@ -22,6 +22,10 @@ public record DocumentSummaryResponse(
     String tenantId,
     @Schema(description = "owner 用户标识。", example = "starter-user")
     String ownerUser,
+    @Schema(description = "本次请求的当前操作者标识。", example = "current-user")
+    String actorUser,
+    @Schema(description = "本次请求的当前操作者展示名。", example = "Alice")
+    String actorName,
     @Schema(description = "来源系统标识。", example = "native")
     String sourceSystem,
     @Schema(description = "外部业务系统文档 ID。", example = "external-1")
