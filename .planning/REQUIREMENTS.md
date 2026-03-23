@@ -10,6 +10,16 @@
 - [x] **ARCH-01**: 服务可以以前后端分离方式独立部署，并通过配置声明 web、api、ONLYOFFICE 等外部地址
 - [x] **ARCH-02**: 服务提供稳定的文档编辑接口与数据模型，便于被其他分布式系统作为文档微服务接入
 - [x] **ARCH-03**: 服务在多实例部署场景下不依赖单机内存或本地文件路径作为核心共享状态
+- [ ] **ARCH-04**: 后端构建应支持按模块拆分 service 与 data 能力，并保持服务模块对数据库模块的单向依赖
+
+### Data Access and Schema Conventions
+
+- [ ] **DATA-01**: 自定义数据库查询不通过 `@Select` 等注解直接散落在 Mapper 上，而是由 repository 层统一承载查询方法与 SQL 组装
+- [ ] **DATA-02**: 数据库字段命名统一收敛为领域语义命名，其中用户相关字段使用 `*_user`，时间相关字段使用 `*_time`
+
+### Module and Naming Hygiene
+
+- [ ] **MOD-01**: 后端模块、artifact、类名、目录名和配置命名不再继续扩散 `demo` 风格，统一向 `onlyoffice-integration-starter` 收敛
 
 ### Storage Strategy
 
@@ -91,12 +101,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | QUAL-01 | Phase 6 | Pending |
 | QUAL-02 | Phase 6 | Pending |
 | QUAL-03 | Phase 6 | Pending |
+| ARCH-04 | Phase 7 | Pending |
+| DATA-01 | Phase 7 | Pending |
+| DATA-02 | Phase 7 | Pending |
+| MOD-01 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 20 total
-- Mapped to phases: 20
+- v1 requirements: 24 total
+- Mapped to phases: 24
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-19 after Phase 1 execution*
+*Last updated: 2026-03-23 after Phase 7 planning*

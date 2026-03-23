@@ -115,7 +115,7 @@ Plans:
 **Goal**: 把当前单体中的数据库访问、命名遗留和 demo 痕迹集中清理，为 starter 形态和后续多模块演进打下稳定边界。
 **Requirements**: [ARCH-04, DATA-01, DATA-02, MOD-01]
 **Depends on:** Phase 6
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 **Success Criteria** (what must be TRUE):
   1. 自定义查询不再通过 `@Select` 直接散落在 Mapper 上，而是由专门的 repository 层承载 SQL 组装与查询方法。
@@ -124,7 +124,9 @@ Plans:
   4. 项目命名从 `onlyoffice-demo` / `demo` 风格收敛到 `onlyoffice-integration-starter` 方向，不再继续扩散旧命名。
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 7 to break down)
+- [ ] 07-01: 创建后端多模块骨架与构建边界
+- [ ] 07-02: 重构数据访问层并统一字段命名
+- [ ] 07-03: 清理 demo 命名并接通 starter 服务模块
 
 ## Progress
 
@@ -139,4 +141,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Document Library Experience | 0/3 | Not started | - |
 | 5. Distributed Editing Flow | 0/3 | Not started | - |
 | 6. Verification and Delivery | 0/3 | Not started | - |
-| 7. 模块拆分、命名规范收敛与数据访问层重构 | 0/0 | Not started | - |
+| 7. 模块拆分、命名规范收敛与数据访问层重构 | 0/3 | Not started | - |
