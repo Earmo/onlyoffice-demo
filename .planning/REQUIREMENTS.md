@@ -29,9 +29,9 @@
 
 ### User Context
 
-- [ ] **USER-01**: 每次文档编辑会话都会使用真实用户上下文，而不是固定演示用户
-- [ ] **USER-02**: 用户接入层通过适配接口或上下文解析实现，能够对接外部系统已有的用户体系
-- [ ] **USER-03**: 文档列表、编辑配置和保存审计都能消费当前用户上下文，而不把认证实现耦合进文档核心逻辑
+- [x] **USER-01**: 每次文档编辑会话都会使用真实用户上下文，而不是固定演示用户
+- [x] **USER-02**: 用户接入层通过适配接口或上下文解析实现，能够对接外部系统已有的用户体系
+- [x] **USER-03**: 文档列表、编辑配置和保存审计都能消费当前用户上下文，而不把认证实现耦合进文档核心逻辑
 
 ### Document Library and Editing
 
@@ -87,9 +87,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STOR-01 | Phase 2 | Complete |
 | STOR-02 | Phase 2 | Complete |
 | STOR-03 | Phase 2 | Complete |
-| USER-01 | Phase 3 | Pending |
-| USER-02 | Phase 3 | Pending |
-| USER-03 | Phase 3 | Pending |
+| USER-01 | Phase 3 | Complete |
+| USER-02 | Phase 3 | Complete |
+| USER-03 | Phase 3 | Complete |
 | LIB-01 | Phase 4 | Pending |
 | LIB-02 | Phase 4 | Pending |
 | LIB-03 | Phase 4 | Pending |
@@ -113,4 +113,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-23 after Phase 2 execution*
+*Last updated: 2026-03-23 after Phase 3 execution*
