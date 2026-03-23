@@ -11,7 +11,7 @@
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Service Foundation** - 建立独立服务与微服务接入所需的边界、配置和共享模型 (completed 2026-03-19)
-- [ ] **Phase 2: Storage Strategy Layer** - 抽象存储接口并落地 MinIO 作为首个可用实现
+- [x] **Phase 2: Storage Strategy Layer** - 抽象存储接口并落地 MinIO 作为首个可用实现 (completed 2026-03-23)
 - [ ] **Phase 3: User Context Integration** - 引入低耦合用户上下文接入能力
 - [ ] **Phase 4: Document Library Experience** - 把首页改为文档列表，并建立选择/上传后进入编辑器的流程
 - [ ] **Phase 5: Distributed Editing Flow** - 让元数据、编辑配置、回调与安全边界适配分布式部署
@@ -46,9 +46,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: 抽取统一存储策略接口与领域对象
-- [ ] 02-02: 实现 MinIO 文档存储与回写能力
-- [ ] 02-03: 固化多存储策略的配置和扩展约定
+- [x] 02-01: 抽取统一存储策略接口与领域对象
+- [x] 02-02: 实现 MinIO 文档存储与回写能力
+- [x] 02-03: 固化多存储策略的配置和扩展约定
 
 ### Phase 3: User Context Integration
 **Goal**: 引入真实用户上下文，并通过低耦合适配方式让外部系统用户身份进入文档服务。
@@ -136,7 +136,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Service Foundation | 3/3 | Complete    | 2026-03-19 |
-| 2. Storage Strategy Layer | 0/3 | Not started | - |
+| 2. Storage Strategy Layer | 3/3 | Complete    | 2026-03-23 |
 | 3. User Context Integration | 0/3 | Not started | - |
 | 4. Document Library Experience | 0/3 | Not started | - |
 | 5. Distributed Editing Flow | 0/3 | Not started | - |
