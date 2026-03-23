@@ -4,10 +4,10 @@ milestone: v1.0
 milestone_name: milestone
 status: planning
 stopped_at: Phase 1 executed and verified
-last_updated: "2026-03-19T11:10:00Z"
-last_activity: 2026-03-19 — Executed and verified Phase 1 Service Foundation
+last_updated: "2026-03-23T04:03:09Z"
+last_activity: 2026-03-23 — Added Phase 7 for module split, naming cleanup, and repository refactor
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 1
   total_plans: 18
   completed_plans: 3
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 
 ## Current Position
 
-Phase: 2 of 6 (Storage Strategy Layer)
+Phase: 2 of 7 (Storage Strategy Layer)
 Plan: 0 of 3 in current phase
 Status: Ready to plan
-Last activity: 2026-03-19 — Executed and verified Phase 1 Service Foundation
+Last activity: 2026-03-23 — Added Phase 7 for module split, naming cleanup, and repository refactor
 
 Progress: [██░░░░░░░░] 17%
 
@@ -59,6 +59,10 @@ Recent decisions affecting current work:
 - [Phase 1] 运行时地址采用 `publicBaseUrl`、`internalBaseUrl`、`documentServerUrl` 分离模型
 - [Phase 1] 文档元数据进入共享数据库模型，`documentId` 成为内部稳定主键
 - [Phase 1] 对外契约改为 headless-first，`/api/documents` 与 ONLYOFFICE 运行时接口分层
+
+### Roadmap Evolution
+
+- Phase 7 added: 模块拆分、命名规范收敛与数据访问层重构
 
 ### Pending Todos
 

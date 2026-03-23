@@ -16,6 +16,7 @@
 - [ ] **Phase 4: Document Library Experience** - 把首页改为文档列表，并建立选择/上传后进入编辑器的流程
 - [ ] **Phase 5: Distributed Editing Flow** - 让元数据、编辑配置、回调与安全边界适配分布式部署
 - [ ] **Phase 6: Verification and Delivery** - 补齐自动化验证和接入文档，形成可交付服务基线
+- [ ] **Phase 7: 模块拆分、命名规范收敛与数据访问层重构** - 清理 demo 命名、拆分数据库模块，并把自定义查询与字段命名收敛到统一规范
 
 ## Phase Details
 
@@ -109,10 +110,26 @@ Plans:
 - [ ] 06-02: 为前端列表与编辑流程补测试
 - [ ] 06-03: 统一验证命令并编写独立部署 / 微服务接入说明
 
+### Phase 7: 模块拆分、命名规范收敛与数据访问层重构
+
+**Goal**: 把当前单体中的数据库访问、命名遗留和 demo 痕迹集中清理，为 starter 形态和后续多模块演进打下稳定边界。
+**Requirements**: [ARCH-04, DATA-01, DATA-02, MOD-01]
+**Depends on:** Phase 6
+**Plans:** 0 plans
+
+**Success Criteria** (what must be TRUE):
+  1. 自定义查询不再通过 `@Select` 直接散落在 Mapper 上，而是由专门的 repository 层承载 SQL 组装与查询方法。
+  2. 数据库字段命名从 `*_at` 等历史风格收敛到统一规范，用户相关字段使用 `*_user`，时间相关字段使用 `*_time`。
+  3. 服务与数据库相关代码完成模块拆分，服务模块通过依赖数据库模块使用持久化能力。
+  4. 项目命名从 `onlyoffice-demo` / `demo` 风格收敛到 `onlyoffice-integration-starter` 方向，不再继续扩散旧命名。
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 7 to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -122,3 +139,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 4. Document Library Experience | 0/3 | Not started | - |
 | 5. Distributed Editing Flow | 0/3 | Not started | - |
 | 6. Verification and Delivery | 0/3 | Not started | - |
+| 7. 模块拆分、命名规范收敛与数据访问层重构 | 0/0 | Not started | - |
