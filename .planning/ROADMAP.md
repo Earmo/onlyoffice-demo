@@ -13,7 +13,7 @@
 - [x] **Phase 1: Service Foundation** - 建立独立服务与微服务接入所需的边界、配置和共享模型 (completed 2026-03-19)
 - [x] **Phase 2: Storage Strategy Layer** - 抽象存储接口并落地 MinIO 作为首个可用实现 (completed 2026-03-23)
 - [x] **Phase 3: User Context Integration** - 引入低耦合用户上下文接入能力 (completed 2026-03-23)
-- [ ] **Phase 4: Document Library Experience** - 把首页改为文档列表，并建立选择/上传后进入编辑器的流程
+- [x] **Phase 4: Document Library Experience** - 把首页改为文档列表，并建立选择/上传后进入编辑器的流程 (completed 2026-03-25)
 - [ ] **Phase 5: Distributed Editing Flow** - 让元数据、编辑配置、回调与安全边界适配分布式部署
 - [ ] **Phase 6: Verification and Delivery** - 补齐自动化验证和接入文档，形成可交付服务基线
 - [x] **Phase 7: 模块拆分、命名规范收敛与数据访问层重构** - 清理 demo 命名、拆分数据库模块，并把自定义查询与字段命名收敛到统一规范 (completed 2026-03-23)
@@ -72,13 +72,13 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. 首页默认显示文档列表，而不是自动打开固定文档。
   2. 用户可以从列表中选择文档进入编辑器。
-  3. 用户可以上传新文档并直接进入新文档编辑流程。
+  3. 用户可以从首页新建、上传或导入文档，结果会先回流列表并高亮，再显式进入编辑流程。
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: 建立文档列表 API 与前端列表页面
-- [ ] 04-02: 重构编辑入口，使选择文档后再加载编辑器
-- [ ] 04-03: 打通上传新文档并跳转编辑流程
+- [x] 04-01: 建立文档列表 API 与前端列表页面
+- [x] 04-02: 重构编辑入口，使选择文档后再加载编辑器
+- [x] 04-03: 打通上传新文档并跳转编辑流程
 
 ### Phase 5: Distributed Editing Flow
 **Goal**: 让文档元数据、ONLYOFFICE 编辑链路和安全边界适应分布式部署与共享状态。
@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. Service Foundation | 3/3 | Complete    | 2026-03-19 |
 | 2. Storage Strategy Layer | 3/3 | Complete    | 2026-03-23 |
 | 3. User Context Integration | 3/3 | Complete    | 2026-03-23 |
-| 4. Document Library Experience | 0/3 | Not started | - |
+| 4. Document Library Experience | 3/3 | Complete    | 2026-03-25 |
 | 5. Distributed Editing Flow | 0/3 | Not started | - |
 | 6. Verification and Delivery | 0/3 | Not started | - |
 | 7. 模块拆分、命名规范收敛与数据访问层重构 | 3/3 | Complete    | 2026-03-23 |

@@ -35,9 +35,9 @@
 
 ### Document Library and Editing
 
-- [ ] **LIB-01**: 用户打开首页时先看到文档列表，而不是自动进入固定文档编辑页
-- [ ] **LIB-02**: 用户可以从文档列表中选择一个已有文档，再进入编辑器进行查看或编辑
-- [ ] **LIB-03**: 用户可以在列表页上传新文档，上传成功后立即进入该文档的编辑流程
+- [x] **LIB-01**: 用户打开首页时先看到文档列表，而不是自动进入固定文档编辑页
+- [x] **LIB-02**: 用户可以从文档列表中选择一个已有文档，再进入编辑器进行查看或编辑
+- [x] **LIB-03**: 用户可以在列表页新建、上传或导入文档，成功后结果会先回流列表并高亮，再显式进入该文档的编辑流程
 - [ ] **EDIT-01**: 文档元数据与文档列表信息会持久化到适合分布式部署的共享存储，而不是仅靠本地目录推导
 - [ ] **EDIT-02**: ONLYOFFICE editor config、文件下载和 callback 保存流程在前后端分离部署下仍然可用
 
@@ -90,9 +90,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | USER-01 | Phase 3 | Complete |
 | USER-02 | Phase 3 | Complete |
 | USER-03 | Phase 3 | Complete |
-| LIB-01 | Phase 4 | Pending |
-| LIB-02 | Phase 4 | Pending |
-| LIB-03 | Phase 4 | Pending |
+| LIB-01 | Phase 4 | Complete |
+| LIB-02 | Phase 4 | Complete |
+| LIB-03 | Phase 4 | Complete |
 | EDIT-01 | Phase 5 | Pending |
 | EDIT-02 | Phase 5 | Pending |
 | SAFE-01 | Phase 5 | Pending |
@@ -113,4 +113,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-23 after Phase 3 execution*
+*Last updated: 2026-03-25 after Phase 4 execution*
