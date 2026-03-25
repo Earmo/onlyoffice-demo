@@ -14,6 +14,7 @@ import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeConfigService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeImageService;
+import com.earmo.onlyoffice.integration.service.OnlyofficeJwtService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -56,6 +57,7 @@ public class DocumentController {
   private final DocumentStatusService documentStatusService;
   private final AccessAuditService accessAuditService;
   private final AccessContextResolver accessContextResolver;
+  private final OnlyofficeJwtService onlyofficeJwtService;
 
   @GetMapping("/{documentId}/editor-config")
   @Operation(summary = "获取编辑器配置", description = "根据内部 documentId 生成 ONLYOFFICE 可直接消费的 editor config。")
@@ -135,8 +137,17 @@ public class DocumentController {
   public Map<String, Integer> callback(
       @Parameter(description = "文档内部主键。", example = "demo")
       @PathVariable String documentId,
-      @RequestBody OnlyofficeCallbackRequest request
+      @RequestBody OnlyofficeCallbackRequest request,
+      HttpServletRequest httpServletRequest
   ) throws IOException {
+    try {
+      onlyofficeJwtService.verifyCallbackRequest(httpServletRequest);
+    } catch (IllegalArgumentException ex) {
+      documentStatusService.recordCallbackRejected(documentId, ex.getMessage());
+      accessAuditService.recordCallbackRejected(documentId, ex.getMessage());
+      throw ex;
+    }
+
     Integer status = request.status();
     // 第一步先记录 callback 已到达，哪怕后续下载或保存失败，也能在状态接口里看见这次回调轨迹。
     documentStatusService.recordCallbackReceived(documentId, status);

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -145,6 +146,7 @@ class OnlyofficeConfigServiceTest {
   @Test
   void shouldForceViewModeWhenEditPermissionIsFalse() throws IOException {
     OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.setPublicBaseUrl("https://gateway.example.test");
     properties.setInternalBaseUrl("http://internal.example.test");
     properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
 
@@ -201,6 +203,56 @@ class OnlyofficeConfigServiceTest {
     assertEquals(Boolean.FALSE, permissions.get("download"));
     assertEquals(Boolean.FALSE, permissions.get("comment"));
     assertEquals(Boolean.TRUE, permissions.get("print"));
+  }
+
+  @Test
+  void shouldFailFastWhenRuntimeUrlsAreMissing() throws IOException {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.setPublicBaseUrl("");
+    properties.setDocumentServerUrl("");
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
+
+    Path path = tempDir.resolve("demo.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "demo.docx",
+        "documents/demo.docx",
+        "docx",
+        "word",
+        "draft",
+        path,
+        Instant.parse("2026-03-19T08:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    );
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
+    OnlyofficeConfigService configService = new OnlyofficeConfigService(
+        properties,
+        storageService,
+        new OnlyofficeJwtService(properties)
+    );
+
+    IllegalStateException exception = assertThrows(
+        IllegalStateException.class,
+        () -> configService.buildEditorConfig(
+            "demo",
+            false,
+            new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
+            new MockHttpServletRequest()
+        )
+    );
+
+    assertTrue(exception.getMessage().contains("document-server-url"));
   }
 
   @SuppressWarnings("unchecked")

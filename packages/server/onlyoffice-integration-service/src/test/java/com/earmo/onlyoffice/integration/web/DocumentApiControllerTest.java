@@ -5,6 +5,7 @@ import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentRuntimeEventMapper;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
@@ -53,6 +54,9 @@ class DocumentApiControllerTest {
 
   @MockBean
   private AccessAuditEventMapper accessAuditEventMapper;
+
+  @MockBean
+  private DocumentRuntimeEventMapper documentRuntimeEventMapper;
 
   @Test
   void shouldListDocumentsForCurrentTenant() throws Exception {

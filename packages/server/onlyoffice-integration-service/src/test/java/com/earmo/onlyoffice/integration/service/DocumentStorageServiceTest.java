@@ -7,7 +7,10 @@ import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.storage.StorageKeyFactory;
 import com.earmo.onlyoffice.integration.storage.StorageProviderResolver;
 import com.earmo.onlyoffice.integration.storage.local.LocalDocumentStorageStrategy;
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -17,6 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.web.client.RestClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -80,7 +84,8 @@ class DocumentStorageServiceTest {
         RestClient.builder(),
         List.of(localStrategy),
         resolver,
-        keyFactory
+        keyFactory,
+        new RemoteResourceSecurityService(properties, RestClient.builder())
     );
 
     StoredDocument document = service.ensureBootstrapDocument("sample");
@@ -157,7 +162,8 @@ class DocumentStorageServiceTest {
         RestClient.builder(),
         List.of(localStrategy),
         resolver,
-        keyFactory
+        keyFactory,
+        new RemoteResourceSecurityService(properties, RestClient.builder())
     );
 
     StoredDocument document = service.storeUploadedDocument(
@@ -174,6 +180,82 @@ class DocumentStorageServiceTest {
     assertTrue(document.storageKey().startsWith("tenant-a/native/"));
     assertTrue(document.storageKey().endsWith(".xlsx"));
     assertTrue(java.nio.file.Files.exists(document.path()));
+  }
+
+  @Test
+  @DisplayName("远程导入应拒绝回环或内网地址，避免 SSRF")
+  void shouldRejectLoopbackRemoteDocumentImport() {
+    OnlyofficeIntegrationProperties properties = properties();
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+
+    DocumentStorageService service = new DocumentStorageService(
+        properties,
+        metadataService,
+        RestClient.builder(),
+        List.of(localStrategy),
+        resolver,
+        keyFactory,
+        new RemoteResourceSecurityService(properties, RestClient.builder())
+    );
+
+    IllegalArgumentException exception = assertThrows(
+        IllegalArgumentException.class,
+        () -> service.importRemoteDocument(
+            "http://127.0.0.1/demo.docx",
+            new RequestContext("tenant-a", "native", "user-a", "Alice")
+        )
+    );
+
+    assertTrue(exception.getMessage().contains("不支持访问内网、回环或保留地址"));
+  }
+
+  @Test
+  @DisplayName("远程导入应校验扩展名和响应媒体类型是否匹配")
+  void shouldRejectRemoteDocumentWithUnexpectedMediaType() throws Exception {
+    OnlyofficeIntegrationProperties properties = properties();
+    properties.getRemoteResource().setAllowPrivateAddressAccess(true);
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+    try {
+      server.createContext("/fake.docx", exchange -> {
+        byte[] body = "not-a-docx".getBytes();
+        exchange.getResponseHeaders().add("Content-Type", "text/html");
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+          outputStream.write(body);
+        }
+      });
+      server.start();
+
+      DocumentStorageService service = new DocumentStorageService(
+          properties,
+          metadataService,
+          RestClient.builder(),
+          List.of(localStrategy),
+          resolver,
+          keyFactory,
+          new RemoteResourceSecurityService(properties, RestClient.builder())
+      );
+
+      IllegalArgumentException exception = assertThrows(
+          IllegalArgumentException.class,
+          () -> service.importRemoteDocument(
+              "http://localhost:" + server.getAddress().getPort() + "/fake.docx",
+              new RequestContext("tenant-a", "native", "user-a", "Alice")
+          )
+      );
+
+      assertTrue(exception.getMessage().contains("远程文档类型校验失败"));
+    } finally {
+      server.stop(0);
+    }
   }
 
   private OnlyofficeIntegrationProperties properties() {

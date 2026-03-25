@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Map;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -49,6 +50,21 @@ public class DocumentStorageService {
       "ppt", "pptx", "odp",
       "pdf"
   );
+  private static final Map<String, Set<MediaType>> SUPPORTED_DOCUMENT_MEDIA_TYPES = Map.ofEntries(
+      Map.entry("doc", Set.of(MediaType.parseMediaType("application/msword"))),
+      Map.entry("docx", Set.of(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))),
+      Map.entry("odt", Set.of(MediaType.parseMediaType("application/vnd.oasis.opendocument.text"))),
+      Map.entry("rtf", Set.of(MediaType.parseMediaType("application/rtf"), MediaType.parseMediaType("text/rtf"))),
+      Map.entry("txt", Set.of(MediaType.TEXT_PLAIN)),
+      Map.entry("csv", Set.of(MediaType.parseMediaType("text/csv"), MediaType.parseMediaType("application/csv"), MediaType.parseMediaType("application/vnd.ms-excel"))),
+      Map.entry("xls", Set.of(MediaType.parseMediaType("application/vnd.ms-excel"))),
+      Map.entry("xlsx", Set.of(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))),
+      Map.entry("ods", Set.of(MediaType.parseMediaType("application/vnd.oasis.opendocument.spreadsheet"))),
+      Map.entry("ppt", Set.of(MediaType.parseMediaType("application/vnd.ms-powerpoint"))),
+      Map.entry("pptx", Set.of(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation"))),
+      Map.entry("odp", Set.of(MediaType.parseMediaType("application/vnd.oasis.opendocument.presentation"))),
+      Map.entry("pdf", Set.of(MediaType.APPLICATION_PDF))
+  );
 
   private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
   private final DocumentMetadataService documentMetadataService;
@@ -56,6 +72,7 @@ public class DocumentStorageService {
   private final List<DocumentStorageStrategy> documentStorageStrategies;
   private final StorageProviderResolver storageProviderResolver;
   private final StorageKeyFactory storageKeyFactory;
+  private final RemoteResourceSecurityService remoteResourceSecurityService;
 
   @Getter(value = AccessLevel.PRIVATE, lazy = true)
   private final RestClient restClient = buildRestClient();
@@ -169,16 +186,14 @@ public class DocumentStorageService {
   public StoredDocument importRemoteDocument(String sourceUrl, RequestContext requestContext) throws IOException {
     URI remoteUri = parseAndValidateRemoteUrl(sourceUrl);
     String originalFilename = extractRemoteFilename(remoteUri);
-    byte[] body = getRestClient().get()
-        .uri(remoteUri)
-        .retrieve()
-        .body(byte[].class);
+    RemoteResourceSecurityService.RemoteFetchResult remoteFetchResult = remoteResourceSecurityService.fetch(
+        remoteUri,
+        onlyofficeIntegrationProperties.getRemoteResource().getMaxDocumentBytes(),
+        "远程文档"
+    );
+    validateRemoteDocumentMediaType(originalFilename, remoteFetchResult.mediaType());
 
-    if (body == null || body.length == 0) {
-      throw new IOException("远程文档下载失败，响应内容为空。");
-    }
-
-    return storeUploadedDocument(originalFilename, body, requestContext);
+    return storeUploadedDocument(originalFilename, remoteFetchResult.body(), requestContext);
   }
 
   public StoredDocument createNativeDocument(
@@ -324,28 +339,7 @@ public class DocumentStorageService {
   }
 
   private URI parseAndValidateRemoteUrl(String sourceUrl) {
-    if (!StringUtils.hasText(sourceUrl)) {
-      throw new IllegalArgumentException("网络文档地址不能为空。");
-    }
-
-    URI uri = URI.create(sourceUrl.trim());
-    String scheme = uri.getScheme();
-    String host = uri.getHost();
-    if (!StringUtils.hasText(scheme) || !StringUtils.hasText(host)) {
-      throw new IllegalArgumentException("网络文档地址必须是完整的 http/https URL。");
-    }
-
-    String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
-    if (!normalizedScheme.equals("http") && !normalizedScheme.equals("https")) {
-      throw new IllegalArgumentException("当前只支持导入 http/https 网络文档。");
-    }
-
-    String normalizedHost = host.toLowerCase(Locale.ROOT);
-    if (normalizedHost.equals("localhost") || normalizedHost.equals("127.0.0.1") || normalizedHost.equals("::1")) {
-      throw new IllegalArgumentException("为了避免本地回环地址被滥用，不支持 localhost 文档地址。");
-    }
-
-    return uri;
+    return remoteResourceSecurityService.validateRemoteUri(sourceUrl, "网络文档地址");
   }
 
   private String extractRemoteFilename(URI remoteUri) {
@@ -361,6 +355,21 @@ public class DocumentStorageService {
 
     requireSupportedExtension(filename);
     return filename;
+  }
+
+  private void validateRemoteDocumentMediaType(String filename, MediaType mediaType) {
+    if (mediaType == null) {
+      throw new IllegalArgumentException("远程文档响应缺少 Content-Type，无法确认文档类型。");
+    }
+
+    String extension = requireSupportedExtension(filename);
+    Set<MediaType> allowedMediaTypes = SUPPORTED_DOCUMENT_MEDIA_TYPES.getOrDefault(extension, Set.of());
+    boolean matched = allowedMediaTypes.stream().anyMatch(allowed -> allowed.isCompatibleWith(mediaType));
+    if (!matched) {
+      throw new IllegalArgumentException(
+          "远程文档类型校验失败：文件扩展名 ." + extension + " 与响应类型 " + mediaType + " 不匹配。"
+      );
+    }
   }
 
   private RequestContext defaultRequestContext() {

@@ -258,7 +258,8 @@ public class DocumentMetadataService {
         buildStatusMessage(entity),
         entity.getLastCallbackStatus(),
         entity.getLastCallbackTime(),
-        entity.getLastSavedTime()
+        entity.getLastSavedTime(),
+        List.of()
     );
   }
 

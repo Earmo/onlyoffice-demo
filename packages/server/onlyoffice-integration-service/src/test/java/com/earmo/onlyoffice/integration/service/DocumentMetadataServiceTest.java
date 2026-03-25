@@ -44,6 +44,7 @@ class DocumentMetadataServiceTest {
     assertEquals("saved", saved.state());
     assertEquals("failed", failed.state());
     assertEquals("回写共享存储失败：下载失败", failed.message());
+    assertEquals(0, failed.recentEvents().size());
   }
 
   @Test

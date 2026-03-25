@@ -10,14 +10,10 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import lombok.AccessLevel;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
-import org.springframework.http.MediaTypeFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
 /**
@@ -36,10 +32,7 @@ public class OnlyofficeImageService {
 
   private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
   private final OnlyofficeJwtService onlyofficeJwtService;
-  private final RestClient.Builder restClientBuilder;
-
-  @Getter(value = AccessLevel.PRIVATE, lazy = true)
-  private final RestClient restClient = buildRestClient();
+  private final RemoteResourceSecurityService remoteResourceSecurityService;
 
   /**
    * 构造 ONLYOFFICE insertImage 方法所需的参数。
@@ -66,52 +59,20 @@ public class OnlyofficeImageService {
    */
   public RemoteImageResource proxyRemoteImage(String sourceUrl) throws IOException {
     URI remoteUri = parseAndValidateSourceUrl(sourceUrl);
-    byte[] body = getRestClient().get()
-        .uri(remoteUri)
-        .retrieve()
-        .body(byte[].class);
-
-    if (body == null || body.length == 0) {
-      throw new IOException("远程图片下载失败，响应内容为空。");
-    }
+    RemoteResourceSecurityService.RemoteFetchResult remoteFetchResult = remoteResourceSecurityService.fetch(
+        remoteUri,
+        onlyofficeIntegrationProperties.getRemoteResource().getMaxImageBytes(),
+        "远程图片"
+    );
 
     String filename = extractFilename(remoteUri);
-    MediaType mediaType = MediaTypeFactory.getMediaType(filename)
-        .orElse(MediaType.APPLICATION_OCTET_STREAM);
+    MediaType mediaType = remoteResourceSecurityService.requireImageMediaType(remoteFetchResult.mediaType());
 
-    return new RemoteImageResource(body, mediaType, filename);
-  }
-
-  /**
-   * 通过懒加载方式初始化 RestClient，既保留单例复用，又不需要手写注入构造器。
-   */
-  private RestClient buildRestClient() {
-    return restClientBuilder.build();
+    return new RemoteImageResource(remoteFetchResult.body(), mediaType, filename);
   }
 
   private URI parseAndValidateSourceUrl(String sourceUrl) {
-    if (!StringUtils.hasText(sourceUrl)) {
-      throw new IllegalArgumentException("图片地址不能为空。");
-    }
-
-    URI uri = URI.create(sourceUrl.trim());
-    String scheme = uri.getScheme();
-    String host = uri.getHost();
-    if (!StringUtils.hasText(scheme) || !StringUtils.hasText(host)) {
-      throw new IllegalArgumentException("图片地址必须是完整的 http/https URL。");
-    }
-
-    String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
-    if (!normalizedScheme.equals("http") && !normalizedScheme.equals("https")) {
-      throw new IllegalArgumentException("当前只支持插入 http/https 网络图片。");
-    }
-
-    String normalizedHost = host.toLowerCase(Locale.ROOT);
-    if (normalizedHost.equals("localhost") || normalizedHost.equals("127.0.0.1") || normalizedHost.equals("::1")) {
-      throw new IllegalArgumentException("为了避免本地回环地址被滥用，不支持 localhost 图片地址。");
-    }
-
-    return uri;
+    return remoteResourceSecurityService.validateRemoteUri(sourceUrl, "图片地址");
   }
 
   private String buildInternalImageProxyUrl(String documentId, String sourceUrl) {

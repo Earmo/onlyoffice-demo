@@ -35,6 +35,8 @@ onlyoffice:
     internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL:http://host.docker.internal:8080}
     document-server-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL:}
     jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET:5d8fc72d49e070f303bb963f69902fe626eece4e}
+    callback:
+      jwt-header-name: ${ONLYOFFICE_INTEGRATION_CALLBACK_JWT_HEADER_NAME:Authorization}
     default-language: ${ONLYOFFICE_INTEGRATION_DEFAULT_LANGUAGE:zh}
     default-region: ${ONLYOFFICE_INTEGRATION_DEFAULT_REGION:zh-CN}
     default-tenant-id: ${ONLYOFFICE_INTEGRATION_DEFAULT_TENANT_ID:native}
@@ -81,3 +83,7 @@ onlyoffice:
         secret-key: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECRET_KEY:onlyoffice123}
         path-style-access: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_PATH_STYLE_ACCESS:true}
         secure: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECURE:false}
+    remote-resource:
+      max-document-bytes: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_MAX_DOCUMENT_BYTES:52428800}
+      max-image-bytes: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_MAX_IMAGE_BYTES:10485760}
+      allow-private-address-access: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_ALLOW_PRIVATE_ADDRESS_ACCESS:false}

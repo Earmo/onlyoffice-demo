@@ -4,13 +4,19 @@ import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentRuntimeEventMapper;
+import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
+import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeConfigService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeImageService;
+import com.earmo.onlyoffice.integration.service.OnlyofficeJwtService;
 import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -18,10 +24,12 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -54,16 +62,24 @@ class DocumentControllerTest {
   private AccessContextResolver accessContextResolver;
 
   @MockBean
+  private OnlyofficeJwtService onlyofficeJwtService;
+
+  @MockBean
   private DocumentMetadataMapper documentMetadataMapper;
 
   @MockBean
   private AccessAuditEventMapper accessAuditEventMapper;
 
+  @MockBean
+  private DocumentRuntimeEventMapper documentRuntimeEventMapper;
+
   @Test
   void shouldPersistCallbackDocumentWhenStatusIs2() throws Exception {
+    when(onlyofficeJwtService.verifyCallbackRequest(any())).thenReturn(mock(io.jsonwebtoken.Claims.class));
     doNothing().when(documentStorageService).saveCallbackDocument("sample", "https://files.example.test/latest.docx");
 
     mockMvc.perform(post("/api/documents/sample/callback")
+            .header("Authorization", "Bearer signed-callback-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("""
                 {
@@ -74,6 +90,7 @@ class DocumentControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.error").value(0));
 
+    verify(onlyofficeJwtService).verifyCallbackRequest(org.mockito.ArgumentMatchers.any());
     verify(documentStatusService).recordCallbackReceived("sample", 2);
     verify(documentStorageService).saveCallbackDocument("sample", "https://files.example.test/latest.docx");
     verify(documentStatusService).recordSaveSucceeded("sample", 2);
@@ -122,11 +139,13 @@ class DocumentControllerTest {
 
   @Test
   void shouldMarkDocumentFailedWhenCallbackWriteBackFails() throws Exception {
+    when(onlyofficeJwtService.verifyCallbackRequest(any())).thenReturn(mock(io.jsonwebtoken.Claims.class));
     doThrow(new IOException("storage failed"))
         .when(documentStorageService)
         .saveCallbackDocument("sample", "https://files.example.test/latest.docx");
 
     mockMvc.perform(post("/api/documents/sample/callback")
+            .header("Authorization", "Bearer signed-callback-token")
             .contentType(MediaType.APPLICATION_JSON)
             .content("""
                 {
@@ -138,5 +157,51 @@ class DocumentControllerTest {
 
     verify(documentStatusService).recordCallbackReceived("sample", 2);
     verify(documentStatusService).recordSaveFailed("sample", 2, "storage failed");
+  }
+
+  @Test
+  void shouldRejectCallbackWhenJwtIsMissingOrInvalid() throws Exception {
+    doThrow(new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：签名无效。"))
+        .when(onlyofficeJwtService)
+        .verifyCallbackRequest(org.mockito.ArgumentMatchers.any());
+
+    mockMvc.perform(post("/api/documents/sample/callback")
+            .header("Authorization", "Bearer invalid-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {
+                  "status": 2,
+                  "url": "https://files.example.test/latest.docx"
+                }
+                """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("ONLYOFFICE callback JWT 校验失败：签名无效。"));
+
+    verify(documentStatusService).recordCallbackRejected("sample", "ONLYOFFICE callback JWT 校验失败：签名无效。");
+    verify(accessAuditService).recordCallbackRejected("sample", "ONLYOFFICE callback JWT 校验失败：签名无效。");
+  }
+
+  @Test
+  void shouldExposeSharedSaveStatusProjection() throws Exception {
+    when(documentStatusService.getStatus("sample")).thenReturn(new DocumentSaveStatusResponse(
+        "sample",
+        "saved",
+        "最新修改已成功回写到共享存储。",
+        2,
+        Instant.parse("2026-03-25T10:00:00Z"),
+        Instant.parse("2026-03-25T10:00:01Z"),
+        List.of(new DocumentSaveStatusEventResponse(
+            "save_succeeded",
+            "最新修改已成功回写到共享存储。",
+            2,
+            Instant.parse("2026-03-25T10:00:01Z")
+        ))
+    ));
+
+    mockMvc.perform(get("/api/documents/sample/save-status"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.state").value("saved"))
+        .andExpect(jsonPath("$.recentEvents[0].eventType").value("save_succeeded"))
+        .andExpect(jsonPath("$.recentEvents[0].callbackStatus").value(2));
   }
 }

@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.model;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * 返回给前端的最近一次保存状态。
@@ -12,6 +13,7 @@ import java.time.Instant;
  * @param lastCallbackStatus 最近一次 ONLYOFFICE callback 的 status
  * @param lastCallbackTime 最近一次收到 callback 的时间
  * @param lastSavedTime 最近一次成功落盘的时间
+ * @param recentEvents 最近几条运行事件摘要
  */
 @Schema(description = "文档最近一次保存状态响应。")
 public record DocumentSaveStatusResponse(
@@ -26,6 +28,8 @@ public record DocumentSaveStatusResponse(
     @Schema(description = "最近一次收到 callback 的时间。")
     Instant lastCallbackTime,
     @Schema(description = "最近一次成功保存回写的时间。")
-    Instant lastSavedTime
+    Instant lastSavedTime,
+    @Schema(description = "最近几条运行事件摘要。")
+    List<DocumentSaveStatusEventResponse> recentEvents
 ) {
 }

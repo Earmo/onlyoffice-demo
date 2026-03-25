@@ -5,10 +5,11 @@ import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -41,7 +42,7 @@ public class OnlyofficeConfigService {
     config.put("editorConfig", buildEditorSection(storedDocument, readonly, accessContext));
     config.put("token", onlyofficeJwtService.sign(config));
 
-    return new EditorConfigResponse(resolveDocumentServerUrl(request), config);
+    return new EditorConfigResponse(resolveDocumentServerUrl(), config);
   }
 
   private Map<String, Object> buildDocumentSection(
@@ -157,35 +158,73 @@ public class OnlyofficeConfigService {
   }
 
   private String buildInternalUrl(String path) {
-    return UriComponentsBuilder.fromHttpUrl(onlyofficeIntegrationProperties.getInternalBaseUrl())
+    return UriComponentsBuilder.fromHttpUrl(
+            requireConfiguredBaseUrl(
+                onlyofficeIntegrationProperties.getInternalBaseUrl(),
+                "onlyoffice.integration.internal-base-url"
+            )
+        )
         .path(path)
         .build()
         .toUriString();
   }
 
-  private String resolveDocumentServerUrl(jakarta.servlet.http.HttpServletRequest request) {
+  private String resolveDocumentServerUrl() {
     if (StringUtils.hasText(onlyofficeIntegrationProperties.getDocumentServerUrl())) {
-      return ensureTrailingSlash(onlyofficeIntegrationProperties.getDocumentServerUrl());
+      return ensureTrailingSlash(requireConfiguredBaseUrl(
+          onlyofficeIntegrationProperties.getDocumentServerUrl(),
+          "onlyoffice.integration.document-server-url"
+      ));
     }
 
     if (StringUtils.hasText(onlyofficeIntegrationProperties.getPublicBaseUrl())) {
-      return ensureTrailingSlash(onlyofficeIntegrationProperties.getPublicBaseUrl());
+      return ensureTrailingSlash(requireConfiguredBaseUrl(
+          onlyofficeIntegrationProperties.getPublicBaseUrl(),
+          "onlyoffice.integration.public-base-url"
+      ));
     }
 
-    if (request == null) {
-      return "/";
-    }
-
-    String requestBaseUrl = UriComponentsBuilder.fromHttpRequest(new ServletServerHttpRequest(request))
-        .replacePath(null)
-        .replaceQuery(null)
-        .build()
-        .toUriString();
-    return ensureTrailingSlash(requestBaseUrl);
+    throw new IllegalStateException(
+        "ONLYOFFICE 运行配置缺失：请配置 onlyoffice.integration.document-server-url，"
+            + "或至少提供 onlyoffice.integration.public-base-url。"
+    );
   }
 
   private String ensureTrailingSlash(String url) {
     return url.endsWith("/") ? url : url + "/";
+  }
+
+  /**
+   * Phase 5 开始，运行时地址不再从请求动态猜测，而是要求通过显式配置给出稳定角色地址。
+   * 这样部署为独立服务、网关聚合服务或多实例服务时，生成出来的 URL 语义才是可预期的。
+   */
+  private String requireConfiguredBaseUrl(String rawUrl, String propertyName) {
+    if (!StringUtils.hasText(rawUrl)) {
+      throw new IllegalStateException("ONLYOFFICE 运行配置缺失：" + propertyName + " 不能为空。");
+    }
+
+    try {
+      URI uri = new URI(rawUrl.trim());
+      String scheme = uri.getScheme();
+      String host = uri.getHost();
+      if (!StringUtils.hasText(scheme) || !StringUtils.hasText(host)) {
+        throw new IllegalStateException(
+            "ONLYOFFICE 运行配置非法：" + propertyName + " 必须是完整的 http/https 地址。"
+        );
+      }
+      String normalizedScheme = scheme.toLowerCase();
+      if (!"http".equals(normalizedScheme) && !"https".equals(normalizedScheme)) {
+        throw new IllegalStateException(
+            "ONLYOFFICE 运行配置非法：" + propertyName + " 只支持 http/https 地址。"
+        );
+      }
+      return rawUrl.trim();
+    } catch (URISyntaxException ex) {
+      throw new IllegalStateException(
+          "ONLYOFFICE 运行配置非法：" + propertyName + " 不是合法 URL。",
+          ex
+      );
+    }
   }
 }
 

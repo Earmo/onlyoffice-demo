@@ -20,6 +20,8 @@
 
 `editor-config`、`file`、`callback` 的绝对地址都由后端生成，前端不需要自行拼接。
 
+Phase 5 开始，`documentServerUrl` 和 `internalBaseUrl` 不再允许由运行时请求静默推导；如果配置缺失或不是合法的 `http/https` 地址，服务会尽早返回明确错误，避免生成错误的 ONLYOFFICE 运行时链接。
+
 ## 3. 最小部署
 
 ### 3.1 Compose demo
@@ -117,6 +119,13 @@ corepack pnpm dev
 - `GET /api/documents/{documentId}/file`
 - `POST /api/documents/{documentId}/callback`
 
+### 5.1 ONLYOFFICE callback JWT
+
+- callback 以 JWT 验签为主可信边界
+- 默认沿用 `onlyoffice.integration.jwt-secret`
+- 默认从 `Authorization` 请求头读取 callback token，可通过 `onlyoffice.integration.callback.jwt-header-name` 调整
+- 验签失败时，接口会返回明确 `4xx`，并记录 `callback_rejected` 运行事件与 system audit event
+
 ## 6. 用户上下文透传
 
 用户上下文解析遵循 `SPI-first, built-ins included`：
@@ -170,3 +179,20 @@ edit=true,comment=false,download=true,print=false
 - create/upload/import/editor-config 会记录轻量访问审计事件
 - ONLYOFFICE callback 会记录为 `system event`
 - callback 不会被伪装成某个人类用户的直接保存动作
+
+## 7. 远程资源安全边界
+
+- 远程导入和图片代理统一使用同一套 SSRF 防护
+- 默认拒绝内网、回环、本机保留地址段
+- 文档导入和图片代理都带显式大小上限
+- 文档导入执行“扩展名 + Content-Type”双校验
+- 图片代理要求响应 `Content-Type` 必须是 `image/*`
+- 被安全策略拒绝时，接口会返回明确 `4xx + 可读错误信息`
+
+关键配置：
+
+- `onlyoffice.integration.remote-resource.max-document-bytes`
+- `onlyoffice.integration.remote-resource.max-image-bytes`
+- `onlyoffice.integration.remote-resource.allow-private-address-access`
+
+其中 `allow-private-address-access` 只建议在本地测试或受控联调环境临时开启，生产环境应保持默认关闭。

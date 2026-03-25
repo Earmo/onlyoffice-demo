@@ -255,12 +255,19 @@ onBeforeUnmount(stopSaveStatusPolling);
               最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
             </p>
             <p class="save-status-meta">
-              最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackAt) }}</code>
+              最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackTime) }}</code>
             </p>
             <p class="save-status-meta">
-              最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedAt) }}</code>
+              最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedTime) }}</code>
             </p>
           </div>
+          <ul v-if="saveStatus.recentEvents?.length" class="save-status-events">
+            <li v-for="event in saveStatus.recentEvents" :key="`${event.eventType}-${event.eventTime}`">
+              <strong>{{ event.eventType }}</strong>
+              <span>{{ event.message }}</span>
+              <time>{{ formatTimestamp(event.eventTime) }}</time>
+            </li>
+          </ul>
           <button class="ghost-button secondary compact" type="button" @click="loadSaveStatus">
             刷新保存状态
           </button>
@@ -326,6 +333,35 @@ onBeforeUnmount(stopSaveStatusPolling);
   display: grid;
   gap: 8px;
   font-size: 13px;
+  color: var(--muted-strong);
+}
+
+.save-status-events {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.save-status-events li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.save-status-events strong {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.save-status-events span,
+.save-status-events time {
+  font-size: 12px;
   color: var(--muted-strong);
 }
 </style>

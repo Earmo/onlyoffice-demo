@@ -55,6 +55,22 @@ public class AccessAuditService {
     accessAuditEventRepository.save(entity);
   }
 
+  public void recordCallbackRejected(String documentId, String reason) {
+    AccessAuditEventEntity entity = new AccessAuditEventEntity();
+    entity.setEventId(buildEventId());
+    entity.setDocumentId(documentId);
+    entity.setTenantId("system");
+    entity.setSourceSystem("onlyoffice");
+    entity.setActorUser(null);
+    entity.setActorName(null);
+    entity.setEventType("callback_rejected");
+    entity.setEventTime(Instant.now());
+    entity.setEventSource("system");
+    entity.setEventResult("rejected");
+    entity.setMessage(reason);
+    accessAuditEventRepository.save(entity);
+  }
+
   private void saveEvent(
       String documentId,
       AccessContext accessContext,

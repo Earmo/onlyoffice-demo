@@ -35,6 +35,9 @@ public class OnlyofficeIntegrationProperties {
   @NotBlank
   private String jwtSecret = "onlyoffice-integration-secret-2026-03-09-123456";
 
+  @Valid
+  private CallbackProperties callback = new CallbackProperties();
+
   @NotBlank
   private String defaultLanguage = "zh";
 
@@ -58,6 +61,9 @@ public class OnlyofficeIntegrationProperties {
 
   @Valid
   private AccessContextProperties accessContext = new AccessContextProperties();
+
+  @Valid
+  private RemoteResourceProperties remoteResource = new RemoteResourceProperties();
 
   /**
    * 兼容现有 local 开发路径读取，避免在 Phase 2 的 provider 重构过程中到处直接访问旧字段。
@@ -210,6 +216,25 @@ public class OnlyofficeIntegrationProperties {
 
     @NotBlank
     private String permissions = "permissions";
+  }
+
+  @Getter
+  @Setter
+  public static class CallbackProperties {
+
+    @NotBlank
+    private String jwtHeaderName = "Authorization";
+  }
+
+  @Getter
+  @Setter
+  public static class RemoteResourceProperties {
+
+    private long maxDocumentBytes = 50L * 1024 * 1024;
+
+    private long maxImageBytes = 10L * 1024 * 1024;
+
+    private boolean allowPrivateAddressAccess = false;
   }
 }
 
