@@ -14,7 +14,7 @@
 - [x] **Phase 2: Storage Strategy Layer** - 抽象存储接口并落地 MinIO 作为首个可用实现 (completed 2026-03-23)
 - [x] **Phase 3: User Context Integration** - 引入低耦合用户上下文接入能力 (completed 2026-03-23)
 - [x] **Phase 4: Document Library Experience** - 把首页改为文档列表，并建立选择/上传后进入编辑器的流程 (completed 2026-03-25)
-- [ ] **Phase 5: Distributed Editing Flow** - 让元数据、编辑配置、回调与安全边界适配分布式部署
+- [x] **Phase 5: Distributed Editing Flow** - 让元数据、编辑配置、回调与安全边界适配分布式部署 (completed 2026-03-25)
 - [ ] **Phase 6: Verification and Delivery** - 补齐自动化验证和接入文档，形成可交付服务基线
 - [x] **Phase 7: 模块拆分、命名规范收敛与数据访问层重构** - 清理 demo 命名、拆分数据库模块，并把自定义查询与字段命名收敛到统一规范 (completed 2026-03-23)
 
@@ -91,9 +91,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: 把文档元数据与编辑链路切到共享存储模型
-- [ ] 05-02: 重做 ONLYOFFICE 分布式配置、下载与 callback 闭环
-- [ ] 05-03: 补齐安全边界和分布式保存状态能力
+- [x] 05-01: 把文档元数据与编辑链路切到共享存储模型
+- [x] 05-02: 重做 ONLYOFFICE 分布式配置、下载与 callback 闭环
+- [x] 05-03: 补齐安全边界和分布式保存状态能力
 
 ### Phase 6: Verification and Delivery
 **Goal**: 用自动化测试、运行脚本和接入文档，把项目变成可交付的服务基线。
@@ -139,6 +139,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Storage Strategy Layer | 3/3 | Complete    | 2026-03-23 |
 | 3. User Context Integration | 3/3 | Complete    | 2026-03-23 |
 | 4. Document Library Experience | 3/3 | Complete    | 2026-03-25 |
-| 5. Distributed Editing Flow | 0/3 | Not started | - |
+| 5. Distributed Editing Flow | 3/3 | Complete    | 2026-03-25 |
 | 6. Verification and Delivery | 0/3 | Not started | - |
 | 7. 模块拆分、命名规范收敛与数据访问层重构 | 3/3 | Complete    | 2026-03-23 |

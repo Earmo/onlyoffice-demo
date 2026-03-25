@@ -38,14 +38,14 @@
 - [x] **LIB-01**: 用户打开首页时先看到文档列表，而不是自动进入固定文档编辑页
 - [x] **LIB-02**: 用户可以从文档列表中选择一个已有文档，再进入编辑器进行查看或编辑
 - [x] **LIB-03**: 用户可以在列表页新建、上传或导入文档，成功后结果会先回流列表并高亮，再显式进入该文档的编辑流程
-- [ ] **EDIT-01**: 文档元数据与文档列表信息会持久化到适合分布式部署的共享存储，而不是仅靠本地目录推导
-- [ ] **EDIT-02**: ONLYOFFICE editor config、文件下载和 callback 保存流程在前后端分离部署下仍然可用
+- [x] **EDIT-01**: 文档元数据与文档列表信息会持久化到适合分布式部署的共享存储，而不是仅靠本地目录推导
+- [x] **EDIT-02**: ONLYOFFICE editor config、文件下载和 callback 保存流程在前后端分离部署下仍然可用
 
 ### Security and Reliability
 
-- [ ] **SAFE-01**: ONLYOFFICE 保存回调会做可信性校验，避免未授权请求触发文档覆盖
-- [ ] **SAFE-02**: 远程资源导入与代理会阻止本地回环、私网滥用和异常响应大小，并返回明确错误
-- [ ] **SAFE-03**: 编辑状态和保存结果对当前用户可见，失败原因可追踪，不因实例切换而丢失关键状态
+- [x] **SAFE-01**: ONLYOFFICE 保存回调会做可信性校验，避免未授权请求触发文档覆盖
+- [x] **SAFE-02**: 远程资源导入与代理会阻止本地回环、私网滥用和异常响应大小，并返回明确错误
+- [x] **SAFE-03**: 编辑状态和保存结果对当前用户可见，失败原因可追踪，不因实例切换而丢失关键状态
 
 ### Quality and Delivery
 
@@ -93,11 +93,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIB-01 | Phase 4 | Complete |
 | LIB-02 | Phase 4 | Complete |
 | LIB-03 | Phase 4 | Complete |
-| EDIT-01 | Phase 5 | Pending |
-| EDIT-02 | Phase 5 | Pending |
-| SAFE-01 | Phase 5 | Pending |
-| SAFE-02 | Phase 5 | Pending |
-| SAFE-03 | Phase 5 | Pending |
+| EDIT-01 | Phase 5 | Complete |
+| EDIT-02 | Phase 5 | Complete |
+| SAFE-01 | Phase 5 | Complete |
+| SAFE-02 | Phase 5 | Complete |
+| SAFE-03 | Phase 5 | Complete |
 | QUAL-01 | Phase 6 | Pending |
 | QUAL-02 | Phase 6 | Pending |
 | QUAL-03 | Phase 6 | Pending |
@@ -113,4 +113,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-25 after Phase 4 execution*
+*Last updated: 2026-03-25 after Phase 5 execution*
