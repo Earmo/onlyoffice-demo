@@ -8,6 +8,7 @@ import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +53,30 @@ public class DocumentMetadataService {
   @Transactional(readOnly = true)
   public List<DocumentMetadataEntity> listDocuments(String tenantId) {
     return documentMetadataRepository.listByTenant(tenantId);
+  }
+
+  /**
+   * 工作台首页使用的文档列表查询入口。
+   *
+   * <p>Phase 4 的列表查询仍然建立在“当前租户下的文档集合”之上，
+   * 这里只补最小可交付的搜索、筛选和排序能力，不扩展成完整检索系统。
+   */
+  @Transactional(readOnly = true)
+  public List<DocumentMetadataEntity> listDocuments(
+      String tenantId,
+      String query,
+      String status,
+      String sourceSystem,
+      String documentType,
+      String sortDirection
+  ) {
+    return documentMetadataRepository.listByTenant(tenantId).stream()
+        .filter(entity -> matchesQuery(entity, query))
+        .filter(entity -> matchesField(entity.getStatus(), status))
+        .filter(entity -> matchesField(entity.getSourceSystem(), sourceSystem))
+        .filter(entity -> matchesField(entity.getDocumentType(), documentType))
+        .sorted(documentComparator(sortDirection))
+        .toList();
   }
 
   @Transactional
@@ -260,5 +285,51 @@ public class DocumentMetadataService {
 
   private void updateEntity(DocumentMetadataEntity entity) {
     documentMetadataMapper.update(entity);
+  }
+
+  private boolean matchesQuery(DocumentMetadataEntity entity, String query) {
+    if (!StringUtils.hasText(query)) {
+      return true;
+    }
+
+    String normalizedQuery = query.trim().toLowerCase();
+    return containsIgnoreCase(entity.getTitle(), normalizedQuery)
+        || containsIgnoreCase(entity.getDocumentId(), normalizedQuery)
+        || containsIgnoreCase(entity.getExternalDocumentId(), normalizedQuery);
+  }
+
+  private boolean matchesField(String actualValue, String expectedValue) {
+    if (!StringUtils.hasText(expectedValue) || "all".equalsIgnoreCase(expectedValue)) {
+      return true;
+    }
+    return expectedValue.equalsIgnoreCase(actualValue);
+  }
+
+  private Comparator<DocumentMetadataEntity> documentComparator(String sortDirection) {
+    Comparator<DocumentMetadataEntity> comparator = Comparator
+        .comparing(this::documentSortTime)
+        .thenComparing(DocumentMetadataEntity::getTitle, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
+
+    return "asc".equalsIgnoreCase(sortDirection) ? comparator : comparator.reversed();
+  }
+
+  private Instant documentSortTime(DocumentMetadataEntity entity) {
+    if (entity.getLastSavedTime() != null) {
+      return entity.getLastSavedTime();
+    }
+    if (entity.getLastOpenedTime() != null) {
+      return entity.getLastOpenedTime();
+    }
+    if (entity.getUpdatedTime() != null) {
+      return entity.getUpdatedTime();
+    }
+    if (entity.getCreatedTime() != null) {
+      return entity.getCreatedTime();
+    }
+    return Instant.EPOCH;
+  }
+
+  private boolean containsIgnoreCase(String value, String normalizedQuery) {
+    return StringUtils.hasText(value) && value.toLowerCase().contains(normalizedQuery);
   }
 }

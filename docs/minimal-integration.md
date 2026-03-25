@@ -65,8 +65,8 @@ mvn -pl onlyoffice-integration-service spring-boot:run
 
 ```bash
 cd packages/web
-pnpm install
-pnpm dev
+corepack pnpm install
+corepack pnpm dev
 ```
 
 ## 4. 推荐接入流程
@@ -80,6 +80,29 @@ pnpm dev
 3. 或调用 `POST /api/documents/import-remote`
 4. 调用 `GET /api/documents/{documentId}/editor-config`
 5. 再决定跳转官方前端，或由上游系统自己的前端消费该配置
+
+### 4.1 官方前端默认流转
+
+官方前端现在默认先进入文档工作台，而不是直接打开固定示例文档：
+
+- `GET /`
+  文档工作台首页，展示当前租户/当前用户上下文、顶部创建入口、最近文档区和主列表
+- `GET /editor/{documentId}`
+  独立编辑页，负责加载 ONLYOFFICE 编辑器、保存状态和文档切换入口
+
+工作台首页默认支持三类主动作：
+
+- `新建空白文档`
+- `上传本地文档`
+- `导入远程文档`
+
+三类动作成功后，官方前端会先刷新 `/api/documents` 列表并高亮新结果，而不是强制立即跳转编辑页。这样可以避免新文档被当前筛选条件静默隐藏，也让用户在进入编辑器前先确认列表结果。
+
+从工作台进入编辑器后：
+
+- 列表项整行可进入文档编辑页
+- 编辑页始终提供“返回文档列表”入口
+- 在编辑页切换到另一份文档时，前端会先弹出确认提示
 
 ## 5. 核心 API
 

@@ -1,0 +1,331 @@
+<script setup>
+import { onBeforeUnmount, ref, watch } from "vue";
+import { DocumentEditor } from "@onlyoffice/document-editor-vue";
+
+const props = defineProps({
+  documentId: {
+    type: String,
+    required: true
+  },
+  documentTitle: {
+    type: String,
+    default: ""
+  }
+});
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+
+const readonly = ref(false);
+const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
+const isPanelOpen = ref(false);
+const isLoading = ref(true);
+const isInsertingImage = ref(false);
+const errorMessage = ref("");
+const editorPayload = ref(null);
+const editorKey = ref(0);
+const saveStatus = ref(null);
+let saveStatusTimer = null;
+
+async function readErrorMessage(response, fallbackMessage) {
+  try {
+    const payload = await response.json();
+    return payload?.message || fallbackMessage;
+  } catch {
+    return fallbackMessage;
+  }
+}
+
+async function loadEditorConfig() {
+  isLoading.value = true;
+  errorMessage.value = "";
+
+  try {
+    const params = new URLSearchParams({
+      readonly: String(readonly.value)
+    });
+    const response = await fetch(
+      `${apiBaseUrl}/api/documents/${props.documentId}/editor-config?${params.toString()}`
+    );
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `配置请求失败，HTTP ${response.status}`));
+    }
+
+    editorPayload.value = await response.json();
+    await loadSaveStatus();
+    editorKey.value += 1;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "未知错误";
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function loadSaveStatus() {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/documents/${props.documentId}/save-status`);
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
+    }
+    saveStatus.value = await response.json();
+  } catch (error) {
+    console.error("加载保存状态失败", error);
+  }
+}
+
+async function toggleReadonly() {
+  readonly.value = !readonly.value;
+  await loadEditorConfig();
+}
+
+function togglePanel() {
+  isPanelOpen.value = !isPanelOpen.value;
+}
+
+function closePanel() {
+  isPanelOpen.value = false;
+}
+
+function getDocEditorInstance() {
+  return window.DocEditor?.instances?.docEditor;
+}
+
+async function insertRemoteImage() {
+  if (readonly.value) {
+    errorMessage.value = "只读模式下不能插入图片。";
+    return;
+  }
+
+  const editor = getDocEditorInstance();
+  if (!editor) {
+    errorMessage.value = "编辑器尚未准备完成，请稍后再试。";
+    return;
+  }
+
+  isInsertingImage.value = true;
+  errorMessage.value = "";
+
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/documents/${props.documentId}/images/insert`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        sourceUrl: imageUrl.value
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `插图配置请求失败，HTTP ${response.status}`));
+    }
+
+    const payload = await response.json();
+    editor.insertImage(payload.insertImage);
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "插入图片失败";
+  } finally {
+    isInsertingImage.value = false;
+  }
+}
+
+function handleDocumentReady() {
+  console.log("ONLYOFFICE 文档已加载完成");
+  startSaveStatusPolling();
+}
+
+function handleLoadComponentError(errorCode, errorDescription) {
+  errorMessage.value = `ONLYOFFICE 组件加载失败（${errorCode}）：${errorDescription}`;
+}
+
+function startSaveStatusPolling() {
+  stopSaveStatusPolling();
+  saveStatusTimer = window.setInterval(() => {
+    loadSaveStatus();
+  }, 5000);
+}
+
+function stopSaveStatusPolling() {
+  if (saveStatusTimer !== null) {
+    window.clearInterval(saveStatusTimer);
+    saveStatusTimer = null;
+  }
+}
+
+function formatTimestamp(value) {
+  if (!value) {
+    return "暂无";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "medium"
+  }).format(new Date(value));
+}
+
+function saveStatusTone(state) {
+  return {
+    "is-idle": state === "idle",
+    "is-progress": state === "callback-received",
+    "is-success": state === "saved",
+    "is-error": state === "save-failed"
+  };
+}
+
+watch(
+  () => props.documentId,
+  async () => {
+    stopSaveStatusPolling();
+    readonly.value = false;
+    saveStatus.value = null;
+    await loadEditorConfig();
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(stopSaveStatusPolling);
+</script>
+
+<template>
+  <section class="editor-workspace">
+    <section v-if="isLoading" class="state-card">
+      <p>正在获取编辑器配置...</p>
+    </section>
+
+    <section v-else-if="errorMessage" class="state-card error">
+      <p>{{ errorMessage }}</p>
+      <p class="hint">
+        请确认当前站点的 <code>/api</code> 反向代理可用，并且 ONLYOFFICE 相关路径已通过同源方式转发。
+      </p>
+    </section>
+
+    <section v-else-if="editorPayload" class="editor-shell">
+      <DocumentEditor
+        :key="editorKey"
+        id="docEditor"
+        :documentServerUrl="editorPayload.documentServerUrl"
+        :config="editorPayload.config"
+        height="100%"
+        width="100%"
+        :events_onDocumentReady="handleDocumentReady"
+        :onLoadComponentError="handleLoadComponentError"
+      />
+    </section>
+
+    <button class="panel-toggle" type="button" @click="togglePanel">
+      {{ isPanelOpen ? "收起控制台" : "打开控制台" }}
+    </button>
+
+    <transition name="panel-fade">
+      <button
+        v-if="isPanelOpen"
+        class="panel-backdrop"
+        type="button"
+        aria-label="关闭控制台"
+        @click="closePanel"
+      />
+    </transition>
+
+    <aside class="side-panel" :class="{ open: isPanelOpen }" aria-label="编辑器控制台">
+      <div class="side-panel-header">
+        <div class="hero-copy">
+          <p class="eyebrow">独立编辑页</p>
+          <h2>{{ props.documentTitle || props.documentId }}</h2>
+          <p class="summary">
+            编辑页只负责当前文档的运行态能力，切换文档、返回列表和创建入口都交给工作台首页与外层页面壳层处理。
+          </p>
+        </div>
+        <button class="panel-close" type="button" @click="closePanel">
+          关闭
+        </button>
+      </div>
+
+      <div class="drawer-actions">
+        <section class="panel-section">
+          <p class="panel-section-title">当前文档</p>
+          <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
+          <p class="panel-document-meta">documentId: <code>{{ props.documentId }}</code></p>
+          <p class="panel-document-meta">当前模式：<code>{{ readonly ? "只读" : "可编辑" }}</code></p>
+        </section>
+
+        <section v-if="saveStatus" class="panel-section">
+          <p class="panel-section-title">最近保存状态</p>
+          <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
+            <p class="save-status-headline">{{ saveStatus.message }}</p>
+            <p class="save-status-meta">
+              最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
+            </p>
+            <p class="save-status-meta">
+              最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackAt) }}</code>
+            </p>
+            <p class="save-status-meta">
+              最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedAt) }}</code>
+            </p>
+          </div>
+          <button class="ghost-button secondary compact" type="button" @click="loadSaveStatus">
+            刷新保存状态
+          </button>
+        </section>
+
+        <section class="panel-section">
+          <p class="panel-section-title">编辑动作</p>
+          <label class="field-grid">
+            <span>网络图片地址</span>
+            <input
+              v-model="imageUrl"
+              class="surface-input"
+              type="url"
+              placeholder="https://example.com/demo.png"
+              :disabled="isLoading || isInsertingImage"
+            />
+          </label>
+          <button
+            class="ghost-button accent"
+            type="button"
+            :disabled="isLoading || isInsertingImage || readonly"
+            @click="insertRemoteImage"
+          >
+            {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
+          </button>
+          <button class="ghost-button" type="button" :disabled="isLoading" @click="toggleReadonly">
+            {{ readonly ? "切换为可编辑" : "切换为只读" }}
+          </button>
+          <button class="ghost-button secondary" type="button" :disabled="isLoading" @click="loadEditorConfig">
+            重新加载配置
+          </button>
+        </section>
+      </div>
+    </aside>
+  </section>
+</template>
+
+<style scoped>
+.editor-workspace {
+  min-height: 0;
+  height: 100%;
+}
+
+.side-panel-header {
+  display: grid;
+  gap: 14px;
+}
+
+.side-panel-header h2 {
+  margin: 8px 0 0;
+  font-size: clamp(26px, 3vw, 38px);
+}
+
+.drawer-actions {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.field-grid {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted-strong);
+}
+</style>

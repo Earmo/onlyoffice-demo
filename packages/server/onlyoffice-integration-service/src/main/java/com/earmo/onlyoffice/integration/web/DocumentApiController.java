@@ -47,12 +47,39 @@ public class DocumentApiController {
 
   @GetMapping
   @Operation(summary = "查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要列表。")
-  public DocumentListResponse list(HttpServletRequest request) {
+  public DocumentListResponse list(
+      @Parameter(description = "标题或文档标识关键词。", example = "sample")
+      @RequestParam(required = false) String query,
+      @Parameter(description = "文档状态筛选。", example = "failed")
+      @RequestParam(required = false) String status,
+      @Parameter(description = "来源系统筛选。", example = "native")
+      @RequestParam(required = false) String sourceSystem,
+      @Parameter(description = "文档类型筛选。", example = "word")
+      @RequestParam(required = false) String documentType,
+      @Parameter(description = "对象可用性筛选：all/available/unavailable。", example = "all")
+      @RequestParam(defaultValue = "all") String storage,
+      @Parameter(description = "列表排序方向：desc/asc。", example = "desc")
+      @RequestParam(defaultValue = "desc") String sortDirection,
+      HttpServletRequest request
+  ) {
     AccessContext accessContext = accessContextResolver.resolve(request);
-    List<DocumentSummaryResponse> documents = documentMetadataService.listDocuments(accessContext.tenantId()).stream()
+    List<DocumentSummaryResponse> documents = documentMetadataService.listDocuments(
+            accessContext.tenantId(),
+            query,
+            status,
+            sourceSystem,
+            documentType,
+            sortDirection
+        ).stream()
         .map(entity -> toSummary(entity, accessContext))
+        .filter(summary -> matchesStorage(summary, storage))
         .toList();
-    return new DocumentListResponse(documents);
+    return new DocumentListResponse(
+        accessContext.tenantId(),
+        accessContext.actorUser(),
+        accessContext.actorName(),
+        documents
+    );
   }
 
   @GetMapping("/{documentId}")
@@ -182,5 +209,13 @@ public class DocumentApiController {
     } catch (IOException ex) {
       return false;
     }
+  }
+
+  private boolean matchesStorage(DocumentSummaryResponse summary, String storage) {
+    return switch (storage == null ? "all" : storage.toLowerCase()) {
+      case "available" -> summary.storageAvailable();
+      case "unavailable" -> !summary.storageAvailable();
+      default -> true;
+    };
   }
 }

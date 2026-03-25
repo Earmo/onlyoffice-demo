@@ -56,7 +56,8 @@ class AccessContextErrorHandlingTest {
 
   @Test
   void shouldReturn4xxWhenContextIsCompletelyMissing() throws Exception {
-    when(documentMetadataService.listDocuments(anyString())).thenReturn(List.of());
+    when(documentMetadataService.listDocuments(anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
+        .thenReturn(List.of());
 
     mockMvc.perform(get("/api/documents"))
         .andExpect(status().is4xxClientError())
@@ -65,7 +66,7 @@ class AccessContextErrorHandlingTest {
 
   @Test
   void shouldAllowPartialContextWhenDefaultFillIsEnabled() throws Exception {
-    when(documentMetadataService.listDocuments("native")).thenReturn(List.of());
+    when(documentMetadataService.listDocuments("native", null, null, null, null, "desc")).thenReturn(List.of());
 
     mockMvc.perform(get("/api/documents")
             .header("X-External-User-Id", "user-a")

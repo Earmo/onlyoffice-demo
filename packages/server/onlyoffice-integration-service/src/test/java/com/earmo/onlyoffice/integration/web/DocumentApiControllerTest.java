@@ -16,13 +16,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -54,17 +57,61 @@ class DocumentApiControllerTest {
   @Test
   void shouldListDocumentsForCurrentTenant() throws Exception {
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
-    when(documentMetadataService.listDocuments("tenant-a")).thenReturn(List.of(entity("sample")));
+    when(documentMetadataService.listDocuments("tenant-a", null, null, null, null, "desc"))
+        .thenReturn(List.of(entity("sample")));
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
 
     mockMvc.perform(get("/api/documents"))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.tenantId").value("tenant-a"))
+        .andExpect(jsonPath("$.actorUser").value("user-a"))
+        .andExpect(jsonPath("$.actorName").value("Alice"))
         .andExpect(jsonPath("$.documents[0].documentId").value("sample"))
         .andExpect(jsonPath("$.documents[0].tenantId").value("tenant-a"))
         .andExpect(jsonPath("$.documents[0].actorUser").value("user-a"))
         .andExpect(jsonPath("$.documents[0].actorName").value("Alice"))
         .andExpect(jsonPath("$.documents[0].sourceSystem").value("native"))
         .andExpect(jsonPath("$.documents[0].storageAvailable").value(true));
+
+    verify(documentMetadataService).listDocuments("tenant-a", null, null, null, null, "desc");
+  }
+
+  @Test
+  void shouldForwardQueryAndFilterParameters() throws Exception {
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentMetadataService.listDocuments("tenant-a", "roadmap", "failed", "native", "word", "asc"))
+        .thenReturn(List.of(entity("sample")));
+    when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+
+    mockMvc.perform(
+            get("/api/documents")
+                .param("query", "roadmap")
+                .param("status", "failed")
+                .param("sourceSystem", "native")
+                .param("documentType", "word")
+                .param("sortDirection", "asc")
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documents[0].documentId").value("sample"));
+
+    verify(documentMetadataService).listDocuments("tenant-a", "roadmap", "failed", "native", "word", "asc");
+  }
+
+  @Test
+  void shouldFilterByStorageAvailabilityProjection() throws Exception {
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentMetadataService.listDocuments("tenant-a", null, null, null, null, "desc"))
+        .thenReturn(List.of(entity("available"), entity("missing")));
+    when(documentStorageService.exists(argThat(entity -> entity != null && "available".equals(entity.getDocumentId()))))
+        .thenReturn(true);
+    when(documentStorageService.exists(argThat(entity -> entity != null && "missing".equals(entity.getDocumentId()))))
+        .thenReturn(false);
+
+    mockMvc.perform(get("/api/documents").param("storage", "unavailable"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documents.length()").value(1))
+        .andExpect(jsonPath("$.documents[0].documentId").value("missing"))
+        .andExpect(jsonPath("$.documents[0].storageAvailable").value(false));
   }
 
   @Test
@@ -84,7 +131,7 @@ class DocumentApiControllerTest {
   void shouldCreateDocumentExplicitly() throws Exception {
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
     when(documentStorageService.createNativeDocument(anyString(), anyString(), any(com.earmo.onlyoffice.integration.model.RequestContext.class), anyString()))
-        .thenReturn(storedDocument("doc-1"));
+        .thenReturn(storedDocument("doc-1", "alpha.docx", "external-1"));
 
     mockMvc.perform(post("/api/documents")
             .contentType(MediaType.APPLICATION_JSON)
@@ -109,6 +156,56 @@ class DocumentApiControllerTest {
         any(com.earmo.onlyoffice.integration.model.RequestContext.class),
         anyString()
     );
+  }
+
+  @Test
+  void shouldUploadDocumentWithConsistentSummaryProjection() throws Exception {
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentStorageService.storeUploadedDocument(
+        anyString(),
+        any(byte[].class),
+        any(com.earmo.onlyoffice.integration.model.RequestContext.class)
+    )).thenReturn(storedDocument("upload-1", "roadmap.docx", null));
+
+    MockMultipartFile file = new MockMultipartFile(
+        "file",
+        "roadmap.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "demo".getBytes()
+    );
+
+    mockMvc.perform(multipart("/api/documents/upload").file(file))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documentId").value("upload-1"))
+        .andExpect(jsonPath("$.title").value("roadmap.docx"))
+        .andExpect(jsonPath("$.ownerUser").value("user-a"))
+        .andExpect(jsonPath("$.actorUser").value("user-a"))
+        .andExpect(jsonPath("$.actorName").value("Alice"))
+        .andExpect(jsonPath("$.storageAvailable").value(true));
+  }
+
+  @Test
+  void shouldImportRemoteDocumentWithConsistentSummaryProjection() throws Exception {
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentStorageService.importRemoteDocument(
+        anyString(),
+        any(com.earmo.onlyoffice.integration.model.RequestContext.class)
+    )).thenReturn(storedDocument("import-1", "external.docx", null));
+
+    mockMvc.perform(post("/api/documents/import-remote")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {
+                  "sourceUrl": "https://files.example.test/external.docx"
+                }
+                """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documentId").value("import-1"))
+        .andExpect(jsonPath("$.title").value("external.docx"))
+        .andExpect(jsonPath("$.ownerUser").value("user-a"))
+        .andExpect(jsonPath("$.actorUser").value("user-a"))
+        .andExpect(jsonPath("$.actorName").value("Alice"))
+        .andExpect(jsonPath("$.storageAvailable").value(true));
   }
 
   private AccessContext accessContext() {
@@ -136,14 +233,14 @@ class DocumentApiControllerTest {
     return entity;
   }
 
-  private StoredDocument storedDocument(String documentId) {
+  private StoredDocument storedDocument(String documentId, String title, String externalDocumentId) {
     return new StoredDocument(
         documentId,
         "tenant-a",
         "user-a",
         "native",
-        "external-1",
-        "alpha.docx",
+        externalDocumentId,
+        title,
         "documents/" + documentId + ".docx",
         "docx",
         "word",
