@@ -17,6 +17,7 @@
 - [x] **Phase 5: Distributed Editing Flow** - 让元数据、编辑配置、回调与安全边界适配分布式部署 (completed 2026-03-25)
 - [x] **Phase 6: Verification and Delivery** - 补齐自动化验证和接入文档，形成可交付服务基线 (completed 2026-03-26)
 - [x] **Phase 7: 模块拆分、命名规范收敛与数据访问层重构** - 清理 demo 命名、拆分数据库模块，并把自定义查询与字段命名收敛到统一规范 (completed 2026-03-23)
+- [ ] **Phase 8: 环境拆分、服务层规范、COS 支持与注释完善** - 拆分 dev/test/prod 配置，规范 Service 结构，补齐腾讯云 COS 和更完整的代码注释
 
 ## Phase Details
 
@@ -128,10 +129,28 @@ Plans:
 - [x] 07-02: 重构数据访问层并统一字段命名
 - [x] 07-03: 清理 demo 命名并接通 starter 服务模块
 
+### Phase 8: 环境拆分、服务层规范、COS 支持与注释完善
+
+**Goal**: 按环境拆分运行配置、规范 service 层接口实现结构，补齐腾讯云 COS 存储支持，并提升项目代码可读性。
+**Requirements**: [CFG-01, SVC-01, MOD-02, STOR-04, DOC-01]
+**Depends on:** Phase 7
+**Plans:** 3 plans
+
+**Success Criteria** (what must be TRUE):
+  1. 后端配置按 `dev / test / prod` 环境拆分，并由统一入口配置控制环境选择。
+  2. `packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service` 收敛为 `Service 接口 + ServiceImpl` 结构，同时修正构建坐标命名歧义。
+  3. 存储策略新增腾讯云 COS 实现，并保持与现有 MinIO / 路由策略一致的扩展方式。
+  4. 关键实现拥有更完整的中文注释和步骤说明，降低后续维护成本。
+
+Plans:
+- [ ] 08-01: 拆分 dev/test/prod 配置并收敛构建命名
+- [ ] 08-02: 重构 service 层接口实现结构并补齐详细注释
+- [ ] 08-03: 增加腾讯云 COS 存储策略支持
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -142,3 +161,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 5. Distributed Editing Flow | 3/3 | Complete    | 2026-03-25 |
 | 6. Verification and Delivery | 3/3 | Complete    | 2026-03-26 |
 | 7. 模块拆分、命名规范收敛与数据访问层重构 | 3/3 | Complete    | 2026-03-23 |
+| 8. 环境拆分、服务层规范、COS 支持与注释完善 | 0/3 | Not started | - |

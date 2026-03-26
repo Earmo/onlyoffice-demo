@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: Phase 6 execution completed
-last_updated: "2026-03-26T01:48:58Z"
-last_activity: 2026-03-26 — Completed quick task 260326-dmt: 做一个适配 Windows 本地调试的 docker-compose.debug.yml，将后端本地调试配置改成 yaml 文件，并把本地调试事项更新到文档里
+stopped_at: Phase 8 added
+last_updated: "2026-03-26T02:20:00Z"
+last_activity: 2026-03-26 — Added Phase 8 for environment split, service conventions, COS support, and comment expansion
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 7
-  total_plans: 21
+  total_plans: 24
   completed_plans: 21
-  percent: 100
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** 任意上层系统都应该能以低耦合方式接入一个可分布式部署的文档编辑服务，让用户先看到自己的文档列表，再安全地选择、上传、打开并保存文档。
-**Current focus:** Milestone wrap-up
+**Current focus:** Phase 8: 环境拆分、服务层规范、COS 支持与注释完善
 
 ## Current Position
 
-Phase: 6 of 7 (Verification and Delivery)
-Plan: 3 plans / 2 waves completed
-Status: Phase 6 executed; all roadmap phases complete
-Last activity: 2026-03-26 — Executed Phase 6 verification and delivery
+Phase: 8 of 8 (环境拆分、服务层规范、COS 支持与注释完善)
+Plan: 3 plans not yet planned
+Status: Phase 8 added; ready for planning
+Last activity: 2026-03-26 — Added Phase 8 for environment split, service conventions, COS support, and comment expansion
 
-Progress: [██████████] 100%
+Progress: [████████░░] 88%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Recent decisions affecting current work:
 
 ### Roadmap Evolution
 
+- Phase 8 added: 环境拆分、服务层规范、COS 支持与注释完善
 - Phase 6 executed: 后端回归测试、前端 Vitest 基线、根级验证入口和交付文档完成
 - Phase 7 added: 模块拆分、命名规范收敛与数据访问层重构
 - Phase 7 executed: 多模块拆分、repository 重构与 starter 命名收敛完成
@@ -81,7 +82,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- 当前 roadmap 全部 phase 已完成，下一步更适合进入 milestone 审核、清理或归档，而不是继续新增执行面
+- Phase 8 刚刚新增，下一步需要先做 discuss/plan，避免把环境拆分、Service 重构、构建命名调整和 COS 支持混成一次无边界改造
 
 ### Quick Tasks Completed
 
