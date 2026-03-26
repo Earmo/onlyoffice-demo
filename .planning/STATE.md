@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: Phase 8 added
-last_updated: "2026-03-26T02:20:00Z"
-last_activity: 2026-03-26 — Added Phase 8 for environment split, service conventions, COS support, and comment expansion
+stopped_at: Phase 8 planned
+last_updated: "2026-03-26T10:10:00Z"
+last_activity: 2026-03-26 — Planned Phase 8 for environment split, service conventions, COS support, and comment expansion
 progress:
   total_phases: 8
   completed_phases: 7
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 ## Current Position
 
 Phase: 8 of 8 (环境拆分、服务层规范、COS 支持与注释完善)
-Plan: 3 plans not yet planned
-Status: Phase 8 added; ready for planning
-Last activity: 2026-03-26 — Added Phase 8 for environment split, service conventions, COS support, and comment expansion
+Plan: 3 plans in 2 waves
+Status: Phase 8 planned; ready to execute
+Last activity: 2026-03-26 — Planned Phase 8 for environment split, service conventions, COS support, and comment expansion
 
 Progress: [████████░░] 88%
 
@@ -82,7 +82,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 8 刚刚新增，下一步需要先做 discuss/plan，避免把环境拆分、Service 重构、构建命名调整和 COS 支持混成一次无边界改造
+- Phase 8 已完成 planning，执行时仍需控制边界，避免把环境拆分、Service 重构、构建命名调整、COS 支持和注释增强混成单次无序改造
 
 ### Quick Tasks Completed
 
