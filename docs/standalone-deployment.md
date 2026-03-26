@@ -68,6 +68,40 @@ corepack pnpm dev
 
 这 3 个地址是分布式部署正确性的关键。后端会负责生成 `document.url` 和 `callbackUrl`，前端不自行拼接运行时地址。
 
+## Windows 本地断点调试
+
+如果你是在 Windows 本机调试，而 `postgres`、`minio`、`onlyoffice` 仍希望使用 Docker 容器，推荐使用覆盖文件而不是直接修改主 compose：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d postgres minio onlyoffice
+```
+
+`docker-compose.debug.yml` 只负责暴露本机调试用端口，不重复主文件里的镜像、健康检查和依赖关系。当前会暴露：
+
+- `15434:5432` -> PostgreSQL
+- `9000:9000` 与 `9001:9001` -> MinIO
+- `18080:80` -> ONLYOFFICE
+
+后端本机启动时，直接启用 YAML profile：
+
+```bash
+cd packages/server
+mvn -pl onlyoffice-integration-service spring-boot:run -Dspring-boot.run.profiles=windows-debug
+```
+
+这个 profile 定义在：
+
+- `packages/server/onlyoffice-integration-service/src/main/resources/application-windows-debug.yml`
+
+其中已经预设：
+
+- `publicBaseUrl = http://localhost:8080`
+- `internalBaseUrl = http://host.docker.internal:8080`
+- `documentServerUrl = http://localhost:18080`
+- MinIO endpoint 指向 `http://localhost:9000`
+
+这样浏览器访问 ONLYOFFICE 走 `localhost:18080`，而 ONLYOFFICE 容器回调你本机后端时走 `host.docker.internal:8080`，符合 Windows + Docker Desktop 的常见调试链路。
+
 ## 部署后建议先跑的验证
 
 从仓库根执行：

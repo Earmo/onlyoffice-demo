@@ -1,0 +1,13 @@
+services:
+  postgres:
+    ports:
+      - "15434:5432"
+
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  onlyoffice:
+    ports:
+      - "18080:80"

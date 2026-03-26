@@ -1,0 +1,24 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:15434/onlyoffice
+    username: onlyoffice
+    password: onlyoffice
+    driver-class-name: org.postgresql.Driver
+
+onlyoffice:
+  integration:
+    public-base-url: http://localhost:8080
+    internal-base-url: http://host.docker.internal:8080
+    document-server-url: http://localhost:18080
+    storage:
+      default-provider: minio
+      minio:
+        endpoint: http://localhost:9000
+        bucket: onlyoffice-documents
+        access-key: onlyoffice
+        secret-key: onlyoffice123
+        path-style-access: true
+        secure: false

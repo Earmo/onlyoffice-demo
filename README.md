@@ -42,6 +42,42 @@ npm run verify
 docker compose up -d
 ```
 
+### Windows 本地断点调试
+
+如果你在 Windows + Docker Desktop 环境下，想让 `postgres`、`minio`、`onlyoffice` 继续跑在容器里，但把后端和前端放到本机 IDE / 终端里启动，推荐使用调试覆盖文件：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d postgres minio onlyoffice
+```
+
+这条命令会在不改动主 compose 语义的前提下，额外暴露本机调试需要的端口：
+
+- `localhost:15434` -> PostgreSQL
+- `localhost:9000` / `localhost:9001` -> MinIO API / Console
+- `localhost:18080` -> ONLYOFFICE Docs
+
+后端本机启动时，建议直接启用新增的 YAML profile：
+
+```bash
+cd packages/server
+mvn -pl onlyoffice-integration-service spring-boot:run -Dspring-boot.run.profiles=windows-debug
+```
+
+前端本机启动时，把 API 指向本机后端：
+
+```bash
+cd packages/web
+corepack pnpm install
+$env:VITE_API_BASE_URL="http://localhost:8080"
+corepack pnpm dev
+```
+
+如果要确认 ONLYOFFICE 容器能否打回你本机后端，可以执行：
+
+```bash
+docker exec -it onlyoffice-integration-docs curl http://host.docker.internal:8080/v3/api-docs
+```
+
 ### 单独启动后端
 
 ```bash

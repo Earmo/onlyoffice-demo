@@ -60,3 +60,27 @@
 |---|---|---|
 | `WEB_PORT` | `80` | 聚合前端对外端口 |
 | `JWT_SECRET` | 示例值 | ONLYOFFICE 与服务端共享 JWT 密钥 |
+
+## Windows 本地调试约定
+
+如果使用 `docker-compose.debug.yml` 启动基础依赖，并把后端放在 Windows 本机调试，当前约定如下：
+
+| 调试项 | 值 | 说明 |
+|---|---|---|
+| PostgreSQL | `localhost:15434` | 本机后端连接容器数据库 |
+| MinIO API | `http://localhost:9000` | 本机后端连接容器 MinIO |
+| MinIO Console | `http://localhost:9001` | 浏览器查看对象存储 |
+| ONLYOFFICE Docs | `http://localhost:18080` | 浏览器加载 ONLYOFFICE 静态资源 |
+| 本机后端回调入口 | `http://host.docker.internal:8080` | ONLYOFFICE 容器回调 Windows 本机后端 |
+
+推荐直接启用：
+
+```text
+spring.profiles.active=windows-debug
+```
+
+对应 YAML 配置文件：
+
+```text
+packages/server/onlyoffice-integration-service/src/main/resources/application-windows-debug.yml
+```
