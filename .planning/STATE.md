@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: active
 stopped_at: Phase 6 execution completed
-last_updated: "2026-03-26T01:23:26Z"
-last_activity: 2026-03-26 — Executed Phase 6 verification and delivery
+last_updated: "2026-03-26T01:48:58Z"
+last_activity: 2026-03-26 — Completed quick task 260326-dmt: 做一个适配 Windows 本地调试的 docker-compose.debug.yml，将后端本地调试配置改成 yaml 文件，并把本地调试事项更新到文档里
 progress:
   total_phases: 7
   completed_phases: 7
@@ -82,6 +82,12 @@ None yet.
 ### Blockers/Concerns
 
 - 当前 roadmap 全部 phase 已完成，下一步更适合进入 milestone 审核、清理或归档，而不是继续新增执行面
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260326-dmt | 做一个适配 Windows 本地调试的 docker-compose.debug.yml，将后端本地调试配置改成 yaml 文件，并把本地调试事项更新到文档里 | 2026-03-26 | 18335f5 | [260326-dmt-windows-docker-compose-debug-yml-yaml](./quick/260326-dmt-windows-docker-compose-debug-yml-yaml/) |
 
 ## Session Continuity
 
