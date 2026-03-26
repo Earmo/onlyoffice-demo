@@ -4,6 +4,8 @@ import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
+import com.earmo.onlyoffice.integration.service.impl.OnlyofficeConfigServiceImpl;
+import com.earmo.onlyoffice.integration.service.impl.OnlyofficeJwtServiceImpl;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,8 +59,8 @@ class OnlyofficeConfigServiceTest {
     DocumentStorageService storageService = mock(DocumentStorageService.class);
     when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
 
-    OnlyofficeJwtService jwtService = new OnlyofficeJwtService(properties);
-    OnlyofficeConfigService configService = new OnlyofficeConfigService(properties, storageService, jwtService);
+    OnlyofficeJwtService jwtService = new OnlyofficeJwtServiceImpl(properties);
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(properties, storageService, jwtService);
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/documents/demo/editor-config");
     request.setScheme("https");
     request.setServerName("app.example.test");
@@ -126,10 +128,10 @@ class OnlyofficeConfigServiceTest {
     DocumentStorageService storageService = mock(DocumentStorageService.class);
     when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
 
-    OnlyofficeConfigService configService = new OnlyofficeConfigService(
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
         properties,
         storageService,
-        new OnlyofficeJwtService(properties)
+        new OnlyofficeJwtServiceImpl(properties)
     );
 
     EditorConfigResponse response = configService.buildEditorConfig(
@@ -173,10 +175,10 @@ class OnlyofficeConfigServiceTest {
     DocumentStorageService storageService = mock(DocumentStorageService.class);
     when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
 
-    OnlyofficeConfigService configService = new OnlyofficeConfigService(
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
         properties,
         storageService,
-        new OnlyofficeJwtService(properties)
+        new OnlyofficeJwtServiceImpl(properties)
     );
 
     EditorConfigResponse response = configService.buildEditorConfig(
@@ -236,10 +238,10 @@ class OnlyofficeConfigServiceTest {
     DocumentStorageService storageService = mock(DocumentStorageService.class);
     when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
 
-    OnlyofficeConfigService configService = new OnlyofficeConfigService(
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
         properties,
         storageService,
-        new OnlyofficeJwtService(properties)
+        new OnlyofficeJwtServiceImpl(properties)
     );
 
     IllegalStateException exception = assertThrows(
@@ -286,10 +288,10 @@ class OnlyofficeConfigServiceTest {
     DocumentStorageService storageService = mock(DocumentStorageService.class);
     when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
 
-    OnlyofficeConfigService configService = new OnlyofficeConfigService(
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
         properties,
         storageService,
-        new OnlyofficeJwtService(properties)
+        new OnlyofficeJwtServiceImpl(properties)
     );
 
     IllegalStateException exception = assertThrows(

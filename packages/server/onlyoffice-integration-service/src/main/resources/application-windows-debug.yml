@@ -1,6 +1,8 @@
 # Windows 本地断点调试 profile。
 # 适用场景：postgres / minio / onlyoffice 继续跑在 Docker Desktop 里，
 # 后端和前端在 Windows 本机启动并下断点。
+# 这个 profile 会通过 `spring.profiles.group.windows-debug=dev` 自动叠加 dev 环境基线，
+# 因此这里只保留 Windows 本机调试真正需要覆盖的配置项。
 server:
   # 本机后端监听端口。
   port: 8080
@@ -25,7 +27,7 @@ onlyoffice:
     # 浏览器加载 Docker 内 ONLYOFFICE Docs 静态资源时使用的宿主机地址。
     document-server-url: http://localhost:18080
     storage:
-      # Windows 本地调试时默认直接走 MinIO。
+      # Windows 本地调试时默认直接走 MinIO，方便验证对象存储与 callback 回写。
       default-provider: minio
       routing:
         # 如需按租户切换存储策略，可在此填写 tenantId -> provider 映射。

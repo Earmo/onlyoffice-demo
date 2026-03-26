@@ -39,7 +39,7 @@ http://localhost:12333/
 
 ```bash
 cd packages/server
-mvn -pl onlyoffice-integration-service spring-boot:run
+mvn -pl onlyoffice-integration-service spring-boot:run -Dspring-boot.run.profiles=prod
 ```
 
 后端正式基线：
@@ -47,7 +47,26 @@ mvn -pl onlyoffice-integration-service spring-boot:run
 - 数据库：PostgreSQL
 - ORM：MyBatis-Flex
 - 接口文档：Knife4j / OpenAPI
-- 存储：MinIO 为正式默认策略，`local` 仅作开发回退
+- 存储：MinIO 为正式默认策略，`local` 仅作开发回退，腾讯云环境可切到 `cos`
+
+### Profile 说明
+
+后端配置已经拆成：
+
+- `dev`
+  本地开发默认环境
+- `test`
+  自动化测试环境
+- `prod`
+  正式部署环境
+- `windows-debug`
+  Windows 本地断点调试覆盖层
+
+正式部署时建议显式使用：
+
+```bash
+SPRING_PROFILES_ACTIVE=prod
+```
 
 ### 前端服务
 
@@ -67,6 +86,35 @@ corepack pnpm dev
   浏览器加载 ONLYOFFICE 静态资源的地址
 
 这 3 个地址是分布式部署正确性的关键。后端会负责生成 `document.url` 和 `callbackUrl`，前端不自行拼接运行时地址。
+
+## 对象存储最小配置
+
+### MinIO 最小配置
+
+```bash
+ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER=minio
+ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ENDPOINT=http://minio.example.test:9000
+ONLYOFFICE_INTEGRATION_STORAGE_MINIO_BUCKET=onlyoffice-documents
+ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ACCESS_KEY=onlyoffice
+ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECRET_KEY=replace-me
+```
+
+### 腾讯云 COS 最小配置
+
+```bash
+ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER=cos
+ONLYOFFICE_INTEGRATION_STORAGE_COS_REGION=ap-guangzhou
+ONLYOFFICE_INTEGRATION_STORAGE_COS_BUCKET=onlyoffice-documents-1250000000
+ONLYOFFICE_INTEGRATION_STORAGE_COS_SECRET_ID=replace-me
+ONLYOFFICE_INTEGRATION_STORAGE_COS_SECRET_KEY=replace-me
+ONLYOFFICE_INTEGRATION_STORAGE_COS_ENDPOINT_SUFFIX=cos.myqcloud.com
+```
+
+COS 和 MinIO 的差异主要在于：
+
+- MinIO 需要显式 endpoint
+- COS 需要 `region + secret-id + secret-key + bucket`
+- 上层服务编排不变，仍然只通过统一 `storageKey` 访问对象内容
 
 ## Windows 本地断点调试
 

@@ -12,10 +12,10 @@
   </parent>
 
   <groupId>com.earmo</groupId>
-  <artifactId>onlyoffice-integration-service</artifactId>
+  <artifactId>onlyoffice-integration-starter</artifactId>
   <version>0.0.1-SNAPSHOT</version>
   <packaging>pom</packaging>
-  <name>onlyoffice-integration-service</name>
+  <name>onlyoffice-integration-starter</name>
   <description>ONLYOFFICE integration starter parent project</description>
 
   <modules>
@@ -28,5 +28,6 @@
     <jjwt.version>0.12.6</jjwt.version>
     <mybatis-flex.version>1.11.6</mybatis-flex.version>
     <knife4j.version>4.4.0</knife4j.version>
+    <tencent.cos.version>5.6.133</tencent.cos.version>
   </properties>
 </project>

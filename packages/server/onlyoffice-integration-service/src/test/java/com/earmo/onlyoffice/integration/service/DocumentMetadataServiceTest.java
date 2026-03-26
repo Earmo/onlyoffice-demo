@@ -5,6 +5,7 @@ import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
 import com.earmo.onlyoffice.integration.data.repository.DocumentMetadataRepository;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.RequestContext;
+import com.earmo.onlyoffice.integration.service.impl.DocumentMetadataServiceImpl;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -34,7 +35,7 @@ class DocumentMetadataServiceTest {
     when(mapper.selectOneById("sample")).thenReturn(entity);
     when(mapper.update(any(DocumentMetadataEntity.class))).thenReturn(1);
 
-    DocumentMetadataService service = new DocumentMetadataService(mapper, repository);
+    DocumentMetadataService service = new DocumentMetadataServiceImpl(mapper, repository);
 
     DocumentSaveStatusResponse callback = service.recordCallbackReceived("sample", 2);
     DocumentSaveStatusResponse saved = service.markSaved("sample", 2);
@@ -56,7 +57,7 @@ class DocumentMetadataServiceTest {
         .thenReturn(Optional.empty());
     when(mapper.insert(any(DocumentMetadataEntity.class))).thenReturn(1);
 
-    DocumentMetadataService service = new DocumentMetadataService(mapper, repository);
+    DocumentMetadataService service = new DocumentMetadataServiceImpl(mapper, repository);
     DocumentMetadataEntity entity = service.createDocument(
         "doc-1",
         "alpha.docx",

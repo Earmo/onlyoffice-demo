@@ -29,6 +29,11 @@ class OnlyofficeIntegrationPropertiesTest {
           "onlyoffice.integration.storage.minio.bucket=docs",
           "onlyoffice.integration.storage.minio.access-key=minio-user",
           "onlyoffice.integration.storage.minio.secret-key=minio-pass",
+          "onlyoffice.integration.storage.cos.region=ap-guangzhou",
+          "onlyoffice.integration.storage.cos.bucket=cos-docs-1250000000",
+          "onlyoffice.integration.storage.cos.secret-id=cos-secret-id",
+          "onlyoffice.integration.storage.cos.secret-key=cos-secret-key",
+          "onlyoffice.integration.storage.cos.endpoint-suffix=cos.internal.example",
           "onlyoffice.integration.storage.routing.tenants.tenant-a=minio",
           "onlyoffice.integration.storage.routing.source-systems.erp=local"
       );
@@ -53,6 +58,11 @@ class OnlyofficeIntegrationPropertiesTest {
       assertEquals("docs", properties.getStorage().getMinio().getBucket());
       assertEquals("minio-user", properties.getStorage().getMinio().getAccessKey());
       assertEquals("minio-pass", properties.getStorage().getMinio().getSecretKey());
+      assertEquals("ap-guangzhou", properties.getStorage().getCos().getRegion());
+      assertEquals("cos-docs-1250000000", properties.getStorage().getCos().getBucket());
+      assertEquals("cos-secret-id", properties.getStorage().getCos().getSecretId());
+      assertEquals("cos-secret-key", properties.getStorage().getCos().getSecretKey());
+      assertEquals("cos.internal.example", properties.getStorage().getCos().getEndpointSuffix());
       assertEquals(StorageProvider.MINIO, properties.getStorage().getRouting().getTenants().get("tenant-a"));
       assertEquals(StorageProvider.LOCAL, properties.getStorage().getRouting().getSourceSystems().get("erp"));
     });

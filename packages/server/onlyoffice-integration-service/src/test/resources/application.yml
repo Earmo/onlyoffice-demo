@@ -1,4 +1,8 @@
 spring:
+  profiles:
+    # 测试资源配置显式声明 test，避免把默认 dev profile 带入 SpringBootTest。
+    active: test
+
   datasource:
     url: jdbc:h2:mem:onlyoffice-integration-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver

@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.integration.service;
 import com.earmo.onlyoffice.integration.data.entity.DocumentRuntimeEventEntity;
 import com.earmo.onlyoffice.integration.data.repository.DocumentRuntimeEventRepository;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.service.impl.DocumentStatusServiceImpl;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,7 @@ class DocumentStatusServiceTest {
     when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
         .thenReturn(List.of(event("save_succeeded", "最新修改已成功回写到共享存储。", 2)));
 
-    DocumentStatusService service = new DocumentStatusService(metadataService, runtimeEventRepository);
+    DocumentStatusService service = new DocumentStatusServiceImpl(metadataService, runtimeEventRepository);
 
     assertEquals("draft", service.initialize("demo").state());
     assertEquals("editing", service.recordCallbackReceived("demo", 2).state());
@@ -52,7 +53,7 @@ class DocumentStatusServiceTest {
     when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
         .thenReturn(List.of(event("callback_rejected", "JWT 无效", null)));
 
-    DocumentStatusService service = new DocumentStatusService(metadataService, runtimeEventRepository);
+    DocumentStatusService service = new DocumentStatusServiceImpl(metadataService, runtimeEventRepository);
 
     DocumentSaveStatusResponse current = service.recordCallbackRejected("demo", "JWT 无效");
 

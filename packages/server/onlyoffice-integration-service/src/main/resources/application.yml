@@ -1,4 +1,7 @@
-# Web 服务端口，官方前端和上游系统默认通过这个端口访问后端 API。
+# 统一共享配置入口。
+# 这份文件只放“所有环境都应该成立”的公共默认值，以及 profile 选择逻辑。
+# 真正存在明显环境差异的内容会拆到 application-dev.yml / application-test.yml / application-prod.yml。
+
 server:
   # Spring Boot 对外监听端口。
   port: 8080
@@ -6,15 +9,14 @@ server:
   forward-headers-strategy: framework
 
 spring:
-  datasource:
-    # PostgreSQL 连接地址；本地默认连 Windows 调试端口 15434。
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:15434/onlyoffice}
-    # PostgreSQL 用户名。
-    username: ${SPRING_DATASOURCE_USERNAME:onlyoffice}
-    # PostgreSQL 密码。
-    password: ${SPRING_DATASOURCE_PASSWORD:onlyoffice}
-    # JDBC 驱动类；正式环境默认使用 PostgreSQL 驱动。
-    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.postgresql.Driver}
+  profiles:
+    # 默认开发环境走 dev；生产或测试环境通过 SPRING_PROFILES_ACTIVE 显式切换。
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+    group:
+      # Windows 本地断点调试本质上是“在 dev 基线上的覆盖层”。
+      # 启用 windows-debug 时会自动包含 dev，这样主环境约定和本地覆盖不会互相割裂。
+      windows-debug:
+        - dev
   flyway:
     # 启动时自动执行数据库迁移，保证 schema 与当前代码匹配。
     enabled: true
@@ -46,10 +48,12 @@ knife4j:
 
 onlyoffice:
   integration:
-    # 浏览器或外部系统访问本服务的公开地址；为空时部分链接会按请求推导。
+    # 浏览器或外部系统访问本服务的公开地址。
+    # 开发环境通常给默认值，生产环境建议显式配置。
     public-base-url: ${ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL:}
     # ONLYOFFICE 容器访问本服务文件下载和 callback 的内部地址。
-    internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL:http://host.docker.internal:8080}
+    # 具体默认值交给各环境 profile 决定，这里只保留环境变量入口。
+    internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL:}
     # 浏览器加载 ONLYOFFICE Docs 静态资源的地址。
     document-server-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL:}
     # editor-config 签名和 callback 验签共用的 JWT 密钥。
@@ -70,9 +74,6 @@ onlyoffice:
     # 未显式传入用户时使用的默认显示名。
     default-user-name: ${ONLYOFFICE_INTEGRATION_DEFAULT_USER_NAME:默认用户}
     access-context:
-      # provider 顺序同时作用于内置 provider 和外部自定义 provider。
-      # 后续接外部用户中心时，只需要新增 AccessContextProvider Bean 并把名称放进顺序配置，
-      # 不需要修改 controller 或文档业务调用链。
       # 允许参与访问上下文解析的 provider 列表。
       enabled-providers: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ENABLED_PROVIDERS:header,jwt,default}
       # provider 实际解析顺序。
@@ -111,20 +112,12 @@ onlyoffice:
           # JWT 中映射权限对象的 claim 名称。
           permissions: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_PERMISSIONS:permissions}
     storage:
-      # 默认存储策略；当前正式环境推荐 minio，本地开发可用 local。
+      # 默认存储策略，环境 profile 会再给出更贴近场景的默认值。
       default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:local}
       routing:
-        # 按 tenantId 细分存储策略；键为 tenantId，值为 provider 名称，如 `minio`。
-        # 示例：
-        # tenants:
-        #   tenant-a: minio
-        #   tenant-b: local
+        # 按 tenantId 细分存储策略；键为 tenantId，值为 provider 名称。
         tenants: {}
-        # 按 sourceSystem 细分存储策略；键为来源系统，值为 provider 名称，如 `local` 或 `minio`。
-        # 示例：
-        # source-systems:
-        #   native: minio
-        #   legacy-import: local
+        # 按 sourceSystem 细分存储策略；键为来源系统，值为 provider 名称。
         source-systems: {}
       local:
         # local 存储策略根目录。

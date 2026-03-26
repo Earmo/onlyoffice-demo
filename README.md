@@ -36,6 +36,31 @@ npm run verify
 
 ## 本地开发与联调
 
+### 后端 Profile 约定
+
+后端配置已经按正式环境拆成 YAML profile：
+
+- `dev`
+  日常开发默认 profile，本地 PostgreSQL / local provider 友好
+- `test`
+  自动化测试 profile，走测试数据库与测试存储根目录
+- `prod`
+  生产部署 profile，关键地址和对象存储凭证必须显式提供
+- `windows-debug`
+  叠加在 `dev` 之上的 Windows 本地断点调试覆盖层
+
+默认入口文件是：
+
+```text
+packages/server/onlyoffice-integration-service/src/main/resources/application.yml
+```
+
+默认 profile 选择方式：
+
+```bash
+SPRING_PROFILES_ACTIVE=dev
+```
+
 ### Compose 聚合联调
 
 ```bash
@@ -112,3 +137,27 @@ corepack pnpm dev
 4. 如果要把它接入上游业务系统，继续看 [微服务接入说明](docs/microservice-integration.md)
 5. 需要对环境变量做细化时，查 [配置矩阵](docs/configuration-matrix.md)
 6. 交付前按 [验收清单](docs/acceptance-checklist.md) 做一次人工核对
+
+## 存储 Provider
+
+当前统一存储抽象已经正式支持 3 类 provider：
+
+- `local`
+  适合开发和测试环境，方便本地快速起服务
+- `minio`
+  当前默认的正式对象存储基线
+- `cos`
+  腾讯云 COS provider，适合直接接入腾讯云对象存储
+
+切换方式统一通过：
+
+```bash
+ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER=local|minio|cos
+```
+
+如需按租户或来源系统路由到不同 provider，可继续配置：
+
+```text
+onlyoffice.integration.storage.routing.tenants.*
+onlyoffice.integration.storage.routing.source-systems.*
+```

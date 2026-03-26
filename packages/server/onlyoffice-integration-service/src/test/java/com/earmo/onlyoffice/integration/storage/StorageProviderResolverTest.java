@@ -74,6 +74,32 @@ class StorageProviderResolverTest {
     assertThat(resolver.resolve((RequestContext) null)).isEqualTo(StorageProvider.MINIO);
   }
 
+  @Test
+  void shouldAllowTenantRoutingToCos() {
+    StorageProviderResolver resolver = new StorageProviderResolver(properties(
+        StorageProvider.MINIO,
+        Map.of("tenant-cos", StorageProvider.COS),
+        Map.of("native", StorageProvider.LOCAL)
+    ));
+
+    StorageProvider provider = resolver.resolve(new RequestContext("tenant-cos", "native", "user-a", "Alice"));
+
+    assertThat(provider).isEqualTo(StorageProvider.COS);
+  }
+
+  @Test
+  void shouldAllowSourceSystemRoutingToCosWhenTenantIsMissing() {
+    StorageProviderResolver resolver = new StorageProviderResolver(properties(
+        StorageProvider.LOCAL,
+        Map.of(),
+        Map.of("tencent-docs", StorageProvider.COS)
+    ));
+
+    StorageProvider provider = resolver.resolve(new RequestContext("tenant-a", "tencent-docs", "user-a", "Alice"));
+
+    assertThat(provider).isEqualTo(StorageProvider.COS);
+  }
+
   private OnlyofficeIntegrationProperties properties(
       StorageProvider defaultProvider,
       Map<String, StorageProvider> tenantMappings,

@@ -2,6 +2,27 @@
 
 这份矩阵只收口当前交付最关键的配置项，帮助独立部署和微服务接入快速对齐。
 
+## Profile 选择
+
+| Profile | 对应文件 | 默认用途 | 说明 |
+|---|---|---|---|
+| `dev` | `application-dev.yml` | 本地开发 | 默认 profile，允许更友好的开发默认值 |
+| `test` | `application-test.yml` | 自动化测试 | 使用测试数据库和测试存储目录 |
+| `prod` | `application-prod.yml` | 正式部署 | 关键地址、数据库和对象存储凭证必须显式提供 |
+| `windows-debug` | `application-windows-debug.yml` | Windows 断点调试 | 叠加在 `dev` 上的覆盖层，不替代正式 profile |
+
+统一入口文件：
+
+```text
+packages/server/onlyoffice-integration-service/src/main/resources/application.yml
+```
+
+推荐通过下面方式切换：
+
+```text
+SPRING_PROFILES_ACTIVE=dev|test|prod
+```
+
 ## 核心运行地址
 
 | 配置项 | 默认值 | 必填 | 适用场景 | 说明 |
@@ -37,12 +58,31 @@
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:15434/onlyoffice` | 是 | 全部 | PostgreSQL 连接串 |
 | `SPRING_DATASOURCE_USERNAME` | `onlyoffice` | 是 | 全部 | 数据库用户名 |
 | `SPRING_DATASOURCE_PASSWORD` | `onlyoffice` | 是 | 全部 | 数据库密码 |
-| `ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER` | `local` | 是 | 全部 | 默认存储策略，正式建议改为 `minio` |
+| `ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER` | `local` | 是 | 全部 | 默认存储策略，可选 `local / minio / cos` |
 | `ONLYOFFICE_INTEGRATION_STORAGE_LOCAL_ROOT` | `./storage` | 否 | dev/test | 本地文件存储根目录 |
 | `ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ENDPOINT` | `http://localhost:9000` | MinIO 时是 | 正式环境 | MinIO endpoint |
 | `ONLYOFFICE_INTEGRATION_STORAGE_MINIO_BUCKET` | `onlyoffice-documents` | MinIO 时是 | 正式环境 | MinIO bucket |
 | `ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ACCESS_KEY` | `onlyoffice` | MinIO 时是 | 正式环境 | MinIO Access Key |
 | `ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECRET_KEY` | `onlyoffice123` | MinIO 时是 | 正式环境 | MinIO Secret Key |
+| `ONLYOFFICE_INTEGRATION_STORAGE_COS_REGION` | `ap-guangzhou` | COS 时是 | 腾讯云 COS | COS 所在地域 |
+| `ONLYOFFICE_INTEGRATION_STORAGE_COS_BUCKET` | 示例 bucket | COS 时是 | 腾讯云 COS | COS bucket，通常需要带 appId 后缀 |
+| `ONLYOFFICE_INTEGRATION_STORAGE_COS_SECRET_ID` | 占位值 | COS 时是 | 腾讯云 COS | 腾讯云 SecretId |
+| `ONLYOFFICE_INTEGRATION_STORAGE_COS_SECRET_KEY` | 占位值 | COS 时是 | 腾讯云 COS | 腾讯云 SecretKey |
+| `ONLYOFFICE_INTEGRATION_STORAGE_COS_ENDPOINT_SUFFIX` | `cos.myqcloud.com` | 否 | 腾讯云 COS | COS 域名后缀，私有域名场景可覆盖 |
+
+### provider 选择建议
+
+| provider | 推荐场景 | 说明 |
+|---|---|---|
+| `local` | 本地开发 / 自动化测试 | 无需依赖对象存储，便于快速启动 |
+| `minio` | 私有化部署 / 默认正式基线 | 当前仓库默认正式对象存储路径 |
+| `cos` | 腾讯云环境 | 适合直接把文档对象放到腾讯云 COS |
+
+当前正式支持可以概括为：
+
+```text
+local / minio / cos
+```
 
 ## 远程资源安全
 

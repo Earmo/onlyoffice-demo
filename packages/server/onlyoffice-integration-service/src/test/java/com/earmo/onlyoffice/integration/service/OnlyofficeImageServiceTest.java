@@ -2,6 +2,9 @@ package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.model.InsertImageResponse;
+import com.earmo.onlyoffice.integration.service.impl.OnlyofficeImageServiceImpl;
+import com.earmo.onlyoffice.integration.service.impl.OnlyofficeJwtServiceImpl;
+import com.earmo.onlyoffice.integration.service.impl.RemoteResourceSecurityServiceImpl;
 import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -23,11 +26,11 @@ class OnlyofficeImageServiceTest {
     properties.setInternalBaseUrl("http://internal.example.test");
     properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
 
-    OnlyofficeJwtService jwtService = new OnlyofficeJwtService(properties);
-    OnlyofficeImageService imageService = new OnlyofficeImageService(
+    OnlyofficeJwtService jwtService = new OnlyofficeJwtServiceImpl(properties);
+    OnlyofficeImageService imageService = new OnlyofficeImageServiceImpl(
         properties,
         jwtService,
-        new RemoteResourceSecurityService(properties, RestClient.builder())
+        new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
     );
 
     InsertImageResponse response = imageService.buildInsertImageResponse(
@@ -50,10 +53,10 @@ class OnlyofficeImageServiceTest {
     properties.setInternalBaseUrl("http://internal.example.test");
     properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
 
-    OnlyofficeImageService imageService = new OnlyofficeImageService(
+    OnlyofficeImageService imageService = new OnlyofficeImageServiceImpl(
         properties,
-        new OnlyofficeJwtService(properties),
-        new RemoteResourceSecurityService(properties, RestClient.builder())
+        new OnlyofficeJwtServiceImpl(properties),
+        new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
     );
 
     IllegalArgumentException exception = assertThrows(
@@ -73,10 +76,10 @@ class OnlyofficeImageServiceTest {
     properties.setInternalBaseUrl("http://internal.example.test");
     properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
 
-    OnlyofficeImageService imageService = new OnlyofficeImageService(
+    OnlyofficeImageService imageService = new OnlyofficeImageServiceImpl(
         properties,
-        new OnlyofficeJwtService(properties),
-        new RemoteResourceSecurityService(properties, RestClient.builder())
+        new OnlyofficeJwtServiceImpl(properties),
+        new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
     );
 
     HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
@@ -111,10 +114,10 @@ class OnlyofficeImageServiceTest {
     properties.setInternalBaseUrl("http://internal.example.test");
     properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
 
-    OnlyofficeImageService imageService = new OnlyofficeImageService(
+    OnlyofficeImageService imageService = new OnlyofficeImageServiceImpl(
         properties,
-        new OnlyofficeJwtService(properties),
-        new RemoteResourceSecurityService(properties, RestClient.builder())
+        new OnlyofficeJwtServiceImpl(properties),
+        new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
     );
 
     HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);

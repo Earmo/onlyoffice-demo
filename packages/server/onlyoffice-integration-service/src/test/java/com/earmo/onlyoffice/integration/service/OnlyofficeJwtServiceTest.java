@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.service.impl.OnlyofficeJwtServiceImpl;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -15,7 +16,7 @@ class OnlyofficeJwtServiceTest {
     OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
     properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
 
-    OnlyofficeJwtService jwtService = new OnlyofficeJwtService(properties);
+    OnlyofficeJwtService jwtService = new OnlyofficeJwtServiceImpl(properties);
     String token = jwtService.sign(Map.of("documentId", "demo", "status", 2));
 
     MockHttpServletRequest request = new MockHttpServletRequest();
@@ -29,7 +30,7 @@ class OnlyofficeJwtServiceTest {
     OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
     properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
 
-    OnlyofficeJwtService jwtService = new OnlyofficeJwtService(properties);
+    OnlyofficeJwtService jwtService = new OnlyofficeJwtServiceImpl(properties);
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.addHeader("Authorization", "Bearer invalid-token");
 

@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.integration.service;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.data.entity.AccessAuditEventEntity;
 import com.earmo.onlyoffice.integration.data.repository.AccessAuditEventRepository;
+import com.earmo.onlyoffice.integration.service.impl.AccessAuditServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -17,7 +18,7 @@ class AccessAuditServiceTest {
   @Test
   void shouldRecordDocumentCreatedWithActorInfo() {
     AccessAuditEventRepository repository = mock(AccessAuditEventRepository.class);
-    AccessAuditService service = new AccessAuditService(repository);
+    AccessAuditService service = new AccessAuditServiceImpl(repository);
 
     service.recordDocumentCreated(
         "doc-1",
@@ -36,7 +37,7 @@ class AccessAuditServiceTest {
   @Test
   void shouldRecordCallbackAsSystemEvent() {
     AccessAuditEventRepository repository = mock(AccessAuditEventRepository.class);
-    AccessAuditService service = new AccessAuditService(repository);
+    AccessAuditService service = new AccessAuditServiceImpl(repository);
 
     service.recordCallbackReceived("doc-2", 2);
 

@@ -4,6 +4,8 @@ import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
+import com.earmo.onlyoffice.integration.service.impl.DocumentStorageServiceImpl;
+import com.earmo.onlyoffice.integration.service.impl.RemoteResourceSecurityServiceImpl;
 import com.earmo.onlyoffice.integration.storage.StorageKeyFactory;
 import com.earmo.onlyoffice.integration.storage.StorageProviderResolver;
 import com.earmo.onlyoffice.integration.storage.local.LocalDocumentStorageStrategy;
@@ -78,14 +80,14 @@ class DocumentStorageServiceTest {
           );
         });
 
-    DocumentStorageService service = new DocumentStorageService(
+    DocumentStorageService service = new DocumentStorageServiceImpl(
         properties,
         metadataService,
         RestClient.builder(),
         List.of(localStrategy),
         resolver,
         keyFactory,
-        new RemoteResourceSecurityService(properties, RestClient.builder())
+        new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
     );
 
     StoredDocument document = service.ensureBootstrapDocument("sample");
@@ -156,14 +158,14 @@ class DocumentStorageServiceTest {
           );
         });
 
-    DocumentStorageService service = new DocumentStorageService(
+    DocumentStorageService service = new DocumentStorageServiceImpl(
         properties,
         metadataService,
         RestClient.builder(),
         List.of(localStrategy),
         resolver,
         keyFactory,
-        new RemoteResourceSecurityService(properties, RestClient.builder())
+        new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
     );
 
     StoredDocument document = service.storeUploadedDocument(
@@ -191,14 +193,14 @@ class DocumentStorageServiceTest {
     StorageKeyFactory keyFactory = new StorageKeyFactory();
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
 
-    DocumentStorageService service = new DocumentStorageService(
+    DocumentStorageService service = new DocumentStorageServiceImpl(
         properties,
         metadataService,
         RestClient.builder(),
         List.of(localStrategy),
         resolver,
         keyFactory,
-        new RemoteResourceSecurityService(properties, RestClient.builder())
+        new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
     );
 
     IllegalArgumentException exception = assertThrows(
@@ -234,14 +236,14 @@ class DocumentStorageServiceTest {
       });
       server.start();
 
-      DocumentStorageService service = new DocumentStorageService(
+      DocumentStorageService service = new DocumentStorageServiceImpl(
           properties,
           metadataService,
           RestClient.builder(),
           List.of(localStrategy),
           resolver,
           keyFactory,
-          new RemoteResourceSecurityService(properties, RestClient.builder())
+          new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
       );
 
       IllegalArgumentException exception = assertThrows(
@@ -284,14 +286,14 @@ class DocumentStorageServiceTest {
       });
       server.start();
 
-      DocumentStorageService service = new DocumentStorageService(
+      DocumentStorageService service = new DocumentStorageServiceImpl(
           properties,
           metadataService,
           RestClient.builder(),
           List.of(localStrategy),
           resolver,
           keyFactory,
-          new RemoteResourceSecurityService(properties, RestClient.builder())
+          new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
       );
 
       IllegalArgumentException exception = assertThrows(

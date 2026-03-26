@@ -111,6 +111,10 @@ public class OnlyofficeIntegrationProperties {
     /** MinIO 存储配置。 */
     @Valid
     private MinioStorageProperties minio = new MinioStorageProperties();
+
+    /** 腾讯云 COS 存储配置。 */
+    @Valid
+    private CosStorageProperties cos = new CosStorageProperties();
   }
 
   @Getter
@@ -157,6 +161,30 @@ public class OnlyofficeIntegrationProperties {
 
     /** 是否通过 HTTPS 访问 MinIO。 */
     private boolean secure = false;
+  }
+
+  @Getter
+  @Setter
+  public static class CosStorageProperties {
+
+    /** COS 所在地域，例如 `ap-guangzhou`。 */
+    @NotBlank
+    private String region = "ap-guangzhou";
+
+    /** COS bucket 名称，通常应包含 appId 后缀。 */
+    @NotBlank
+    private String bucket = "onlyoffice-documents-1250000000";
+
+    /** 腾讯云 SecretId。 */
+    @NotBlank
+    private String secretId = "placeholder-secret-id";
+
+    /** 腾讯云 SecretKey。 */
+    @NotBlank
+    private String secretKey = "placeholder-secret-key";
+
+    /** COS 访问域名后缀，默认使用腾讯云公有云域名。 */
+    private String endpointSuffix = "cos.myqcloud.com";
   }
 
   @Getter
