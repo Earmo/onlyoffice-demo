@@ -1,9 +1,9 @@
 ---
 phase: 6
 slug: verification-and-delivery
-status: ready
+status: passed
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-03-26
 ---
 
@@ -23,7 +23,7 @@ created: 2026-03-26
 | **Frontend quick run** | `cd packages/web && corepack pnpm test -- --run` |
 | **Frontend build run** | `cd packages/web && corepack pnpm build` |
 | **Compose verification** | `docker compose config` |
-| **Full delivery verify** | `根级统一验证命令（由 Phase 6 提供）` |
+| **Full delivery verify** | `npm run verify` |
 | **Estimated runtime** | ~120-300 seconds |
 
 ---
@@ -35,7 +35,7 @@ created: 2026-03-26
 - **After every frontend UI-affecting test task commit:** Run `cd packages/web && corepack pnpm build`
 - **After every documentation / verify-entry task commit:** Run `docker compose config`
 - **After every plan wave:** Run `cd packages/server && mvn test`
-- **After full phase execution:** Run root-level delivery verify command plus `docker compose config`
+- **After full phase execution:** Run `npm run verify`
 - **Max feedback latency:** 300 seconds
 
 ---
@@ -44,15 +44,15 @@ created: 2026-03-26
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 6-01-01 | 01 | 1 | QUAL-01 | service | `cd packages/server && mvn -q -DskipITs -Dtest=DocumentStatusServiceTest,OnlyofficeConfigServiceTest,DocumentStorageServiceTest,OnlyofficeImageServiceTest test` | ✅ partial | ⬜ pending |
-| 6-01-02 | 01 | 1 | QUAL-01 | mvc | `cd packages/server && mvn -q -DskipITs -Dtest=DocumentControllerTest,DocumentApiControllerTest test` | ✅ partial | ⬜ pending |
-| 6-01-03 | 01 | 1 | QUAL-01 | storage | `cd packages/server && mvn -q -DskipITs -Dtest=StorageProviderResolverTest,LocalDocumentStorageStrategyTest,MinioDocumentStorageStrategyTest test` | ✅ | ⬜ pending |
-| 6-02-01 | 02 | 1 | QUAL-02 | frontend-setup | `cd packages/web && corepack pnpm test -- --run` | ❌ future | ⬜ pending |
-| 6-02-02 | 02 | 1 | QUAL-02 | frontend-page | `cd packages/web && corepack pnpm test -- --run` | ❌ future | ⬜ pending |
-| 6-02-03 | 02 | 1 | QUAL-02 | frontend-build | `cd packages/web && corepack pnpm build` | ✅ | ⬜ pending |
-| 6-03-01 | 03 | 2 | QUAL-03 | root-verify | `根级统一验证命令（由 Phase 6 提供）` | ❌ future | ⬜ pending |
-| 6-03-02 | 03 | 2 | QUAL-03 | docs | `docker compose config` | ✅ | ⬜ pending |
-| 6-03-03 | 03 | 2 | QUAL-01, QUAL-02, QUAL-03 | integration | `根级统一验证命令（由 Phase 6 提供）` | ❌ future | ⬜ pending |
+| 6-01-01 | 01 | 1 | QUAL-01 | service | `mvn --% -q -pl onlyoffice-integration-service -am -DskipITs -Dtest=DocumentStatusServiceTest,OnlyofficeConfigServiceTest,DocumentStorageServiceTest,OnlyofficeImageServiceTest -Dsurefire.failIfNoSpecifiedTests=false test` | ✅ | ✅ green |
+| 6-01-02 | 01 | 1 | QUAL-01 | mvc | `mvn --% -q -pl onlyoffice-integration-service -am -DskipITs -Dtest=DocumentControllerTest,DocumentApiControllerTest -Dsurefire.failIfNoSpecifiedTests=false test` | ✅ | ✅ green |
+| 6-01-03 | 01 | 1 | QUAL-01 | storage | `mvn --% -q -pl onlyoffice-integration-service -am -DskipITs -Dtest=StorageProviderResolverTest,LocalDocumentStorageStrategyTest,MinioDocumentStorageStrategyTest -Dsurefire.failIfNoSpecifiedTests=false test` | ✅ | ✅ green |
+| 6-02-01 | 02 | 1 | QUAL-02 | frontend-setup | `cd packages/web && corepack pnpm test -- --run` | ✅ | ✅ green |
+| 6-02-02 | 02 | 1 | QUAL-02 | frontend-page | `cd packages/web && corepack pnpm test -- --run` | ✅ | ✅ green |
+| 6-02-03 | 02 | 1 | QUAL-02 | frontend-build | `cd packages/web && corepack pnpm build` | ✅ | ✅ green |
+| 6-03-01 | 03 | 2 | QUAL-03 | root-verify | `npm run verify` | ✅ | ✅ green |
+| 6-03-02 | 03 | 2 | QUAL-03 | docs | `docker compose config` | ✅ | ✅ green |
+| 6-03-03 | 03 | 2 | QUAL-01, QUAL-02, QUAL-03 | integration | `npm run verify` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -60,9 +60,9 @@ created: 2026-03-26
 
 ## Wave 0 Requirements
 
-- [ ] 明确新接手开发者从根目录执行统一验证命令的手动验证路径
-- [ ] 明确工作台首页与编辑页前端测试覆盖的手动核对路径
-- [ ] 明确独立部署说明、微服务接入说明和配置矩阵三类交付文档的手动核对路径
+- [x] 明确新接手开发者从根目录执行统一验证命令的手动验证路径
+- [x] 明确工作台首页与编辑页前端测试覆盖的手动核对路径
+- [x] 明确独立部署说明、微服务接入说明和配置矩阵三类交付文档的手动核对路径
 
 ---
 
@@ -85,4 +85,4 @@ created: 2026-03-26
 - [x] Feedback latency < 300s
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** approved 2026-03-26
+**Approval:** approved 2026-03-26 after execution

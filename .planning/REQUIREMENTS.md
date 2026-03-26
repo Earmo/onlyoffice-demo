@@ -49,9 +49,9 @@
 
 ### Quality and Delivery
 
-- [ ] **QUAL-01**: 后端关键路由与核心服务具备自动化测试，覆盖文档列表、编辑配置、上传、回调、存储策略和用户上下文
-- [ ] **QUAL-02**: 前端关键流程具备自动化测试，至少覆盖列表加载、选择文档、上传文档和进入编辑器
-- [ ] **QUAL-03**: 仓库提供统一且可执行的本地验证入口，并明确独立部署与微服务接入方式
+- [x] **QUAL-01**: 后端关键路由与核心服务具备自动化测试，覆盖文档列表、编辑配置、上传、回调、存储策略和用户上下文
+- [x] **QUAL-02**: 前端关键流程具备自动化测试，至少覆盖列表加载、选择文档、上传文档和进入编辑器
+- [x] **QUAL-03**: 仓库提供统一且可执行的本地验证入口，并明确独立部署与微服务接入方式
 
 ## v2 Requirements
 
@@ -98,9 +98,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAFE-01 | Phase 5 | Complete |
 | SAFE-02 | Phase 5 | Complete |
 | SAFE-03 | Phase 5 | Complete |
-| QUAL-01 | Phase 6 | Pending |
-| QUAL-02 | Phase 6 | Pending |
-| QUAL-03 | Phase 6 | Pending |
+| QUAL-01 | Phase 6 | Complete |
+| QUAL-02 | Phase 6 | Complete |
+| QUAL-03 | Phase 6 | Complete |
 | ARCH-04 | Phase 7 | Complete |
 | DATA-01 | Phase 7 | Complete |
 | DATA-02 | Phase 7 | Complete |
@@ -113,4 +113,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-25 after Phase 5 execution*
+*Last updated: 2026-03-26 after Phase 6 execution*
