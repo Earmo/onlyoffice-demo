@@ -11,7 +11,7 @@
 - [x] **ARCH-02**: 服务提供稳定的文档编辑接口与数据模型，便于被其他分布式系统作为文档微服务接入
 - [x] **ARCH-03**: 服务在多实例部署场景下不依赖单机内存或本地文件路径作为核心共享状态
 - [x] **ARCH-04**: 后端构建应支持按模块拆分 service 与 data 能力，并保持服务模块对数据库模块的单向依赖
-- [ ] **CFG-01**: 后端配置按 `dev / test / prod` 环境拆分，并通过统一入口配置选择当前 profile 与运行时参数
+- [x] **CFG-01**: 后端配置按 `dev / test / prod` 环境拆分，并通过统一入口配置选择当前 profile 与运行时参数
 
 ### Data Access and Schema Conventions
 
@@ -21,18 +21,18 @@
 ### Module and Naming Hygiene
 
 - [x] **MOD-01**: 后端模块、artifact、类名、目录名和配置命名不再继续扩散 `demo` 风格，统一向 `onlyoffice-integration-starter` 收敛
-- [ ] **MOD-02**: 后端 Maven 坐标和模块命名保持语义一致，避免 parent 与 service 模块的 artifactId 产生歧义
+- [x] **MOD-02**: 后端 Maven 坐标和模块命名保持语义一致，避免 parent 与 service 模块的 artifactId 产生歧义
 
 ### Service Layer Conventions
 
-- [ ] **SVC-01**: `service` 包采用 `Service 接口 + ServiceImpl` 结构组织业务能力，便于替换实现与分层维护
+- [x] **SVC-01**: `service` 包采用 `Service 接口 + ServiceImpl` 结构组织业务能力，便于替换实现与分层维护
 
 ### Storage Strategy
 
 - [x] **STOR-01**: 系统具备统一的文档存储策略接口，文档读写、列举、上传和保存回写都通过该抽象完成
 - [x] **STOR-02**: v1 提供 MinIO 存储策略实现，支持文档列表、文件读取、上传保存和 callback 回写
 - [x] **STOR-03**: 存储扩展点足够稳定，使腾讯云 COS 和阿里云 OSS 后续可以作为新策略接入而不改动上层编辑流程
-- [ ] **STOR-04**: 提供腾讯云 COS 存储策略实现
+- [x] **STOR-04**: 提供腾讯云 COS 存储策略实现
 
 ### User Context
 
@@ -62,7 +62,7 @@
 
 ### Code Documentation
 
-- [ ] **DOC-01**: 核心业务代码、配置和关键流程包含更详细的中文实现注释与步骤解释，便于团队维护和交接
+- [x] **DOC-01**: 核心业务代码、配置和关键流程包含更详细的中文实现注释与步骤解释，便于团队维护和交接
 
 ## v2 Requirements
 
@@ -115,11 +115,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-01 | Phase 7 | Complete |
 | DATA-02 | Phase 7 | Complete |
 | MOD-01 | Phase 7 | Complete |
-| CFG-01 | Phase 8 | Pending |
-| MOD-02 | Phase 8 | Pending |
-| SVC-01 | Phase 8 | Pending |
-| STOR-04 | Phase 8 | Pending |
-| DOC-01 | Phase 8 | Pending |
+| CFG-01 | Phase 8 | Complete |
+| MOD-02 | Phase 8 | Complete |
+| SVC-01 | Phase 8 | Complete |
+| STOR-04 | Phase 8 | Complete |
+| DOC-01 | Phase 8 | Complete |
 
 **Coverage:**
 - v1 requirements: 29 total
@@ -128,4 +128,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-26 after Phase 6 execution*
+*Last updated: 2026-03-26 after Phase 8 execution*

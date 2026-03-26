@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: Phase 8 planned
-last_updated: "2026-03-26T10:10:00Z"
-last_activity: 2026-03-26 — Planned Phase 8 for environment split, service conventions, COS support, and comment expansion
+stopped_at: Phase 8 executed
+last_updated: "2026-03-26T11:05:00Z"
+last_activity: 2026-03-26 — Executed Phase 8 for profile split, service interface conventions, COS support, and detailed comments
 progress:
   total_phases: 8
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 24
-  completed_plans: 21
-  percent: 88
+  completed_plans: 24
+  percent: 100
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** 任意上层系统都应该能以低耦合方式接入一个可分布式部署的文档编辑服务，让用户先看到自己的文档列表，再安全地选择、上传、打开并保存文档。
-**Current focus:** Phase 8: 环境拆分、服务层规范、COS 支持与注释完善
+**Current focus:** Milestone wrap-up: 所有 phase 已完成，下一步适合执行 audit 或 complete milestone
 
 ## Current Position
 
 Phase: 8 of 8 (环境拆分、服务层规范、COS 支持与注释完善)
 Plan: 3 plans in 2 waves
-Status: Phase 8 planned; ready to execute
-Last activity: 2026-03-26 — Planned Phase 8 for environment split, service conventions, COS support, and comment expansion
+Status: Phase 8 executed; milestone work complete
+Last activity: 2026-03-26 — Executed Phase 8 for profile split, service conventions, COS support, and detailed comments
 
-Progress: [████████░░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 18
-- Average duration: 41 min
-- Total execution time: 12.2 hours
+- Total plans completed: 24
+- Average duration: 43 min
+- Total execution time: 17.2 hours
 
 **By Phase:**
 
@@ -48,7 +48,9 @@ Progress: [████████░░] 88%
 | 3. User Context Integration | 3 | 1.7h | 34 min |
 | 4. Document Library Experience | 3 | 2.0h | 40 min |
 | 5. Distributed Editing Flow | 3 | 2.0h | 40 min |
+| 6. Verification and Delivery | 3 | 2.1h | 42 min |
 | 7. 模块拆分、命名规范收敛与数据访问层重构 | 3 | 2.0h | 40 min |
+| 8. 环境拆分、服务层规范、COS 支持与注释完善 | 3 | 2.9h | 58 min |
 
 **Recent Trend:**
 - Last 3 plans: 40m, 40m, 40m
@@ -67,7 +69,7 @@ Recent decisions affecting current work:
 
 ### Roadmap Evolution
 
-- Phase 8 added: 环境拆分、服务层规范、COS 支持与注释完善
+- Phase 8 executed: profile 拆分、Service 接口化、COS provider 与注释增强完成
 - Phase 6 executed: 后端回归测试、前端 Vitest 基线、根级验证入口和交付文档完成
 - Phase 7 added: 模块拆分、命名规范收敛与数据访问层重构
 - Phase 7 executed: 多模块拆分、repository 重构与 starter 命名收敛完成
@@ -82,7 +84,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 8 已完成 planning，执行时仍需控制边界，避免把环境拆分、Service 重构、构建命名调整、COS 支持和注释增强混成单次无序改造
+- 当前已无活跃 blocker；下一步更适合做 milestone audit 或 milestone complete
 
 ### Quick Tasks Completed
 
@@ -92,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 09:23
-Stopped at: Phase 6 execution completed
+Last session: 2026-03-26 19:05
+Stopped at: Phase 8 execution completed
 Resume file: None
