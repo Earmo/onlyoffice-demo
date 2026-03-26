@@ -101,6 +101,44 @@ class OnlyofficeImageServiceTest {
       server.stop(0);
     }
   }
+
+  @Test
+  @DisplayName("图片代理应拒绝超过大小上限的响应体")
+  void shouldRejectImageProxyResponseWhenResponseExceedsLimit() throws Exception {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.getRemoteResource().setAllowPrivateAddressAccess(true);
+    properties.getRemoteResource().setMaxImageBytes(8);
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
+
+    OnlyofficeImageService imageService = new OnlyofficeImageService(
+        properties,
+        new OnlyofficeJwtService(properties),
+        new RemoteResourceSecurityService(properties, RestClient.builder())
+    );
+
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+    try {
+      server.createContext("/large.png", exchange -> {
+        byte[] body = "0123456789".getBytes();
+        exchange.getResponseHeaders().add("Content-Type", "image/png");
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+          outputStream.write(body);
+        }
+      });
+      server.start();
+
+      IllegalArgumentException exception = assertThrows(
+          IllegalArgumentException.class,
+          () -> imageService.proxyRemoteImage("http://localhost:" + server.getAddress().getPort() + "/large.png")
+      );
+
+      assertTrue(exception.getMessage().contains("响应超过大小限制"));
+    } finally {
+      server.stop(0);
+    }
+  }
 }
 
 

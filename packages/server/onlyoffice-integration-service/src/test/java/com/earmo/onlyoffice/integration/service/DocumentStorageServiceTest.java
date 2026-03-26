@@ -258,6 +258,56 @@ class DocumentStorageServiceTest {
     }
   }
 
+  @Test
+  @DisplayName("远程导入应拒绝超过配置上限的响应体")
+  void shouldRejectRemoteDocumentWhenResponseExceedsLimit() throws Exception {
+    OnlyofficeIntegrationProperties properties = properties();
+    properties.getRemoteResource().setAllowPrivateAddressAccess(true);
+    properties.getRemoteResource().setMaxDocumentBytes(8);
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+    try {
+      server.createContext("/large.docx", exchange -> {
+        byte[] body = "0123456789".getBytes();
+        exchange.getResponseHeaders().add(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+          outputStream.write(body);
+        }
+      });
+      server.start();
+
+      DocumentStorageService service = new DocumentStorageService(
+          properties,
+          metadataService,
+          RestClient.builder(),
+          List.of(localStrategy),
+          resolver,
+          keyFactory,
+          new RemoteResourceSecurityService(properties, RestClient.builder())
+      );
+
+      IllegalArgumentException exception = assertThrows(
+          IllegalArgumentException.class,
+          () -> service.importRemoteDocument(
+              "http://localhost:" + server.getAddress().getPort() + "/large.docx",
+              new RequestContext("tenant-a", "native", "user-a", "Alice")
+          )
+      );
+
+      assertTrue(exception.getMessage().contains("响应超过大小限制"));
+    } finally {
+      server.stop(0);
+    }
+  }
+
   private OnlyofficeIntegrationProperties properties() {
     OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
     properties.getStorage().getLocal().setRoot(tempDir);

@@ -1,5 +1,13 @@
 # onlyoffice-integration-starter 最小接入说明
 
+这份文档保持“最小接入说明”定位，只回答最短路径怎么接。更完整的交付材料请看：
+
+- [交付总览](./delivery-overview.md)
+- [独立部署说明](./standalone-deployment.md)
+- [微服务接入说明](./microservice-integration.md)
+- [配置矩阵](./configuration-matrix.md)
+- [验收清单](./acceptance-checklist.md)
+
 ## 1. 服务角色
 
 - `api service`

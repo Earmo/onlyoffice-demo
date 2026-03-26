@@ -255,6 +255,57 @@ class OnlyofficeConfigServiceTest {
     assertTrue(exception.getMessage().contains("document-server-url"));
   }
 
+  @Test
+  void shouldFailFastWhenInternalBaseUrlUsesUnsupportedScheme() throws IOException {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.setPublicBaseUrl("https://gateway.example.test");
+    properties.setDocumentServerUrl("https://docs.example.test");
+    properties.setInternalBaseUrl("ftp://internal.example.test");
+    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
+
+    Path path = tempDir.resolve("demo.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "demo.docx",
+        "documents/demo.docx",
+        "docx",
+        "word",
+        "draft",
+        path,
+        Instant.parse("2026-03-19T08:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    );
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
+    OnlyofficeConfigService configService = new OnlyofficeConfigService(
+        properties,
+        storageService,
+        new OnlyofficeJwtService(properties)
+    );
+
+    IllegalStateException exception = assertThrows(
+        IllegalStateException.class,
+        () -> configService.buildEditorConfig(
+            "demo",
+            false,
+            new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
+            new MockHttpServletRequest()
+        )
+    );
+
+    assertTrue(exception.getMessage().contains("internal-base-url"));
+    assertTrue(exception.getMessage().contains("http/https"));
+  }
+
   @SuppressWarnings("unchecked")
   private Map<String, Object> cast(Object value) {
     return (Map<String, Object>) value;

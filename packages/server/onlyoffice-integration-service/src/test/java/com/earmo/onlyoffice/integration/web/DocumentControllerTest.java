@@ -204,4 +204,21 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.recentEvents[0].eventType").value("save_succeeded"))
         .andExpect(jsonPath("$.recentEvents[0].callbackStatus").value(2));
   }
+
+  @Test
+  void shouldReturnExplicitErrorWhenEditorConfigFailsFastOnRuntimeUrls() throws Exception {
+    when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
+    );
+    when(onlyofficeConfigService.buildEditorConfig(
+        anyString(),
+        org.mockito.ArgumentMatchers.anyBoolean(),
+        org.mockito.ArgumentMatchers.any(AccessContext.class),
+        org.mockito.ArgumentMatchers.any()
+    )).thenThrow(new IllegalStateException("ONLYOFFICE 运行配置缺失：onlyoffice.integration.document-server-url 不能为空。"));
+
+    mockMvc.perform(get("/api/documents/sample/editor-config"))
+        .andExpect(status().isInternalServerError())
+        .andExpect(jsonPath("$.message").value("ONLYOFFICE 运行配置缺失：onlyoffice.integration.document-server-url 不能为空。"));
+  }
 }

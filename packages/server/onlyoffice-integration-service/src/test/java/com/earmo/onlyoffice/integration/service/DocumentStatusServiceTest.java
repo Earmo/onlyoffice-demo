@@ -9,7 +9,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,6 +42,25 @@ class DocumentStatusServiceTest {
     assertEquals("save_succeeded", current.recentEvents().get(0).eventType());
     verify(runtimeEventRepository, times(4))
         .save(org.mockito.ArgumentMatchers.any(DocumentRuntimeEventEntity.class));
+  }
+
+  @Test
+  void shouldRecordRejectedCallbackAsIndependentRuntimeEvent() {
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
+    when(metadataService.getStatus("demo")).thenReturn(status("demo", "editing"));
+    when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
+        .thenReturn(List.of(event("callback_rejected", "JWT 无效", null)));
+
+    DocumentStatusService service = new DocumentStatusService(metadataService, runtimeEventRepository);
+
+    DocumentSaveStatusResponse current = service.recordCallbackRejected("demo", "JWT 无效");
+
+    assertEquals("editing", current.state());
+    assertEquals("callback_rejected", current.recentEvents().get(0).eventType());
+    assertEquals("JWT 无效", current.recentEvents().get(0).message());
+    verify(metadataService, never()).markFailed(any(), any(), any());
+    verify(runtimeEventRepository).save(any(DocumentRuntimeEventEntity.class));
   }
 
   private DocumentSaveStatusResponse status(String documentId, String state) {

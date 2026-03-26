@@ -63,6 +63,17 @@ class StorageProviderResolverTest {
     assertThat(resolver.resolve(entity)).isEqualTo(StorageProvider.MINIO);
   }
 
+  @Test
+  void shouldUseDefaultProviderWhenRequestContextIsMissing() {
+    StorageProviderResolver resolver = new StorageProviderResolver(properties(
+        StorageProvider.MINIO,
+        Map.of("tenant-a", StorageProvider.LOCAL),
+        Map.of("native", StorageProvider.LOCAL)
+    ));
+
+    assertThat(resolver.resolve((RequestContext) null)).isEqualTo(StorageProvider.MINIO);
+  }
+
   private OnlyofficeIntegrationProperties properties(
       StorageProvider defaultProvider,
       Map<String, StorageProvider> tenantMappings,
