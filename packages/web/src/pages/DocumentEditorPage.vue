@@ -11,7 +11,7 @@ const isLoading = ref(true);
 const errorMessage = ref("");
 const currentDocument = ref(null);
 const documents = ref([]);
-const isTopNoticeCollapsed = ref(false);
+const isSidebarOpen = ref(true);
 const editorShellRef = ref(null);
 
 // 编辑页只认路由里的 documentId，把它视为唯一真相源。
@@ -93,8 +93,8 @@ async function requestOpenDocument(document) {
   }
 }
 
-function toggleTopNotice() {
-  isTopNoticeCollapsed.value = !isTopNoticeCollapsed.value;
+function toggleSidebar() {
+  isSidebarOpen.value = !isSidebarOpen.value;
 }
 
 function formatTimestamp(value) {
@@ -120,37 +120,6 @@ onMounted(loadEditorPageData);
 
 <template>
   <main class="page-shell editor-page-shell">
-    <template v-if="!isTopNoticeCollapsed">
-      <section class="surface-panel editor-page-toolbar">
-        <div class="toolbar-copy">
-          <p class="eyebrow">独立编辑工作台</p>
-          <h1>{{ currentDocument?.title || currentDocumentId }}</h1>
-        </div>
-        <div class="toolbar-actions">
-          <button class="ghost-button secondary" type="button" @click="goBackToLibrary">
-            返回文档列表
-          </button>
-          <button class="ghost-button compact" type="button" :disabled="isLoading" @click="loadEditorPageData">
-            刷新文档上下文
-          </button>
-          <button class="ghost-button compact" type="button" @click="toggleTopNotice">
-            收起提示
-          </button>
-        </div>
-      </section>
-
-      <section class="surface-panel top-notice-card">
-        <p class="eyebrow">编辑提示</p>
-        <p class="muted-copy">
-          编辑页从 Phase 9 起固定为可编辑工作台。返回列表或切换文档时会显式结束当前编辑会话，避免列表中的“编辑中”状态滞留。
-        </p>
-      </section>
-    </template>
-
-    <button v-else class="ghost-button compact editor-topbar-reveal" type="button" @click="toggleTopNotice">
-      展开顶部信息
-    </button>
-
     <section v-if="errorMessage" class="state-card error inline-state">
       <p>{{ errorMessage }}</p>
       <button class="ghost-button secondary compact" type="button" @click="loadEditorPageData">
@@ -162,8 +131,38 @@ onMounted(loadEditorPageData);
       <p>正在加载编辑页...</p>
     </section>
 
-    <section v-else class="editor-layout" :class="{ compact: isTopNoticeCollapsed }">
-      <aside class="surface-panel editor-sidebar">
+    <section v-else class="editor-layout">
+      <button
+        v-if="!isSidebarOpen"
+        class="sidebar-strip-toggle"
+        type="button"
+        @click="toggleSidebar"
+        title="展开侧边栏"
+      >◄</button>
+
+      <aside
+        class="surface-panel editor-sidebar"
+        :style="{ width: isSidebarOpen ? '300px' : '0', opacity: isSidebarOpen ? '1' : '0', padding: isSidebarOpen ? undefined : '0', overflow: isSidebarOpen ? undefined : 'hidden' }"
+      >
+        <section class="sidebar-section sidebar-header">
+          <div class="sidebar-header-row">
+            <div class="sidebar-header-meta">
+              <p class="eyebrow">独立编辑工作台</p>
+              <h1 class="sidebar-doc-title" :title="currentDocument?.title || currentDocumentId">
+                {{ currentDocument?.title || currentDocumentId }}
+              </h1>
+            </div>
+            <button class="ghost-button compact" type="button" @click="toggleSidebar" title="收起侧边栏">▶</button>
+          </div>
+          <p class="muted-copy sidebar-notice">
+            Phase 9 起固定为可编辑工作台。离开页面前会显式结束编辑会话。
+          </p>
+          <div class="toolbar-actions">
+            <button class="ghost-button secondary compact" type="button" @click="goBackToLibrary">返回文档列表</button>
+            <button class="ghost-button compact" type="button" :disabled="isLoading" @click="loadEditorPageData">刷新文档上下文</button>
+          </div>
+        </section>
+
         <section class="sidebar-section">
           <p class="eyebrow">当前文档</p>
           <h2>{{ currentDocument?.title || "未命名文档" }}</h2>
@@ -185,6 +184,7 @@ onMounted(loadEditorPageData);
               :key="document.documentId"
               class="switch-item"
               :class="{ active: document.documentId === currentDocumentId }"
+              :title="document.title"
               type="button"
               @click="requestOpenDocument(document)"
             >
@@ -208,69 +208,37 @@ onMounted(loadEditorPageData);
 
 <style scoped>
 .editor-page-shell {
-  display: grid;
-  gap: 18px;
-  padding-bottom: 28px;
-}
-
-.editor-page-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 8;
   display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  align-items: flex-end;
-}
-
-.toolbar-copy h1 {
-  margin: 8px 0 0;
-  font-size: clamp(30px, 3vw, 42px);
-  line-height: 1;
-}
-
-.toolbar-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.top-notice-card {
-  display: grid;
-  gap: 10px;
-}
-
-.editor-topbar-reveal {
-  position: sticky;
-  top: 12px;
-  z-index: 8;
-  justify-self: end;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: 0;
+  gap: 0;
 }
 
 .editor-layout {
-  display: grid;
+  flex: 1;
+  display: flex;
+  align-items: stretch;
   gap: 16px;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-  min-height: calc(100vh - 250px);
-  align-items: start;
-}
-
-.editor-layout.compact {
-  min-height: calc(100vh - 180px);
+  padding: 18px 0 18px;
+  min-height: 0;
 }
 
 .editor-stage {
+  flex: 1;
   min-width: 0;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .editor-sidebar {
   display: grid;
   gap: 16px;
   align-content: start;
-  position: sticky;
-  top: 96px;
-  height: fit-content;
+  width: 300px;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: width 220ms ease, opacity 220ms ease;
 }
 
 .sidebar-section {
@@ -281,6 +249,49 @@ onMounted(loadEditorPageData);
 .sidebar-section h2,
 .sidebar-section h3 {
   margin: 4px 0 0;
+}
+
+.sidebar-strip-toggle {
+  flex-shrink: 0;
+  width: 32px;
+  align-self: stretch;
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 160ms ease;
+}
+
+.sidebar-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sidebar-doc-title {
+  margin: 8px 0 0;
+  font-size: clamp(18px, 2vw, 26px);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.sidebar-notice {
+  font-size: 12px;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .switch-list {
@@ -306,6 +317,10 @@ onMounted(loadEditorPageData);
 
 .switch-title {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .switch-meta {
@@ -314,23 +329,12 @@ onMounted(loadEditorPageData);
 }
 
 @media (max-width: 980px) {
-  .editor-page-toolbar {
-    display: grid;
-    gap: 12px;
-    position: static;
-  }
-
-  .editor-topbar-reveal {
-    position: static;
-    justify-self: start;
-  }
-
   .editor-layout {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .editor-sidebar {
-    position: static;
+    width: 100% !important;
   }
 }
 </style>
