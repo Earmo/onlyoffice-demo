@@ -280,21 +280,21 @@ defineExpose({
           :onLoadComponentError="handleLoadComponentError"
         />
       </section>
+      <button
+        v-if="shouldShowConsole && !isConsoleOpen"
+        class="panel-toggle stage-edge-toggle"
+        type="button"
+        @click="toggleConsole"
+      >
+        打开控制台
+      </button>
     </section>
-
-    <button
-      v-if="shouldShowConsole && !isConsoleOpen"
-      class="panel-toggle"
-      type="button"
-      @click="toggleConsole"
-    >
-      打开控制台
-    </button>
 
     <aside
       v-if="shouldShowConsole"
       class="side-panel floating-console"
       :class="{ open: isConsoleOpen }"
+      :style="isConsoleOpen ? {} : { width: '0', opacity: '0', overflow: 'hidden', padding: '0' }"
       aria-label="编辑器控制台"
     >
       <div class="console-panel-header">
@@ -378,21 +378,26 @@ defineExpose({
 
 <style scoped>
 .editor-workspace {
-  position: relative;
+  display: flex;
+  flex-direction: row;
   height: 100%;
+  min-height: 0;
 }
 
 .editor-stage-stack {
+  flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  position: relative;
 }
 
 .editor-shell {
-  min-height: calc(100vh - 250px);
+  flex: 1;
+  min-height: 0;
 }
+
 
 .editor-shell > div {
   height: 100%;
@@ -463,11 +468,15 @@ defineExpose({
   flex-wrap: wrap;
 }
 
-@media (max-width: 1180px) {
-  .editor-shell {
-    min-height: calc(100vh - 220px);
-  }
+
+.stage-edge-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 8;
 }
+
 
 @media (max-width: 760px) {
   .console-panel-header h2 {
