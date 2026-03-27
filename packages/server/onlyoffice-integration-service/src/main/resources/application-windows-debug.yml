@@ -1,0 +1,49 @@
+# Windows 本地断点调试 profile。
+# 适用场景：postgres / minio / onlyoffice 继续跑在 Docker Desktop 里，
+# 后端和前端在 Windows 本机启动并下断点。
+# 这个 profile 会通过 `spring.profiles.group.windows-debug=dev` 自动叠加 dev 环境基线，
+# 因此这里只保留 Windows 本机调试真正需要覆盖的配置项。
+server:
+  # 本机后端监听端口。
+  port: 8080
+
+spring:
+  datasource:
+    # 本机通过映射端口访问容器内 PostgreSQL。
+    url: jdbc:postgresql://localhost:15434/onlyoffice
+    # PostgreSQL 用户名。
+    username: onlyoffice
+    # PostgreSQL 密码。
+    password: onlyoffice
+    # JDBC 驱动类。
+    driver-class-name: org.postgresql.Driver
+
+onlyoffice:
+  integration:
+    # 浏览器访问本机后端时使用的公开地址。
+    public-base-url: http://localhost:8080
+    # ONLYOFFICE 容器回调 Windows 本机后端时使用的内部地址。
+    internal-base-url: http://host.docker.internal:8080
+    # 浏览器加载 Docker 内 ONLYOFFICE Docs 静态资源时使用的宿主机地址。
+    document-server-url: http://localhost:18080
+    storage:
+      # Windows 本地调试时默认直接走 MinIO，方便验证对象存储与 callback 回写。
+      default-provider: minio
+      routing:
+        # 如需按租户切换存储策略，可在此填写 tenantId -> provider 映射。
+        tenants: {}
+        # 如需按来源系统切换存储策略，可在此填写 sourceSystem -> provider 映射。
+        source-systems: {}
+      minio:
+        # 本机通过映射端口访问容器内 MinIO。
+        endpoint: http://localhost:9000
+        # 调试时使用的 bucket 名称。
+        bucket: onlyoffice-documents
+        # 调试时使用的 Access Key。
+        access-key: onlyoffice
+        # 调试时使用的 Secret Key。
+        secret-key: onlyoffice123
+        # MinIO 本地调试保持 path-style 访问。
+        path-style-access: true
+        # 本地调试默认不启用 HTTPS。
+        secure: false
