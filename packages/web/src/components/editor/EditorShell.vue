@@ -1,6 +1,7 @@
 <script setup>
 import { onBeforeUnmount, ref, watch } from "vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
+import { apiFetch } from "../../lib/api";
 
 const props = defineProps({
   documentId: {
@@ -12,8 +13,6 @@ const props = defineProps({
     default: ""
   }
 });
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
 // 这个组件只负责“单文档编辑运行态”：
 // - 拉取 editor-config；
@@ -51,9 +50,7 @@ async function loadEditorConfig() {
     const params = new URLSearchParams({
       readonly: String(readonly.value)
     });
-    const response = await fetch(
-      `${apiBaseUrl}/api/documents/${props.documentId}/editor-config?${params.toString()}`
-    );
+    const response = await apiFetch(`/api/documents/${props.documentId}/editor-config?${params.toString()}`);
     if (!response.ok) {
       throw new Error(await readErrorMessage(response, `配置请求失败，HTTP ${response.status}`));
     }
@@ -73,7 +70,7 @@ async function loadEditorConfig() {
 
 async function loadSaveStatus() {
   try {
-    const response = await fetch(`${apiBaseUrl}/api/documents/${props.documentId}/save-status`);
+    const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
     if (!response.ok) {
       throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
     }
@@ -122,7 +119,7 @@ async function insertRemoteImage() {
   try {
     // 先让后端完成图片代理、安全校验和插图 payload 生成，
     // 前端只负责把 payload 交给编辑器，不自己拼接插图协议。
-    const response = await fetch(`${apiBaseUrl}/api/documents/${props.documentId}/images/insert`, {
+    const response = await apiFetch(`/api/documents/${props.documentId}/images/insert`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"

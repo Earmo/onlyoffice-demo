@@ -2,8 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import EditorShell from "../components/editor/EditorShell.vue";
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+import { apiFetch } from "../lib/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -36,8 +35,8 @@ async function loadEditorPageData() {
 
   try {
     const [detailResponse, listResponse] = await Promise.all([
-      fetch(`${apiBaseUrl}/api/documents/${currentDocumentId.value}`),
-      fetch(`${apiBaseUrl}/api/documents`)
+      apiFetch(`/api/documents/${currentDocumentId.value}`),
+      apiFetch("/api/documents")
     ]);
 
     if (!detailResponse.ok) {

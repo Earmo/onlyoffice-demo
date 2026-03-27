@@ -54,6 +54,7 @@ describe("DocumentLibraryPage", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toContain("/api/documents");
+    expect(fetch.mock.calls[0][1]?.headers?.["X-External-User-Id"]).toBe("starter-user");
     expect(wrapper.text()).toContain("tenant-a");
     expect(wrapper.text()).toContain("Alice");
     expect(wrapper.text()).toContain("项目路线图.docx");

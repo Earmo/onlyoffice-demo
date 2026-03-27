@@ -3,8 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DocumentCreateActions from "../components/library/DocumentCreateActions.vue";
 import DocumentList from "../components/library/DocumentList.vue";
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+import { apiFetch } from "../lib/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -101,7 +100,7 @@ async function loadDocuments() {
   try {
     const params = buildListParams();
     const suffix = params.toString() ? `?${params.toString()}` : "";
-    const response = await fetch(`${apiBaseUrl}/api/documents${suffix}`);
+    const response = await apiFetch(`/api/documents${suffix}`);
     if (!response.ok) {
       throw new Error(await readErrorMessage(response, `文档列表加载失败，HTTP ${response.status}`));
     }
@@ -152,7 +151,7 @@ async function createDocument() {
   errorMessage.value = "";
 
   try {
-    const response = await fetch(`${apiBaseUrl}/api/documents`, {
+    const response = await apiFetch("/api/documents", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -187,7 +186,7 @@ async function handleFileSelected(file) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${apiBaseUrl}/api/documents/upload`, {
+    const response = await apiFetch("/api/documents/upload", {
       method: "POST",
       body: formData
     });
@@ -212,7 +211,7 @@ async function importRemoteDocument() {
   errorMessage.value = "";
 
   try {
-    const response = await fetch(`${apiBaseUrl}/api/documents/import-remote`, {
+    const response = await apiFetch("/api/documents/import-remote", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
