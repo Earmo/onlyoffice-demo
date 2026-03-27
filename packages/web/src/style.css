@@ -169,20 +169,6 @@ select {
   display: none;
 }
 
-.panel-toggle {
-  border: none;
-  border-radius: 999px;
-  padding: 16px 12px;
-  min-height: 120px;
-  width: 52px;
-  background: linear-gradient(180deg, #172126 0%, #28363e 100%);
-  color: #f8fafb;
-  box-shadow: 0 18px 40px rgba(23, 33, 38, 0.22);
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  letter-spacing: 0.12em;
-  cursor: pointer;
-}
 .panel-backdrop {
   position: fixed;
   inset: 0;

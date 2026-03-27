@@ -280,15 +280,15 @@ defineExpose({
           :onLoadComponentError="handleLoadComponentError"
         />
       </section>
-      <button
-        v-if="shouldShowConsole && !isConsoleOpen"
-        class="panel-toggle stage-edge-toggle"
-        type="button"
-        @click="toggleConsole"
-      >
-        打开控制台
-      </button>
     </section>
+
+    <button
+      v-if="shouldShowConsole && !isConsoleOpen"
+      class="stage-edge-toggle"
+      type="button"
+      title="打开控制台"
+      @click="toggleConsole"
+    >▶</button>
 
     <aside
       v-if="shouldShowConsole"
@@ -470,11 +470,19 @@ defineExpose({
 
 
 .stage-edge-toggle {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
-  z-index: 8;
+  flex-shrink: 0;
+  width: 32px;
+  align-self: stretch;
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 160ms ease;
 }
 
 
