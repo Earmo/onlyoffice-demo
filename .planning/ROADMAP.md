@@ -153,7 +153,7 @@ Plans:
 **Goal**: 把访问上下文解析正式收口为可扩展策略体系，同时增强文档预览入口、编辑工作台布局和编辑会话退出语义。
 **Requirements**: [USER-04, LIB-04, UI-01, EDIT-03]
 **Depends on:** Phase 8
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 **Success Criteria** (what must be TRUE):
   1. 访问上下文解析采用明确的策略模式，内置“请求头解析”和“JWT 解析”两种策略，并允许继续扩展自定义策略。
@@ -162,7 +162,9 @@ Plans:
   4. 返回文档列表或切换文档时会显式结束当前文档编辑会话；当文档没有活跃编辑用户时，列表不再继续显示“编辑中”。
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 9` to break down)
+- [ ] 09-01: 收口访问上下文策略与扩展契约
+- [ ] 09-02: 增加预览模式并重构编辑工作台布局
+- [ ] 09-03: 增加编辑会话结束与列表状态收敛
 
 ## Progress
 
@@ -179,4 +181,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Verification and Delivery | 3/3 | Complete    | 2026-03-26 |
 | 7. 模块拆分、命名规范收敛与数据访问层重构 | 3/3 | Complete    | 2026-03-23 |
 | 8. 环境拆分、服务层规范、COS 支持与注释完善 | 3/3 | Complete    | 2026-03-26 |
-| 9. 访问上下文策略化、预览模式与编辑工作台优化 | 0/0 | Not Planned | - |
+| 9. 访问上下文策略化、预览模式与编辑工作台优化 | 0/3 | Planned | - |
