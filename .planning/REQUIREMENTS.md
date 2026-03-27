@@ -39,14 +39,17 @@
 - [x] **USER-01**: 每次文档编辑会话都会使用真实用户上下文，而不是固定演示用户
 - [x] **USER-02**: 用户接入层通过适配接口或上下文解析实现，能够对接外部系统已有的用户体系
 - [x] **USER-03**: 文档列表、编辑配置和保存审计都能消费当前用户上下文，而不把认证实现耦合进文档核心逻辑
+- [ ] **USER-04**: 访问上下文解析采用可扩展策略模式，内置请求头和 JWT 两类解析策略，并允许注册更多自定义策略
 
 ### Document Library and Editing
 
 - [x] **LIB-01**: 用户打开首页时先看到文档列表，而不是自动进入固定文档编辑页
 - [x] **LIB-02**: 用户可以从文档列表中选择一个已有文档，再进入编辑器进行查看或编辑
 - [x] **LIB-03**: 用户可以在列表页新建、上传或导入文档，成功后结果会先回流列表并高亮，再显式进入该文档的编辑流程
+- [ ] **LIB-04**: 文档列表同时提供预览和编辑两个入口；预览以只读模式查看文档，编辑入口单独进入可编辑工作台
 - [x] **EDIT-01**: 文档元数据与文档列表信息会持久化到适合分布式部署的共享存储，而不是仅靠本地目录推导
 - [x] **EDIT-02**: ONLYOFFICE editor config、文件下载和 callback 保存流程在前后端分离部署下仍然可用
+- [ ] **EDIT-03**: 用户返回列表或切换文档时会显式结束当前编辑会话，并同步收敛列表中的“编辑中”状态
 
 ### Security and Reliability
 
@@ -63,6 +66,10 @@
 ### Code Documentation
 
 - [x] **DOC-01**: 核心业务代码、配置和关键流程包含更详细的中文实现注释与步骤解释，便于团队维护和交接
+
+### Editor Workbench Experience
+
+- [ ] **UI-01**: 编辑页采用固定控制台与编辑器同层布局，支持顶部提示区收起，并保持顶部工具栏与右侧信息栏在可视区域内稳定可用
 
 ## v2 Requirements
 
@@ -100,11 +107,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | USER-01 | Phase 3 | Complete |
 | USER-02 | Phase 3 | Complete |
 | USER-03 | Phase 3 | Complete |
+| USER-04 | Phase 9 | Planned |
 | LIB-01 | Phase 4 | Complete |
 | LIB-02 | Phase 4 | Complete |
 | LIB-03 | Phase 4 | Complete |
+| LIB-04 | Phase 9 | Planned |
 | EDIT-01 | Phase 5 | Complete |
 | EDIT-02 | Phase 5 | Complete |
+| EDIT-03 | Phase 9 | Planned |
 | SAFE-01 | Phase 5 | Complete |
 | SAFE-02 | Phase 5 | Complete |
 | SAFE-03 | Phase 5 | Complete |
@@ -120,12 +130,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SVC-01 | Phase 8 | Complete |
 | STOR-04 | Phase 8 | Complete |
 | DOC-01 | Phase 8 | Complete |
+| UI-01 | Phase 9 | Planned |
 
 **Coverage:**
-- v1 requirements: 29 total
-- Mapped to phases: 29
+- v1 requirements: 33 total
+- Mapped to phases: 33
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-26 after Phase 8 execution*
+*Last updated: 2026-03-27 after adding Phase 9*

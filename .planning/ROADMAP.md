@@ -18,6 +18,7 @@
 - [x] **Phase 6: Verification and Delivery** - 补齐自动化验证和接入文档，形成可交付服务基线 (completed 2026-03-26)
 - [x] **Phase 7: 模块拆分、命名规范收敛与数据访问层重构** - 清理 demo 命名、拆分数据库模块，并把自定义查询与字段命名收敛到统一规范 (completed 2026-03-23)
 - [x] **Phase 8: 环境拆分、服务层规范、COS 支持与注释完善** - 拆分 dev/test/prod 配置，规范 Service 结构，补齐腾讯云 COS 和更完整的代码注释 (completed 2026-03-26)
+- [ ] **Phase 9: 访问上下文策略化、预览模式与编辑工作台优化** - 把访问上下文解析升级为策略体系，并补齐预览模式、编辑工作台布局和会话收敛能力
 
 ## Phase Details
 
@@ -147,10 +148,26 @@ Plans:
 - [x] 08-02: 重构 service 层接口实现结构并补齐详细注释
 - [x] 08-03: 增加腾讯云 COS 存储策略支持
 
+### Phase 9: 访问上下文策略化、预览模式与编辑工作台优化
+
+**Goal**: 把访问上下文解析正式收口为可扩展策略体系，同时增强文档预览入口、编辑工作台布局和编辑会话退出语义。
+**Requirements**: [USER-04, LIB-04, UI-01, EDIT-03]
+**Depends on:** Phase 8
+**Plans:** 0 plans
+
+**Success Criteria** (what must be TRUE):
+  1. 访问上下文解析采用明确的策略模式，内置“请求头解析”和“JWT 解析”两种策略，并允许继续扩展自定义策略。
+  2. 文档列表提供独立的“查看文件”能力，以预览模式打开文档；原“打开文档”入口更名为“编辑文档”，编辑页不再提供只读切换。
+  3. 编辑页控制台固定在页面布局中，与编辑器同层并列挤压；顶部提示区域可收起，下方编辑区、顶部工具栏和右侧标题类栏具备固定与自适应行为。
+  4. 返回文档列表或切换文档时会显式结束当前文档编辑会话；当文档没有活跃编辑用户时，列表不再继续显示“编辑中”。
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 9` to break down)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -162,3 +179,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 6. Verification and Delivery | 3/3 | Complete    | 2026-03-26 |
 | 7. 模块拆分、命名规范收敛与数据访问层重构 | 3/3 | Complete    | 2026-03-23 |
 | 8. 环境拆分、服务层规范、COS 支持与注释完善 | 3/3 | Complete    | 2026-03-26 |
+| 9. 访问上下文策略化、预览模式与编辑工作台优化 | 0/0 | Not Planned | - |
