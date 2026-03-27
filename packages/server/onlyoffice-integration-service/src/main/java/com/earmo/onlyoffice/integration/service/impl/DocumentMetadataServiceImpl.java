@@ -160,6 +160,18 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
 
   @Override
   @Transactional
+  public DocumentSaveStatusResponse markEditingStarted(String documentId) {
+    DocumentMetadataEntity entity = requireDocument(documentId);
+    Instant now = Instant.now();
+    entity.setStatus(STATUS_EDITING);
+    entity.setLastOpenedTime(now);
+    entity.setUpdatedTime(now);
+    updateEntity(entity);
+    return toSaveStatus(entity);
+  }
+
+  @Override
+  @Transactional
   public DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus) {
     DocumentMetadataEntity entity = requireDocument(documentId);
     Instant now = Instant.now();
@@ -197,6 +209,20 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
     entity.setLastCallbackTime(entity.getLastCallbackTime() == null ? now : entity.getLastCallbackTime());
     entity.setLastErrorMessage(message);
     entity.setUpdatedTime(now);
+    updateEntity(entity);
+    return toSaveStatus(entity);
+  }
+
+  @Override
+  @Transactional
+  public DocumentSaveStatusResponse reconcileClosedEditingSession(String documentId) {
+    DocumentMetadataEntity entity = requireDocument(documentId);
+    if (!STATUS_EDITING.equals(entity.getStatus())) {
+      return toSaveStatus(entity);
+    }
+
+    entity.setStatus(resolveStatusWithoutActiveEditors(entity));
+    entity.setUpdatedTime(Instant.now());
     updateEntity(entity);
     return toSaveStatus(entity);
   }
@@ -271,9 +297,9 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
 
   private String buildStatusMessage(DocumentMetadataEntity entity) {
     return switch (entity.getStatus()) {
-      case STATUS_EDITING -> entity.getLastCallbackTime() == null
-          ? "文档正在编辑中。"
-          : "已收到 ONLYOFFICE 保存回调，正在处理最新版本。";
+      case STATUS_EDITING -> shouldDescribeCallbackProcessing(entity)
+          ? "已收到 ONLYOFFICE 保存回调，正在处理最新版本。"
+          : "文档当前存在活跃编辑会话。";
       case STATUS_SAVED -> "最新修改已成功回写到共享存储。";
       case STATUS_FAILED -> {
         if (StringUtils.hasText(entity.getLastErrorMessage())) {
@@ -284,6 +310,32 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
       case STATUS_ARCHIVED -> "文档已归档。";
       default -> "文档已创建，尚未进入编辑会话。";
     };
+  }
+
+  /**
+   * 关闭最后一个活跃编辑会话后，需要把主表 `editing` 收口回稳定摘要状态。
+   *
+   * <p>优先级保持简单且可解释：
+   * 1. 有失败信息时回到 `failed`；
+   * 2. 有成功保存记录时回到 `saved`；
+   * 3. 其余情况回到 `draft`。
+   */
+  private String resolveStatusWithoutActiveEditors(DocumentMetadataEntity entity) {
+    if (STATUS_ARCHIVED.equals(entity.getStatus())) {
+      return STATUS_ARCHIVED;
+    }
+    if (StringUtils.hasText(entity.getLastErrorMessage())) {
+      return STATUS_FAILED;
+    }
+    if (entity.getLastSavedTime() != null) {
+      return STATUS_SAVED;
+    }
+    return STATUS_DRAFT;
+  }
+
+  private boolean shouldDescribeCallbackProcessing(DocumentMetadataEntity entity) {
+    return entity.getLastCallbackTime() != null
+        && (entity.getLastSavedTime() == null || entity.getLastSavedTime().isBefore(entity.getLastCallbackTime()));
   }
 
   private void insertEntity(DocumentMetadataEntity entity) {

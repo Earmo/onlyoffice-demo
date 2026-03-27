@@ -1,6 +1,9 @@
 package com.earmo.onlyoffice.integration.service.impl;
 
+import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentRuntimeEventEntity;
+import com.earmo.onlyoffice.integration.data.repository.DocumentEditorSessionRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentRuntimeEventRepository;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
@@ -8,9 +11,11 @@ import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 /**
  * 文档运行状态服务默认实现。
@@ -28,11 +33,43 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
 
   private final DocumentMetadataService documentMetadataService;
   private final DocumentRuntimeEventRepository documentRuntimeEventRepository;
+  private final DocumentEditorSessionRepository documentEditorSessionRepository;
 
   @Override
   public DocumentSaveStatusResponse initialize(String documentId) {
     DocumentSaveStatusResponse summary = documentMetadataService.markOpened(documentId);
-    recordRuntimeEvent(documentId, "editor_opened", null, "编辑器会话已打开。");
+    recordRuntimeEvent(documentId, "preview_opened", null, "已打开文档预览。");
+    return mergeRecentEvents(summary);
+  }
+
+  @Override
+  public DocumentSaveStatusResponse openEditingSession(String documentId, AccessContext accessContext) {
+    DocumentSaveStatusResponse summary = documentMetadataService.markEditingStarted(documentId);
+    upsertEditingSession(documentId, accessContext);
+    recordRuntimeEvent(documentId, "editing_session_started", null, "编辑会话已建立。");
+    return mergeRecentEvents(summary);
+  }
+
+  @Override
+  public DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext) {
+    if (!StringUtils.hasText(accessContext.actorUser())) {
+      return mergeRecentEvents(documentMetadataService.getStatus(documentId));
+    }
+
+    closeEditingSessionRecord(documentId, accessContext.actorUser());
+    long activeEditors = documentEditorSessionRepository.countActiveByDocumentId(documentId);
+    DocumentSaveStatusResponse summary = activeEditors > 0
+        ? documentMetadataService.getStatus(documentId)
+        : documentMetadataService.reconcileClosedEditingSession(documentId);
+
+    recordRuntimeEvent(
+        documentId,
+        "editing_session_closed",
+        null,
+        activeEditors > 0
+            ? "当前用户已离开编辑器，仍有其他活跃编辑用户。"
+            : "当前用户已离开编辑器，文档已退出活跃编辑状态。"
+    );
     return mergeRecentEvents(summary);
   }
 
@@ -74,6 +111,11 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     return mergeRecentEvents(documentMetadataService.getStatus(documentId));
   }
 
+  @Override
+  public Map<String, Integer> countActiveEditingSessions(List<String> documentIds) {
+    return documentEditorSessionRepository.countActiveByDocumentIds(documentIds);
+  }
+
   /**
    * 统一记录关键运行态事件。
    *
@@ -89,6 +131,51 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     entity.setEventMessage(message);
     entity.setEventTime(Instant.now());
     documentRuntimeEventRepository.save(entity);
+  }
+
+  /**
+   * 编辑会话按“文档 + 当前 actor”维度去重。
+   *
+   * <p>这样同一个用户重复刷新编辑页时不会无限新增活跃会话记录，
+   * 但不同用户同时打开同一文档时仍能得到正确的活跃编辑人数。
+   */
+  private void upsertEditingSession(String documentId, AccessContext accessContext) {
+    Instant now = Instant.now();
+    DocumentEditorSessionEntity entity = documentEditorSessionRepository
+        .findActiveByDocumentIdAndActorUser(documentId, accessContext.actorUser())
+        .orElseGet(DocumentEditorSessionEntity::new);
+
+    boolean isNewSession = !StringUtils.hasText(entity.getSessionId());
+    if (isNewSession) {
+      entity.setSessionId(UUID.randomUUID().toString());
+      entity.setDocumentId(documentId);
+      entity.setTenantId(accessContext.tenantId());
+      entity.setActorUser(accessContext.actorUser());
+      entity.setOpenedTime(now);
+      entity.setCreatedTime(now);
+    }
+
+    entity.setActorName(accessContext.actorName());
+    entity.setLastSeenTime(now);
+    entity.setClosedTime(null);
+    entity.setUpdatedTime(now);
+
+    if (isNewSession) {
+      documentEditorSessionRepository.insert(entity);
+    } else {
+      documentEditorSessionRepository.update(entity);
+    }
+  }
+
+  private void closeEditingSessionRecord(String documentId, String actorUser) {
+    documentEditorSessionRepository.findActiveByDocumentIdAndActorUser(documentId, actorUser)
+        .ifPresent(session -> {
+          Instant now = Instant.now();
+          session.setClosedTime(now);
+          session.setLastSeenTime(now);
+          session.setUpdatedTime(now);
+          documentEditorSessionRepository.update(session);
+        });
   }
 
   /**

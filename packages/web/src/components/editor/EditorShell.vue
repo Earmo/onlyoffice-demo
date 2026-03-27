@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 import { apiFetch } from "../../lib/api";
 
@@ -11,25 +11,35 @@ const props = defineProps({
   documentTitle: {
     type: String,
     default: ""
+  },
+  readonly: {
+    type: Boolean,
+    default: false
+  },
+  showConsole: {
+    type: Boolean,
+    default: true
   }
 });
 
-// 这个组件只负责“单文档编辑运行态”：
-// - 拉取 editor-config；
-// - 挂载 ONLYOFFICE 编辑器；
-// - 轮询保存状态；
-// - 承接右侧控制台动作。
-// 文档切换、返回列表等页面级能力由外层编辑页负责。
-const readonly = ref(false);
+// 组件只管理“当前文档在当前页面中的运行态”：
+// 1. 请求 editor-config；
+// 2. 承载 ONLYOFFICE 编辑器实例；
+// 3. 在编辑模式下轮询 save-status；
+// 4. 在页面离开或切换文档时，向后端显式结束当前编辑会话。
 const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
-const isPanelOpen = ref(false);
+const isConsoleCollapsed = ref(false);
 const isLoading = ref(true);
 const isInsertingImage = ref(false);
 const errorMessage = ref("");
 const editorPayload = ref(null);
 const editorKey = ref(0);
 const saveStatus = ref(null);
+const editingSessionOpened = ref(false);
 let saveStatusTimer = null;
+
+const modeLabel = computed(() => (props.readonly ? "预览模式" : "编辑模式"));
+const shouldShowConsole = computed(() => props.showConsole && !props.readonly);
 
 async function readErrorMessage(response, fallbackMessage) {
   try {
@@ -41,14 +51,12 @@ async function readErrorMessage(response, fallbackMessage) {
 }
 
 async function loadEditorConfig() {
-  // editor-config 是 ONLYOFFICE 宿主最核心的运行时配置。
-  // 每当文档切换、只读模式切换或用户主动刷新时，都需要重新向后端获取一次。
   isLoading.value = true;
   errorMessage.value = "";
 
   try {
     const params = new URLSearchParams({
-      readonly: String(readonly.value)
+      readonly: String(props.readonly)
     });
     const response = await apiFetch(`/api/documents/${props.documentId}/editor-config?${params.toString()}`);
     if (!response.ok) {
@@ -56,19 +64,29 @@ async function loadEditorConfig() {
     }
 
     editorPayload.value = await response.json();
-    // 重新拿到配置后顺手刷新一次保存状态，保证控制台里的信息与当前文档同步。
-    await loadSaveStatus();
-    // ONLYOFFICE Vue 包裹组件对深层配置变化不总是完全响应，
-    // 因此这里通过递增 key 强制重建编辑器实例，确保新配置生效。
+    editingSessionOpened.value = !props.readonly;
     editorKey.value += 1;
+
+    if (shouldShowConsole.value) {
+      await loadSaveStatus();
+    } else {
+      saveStatus.value = null;
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "未知错误";
+    if (!props.readonly) {
+      await closeEditingSession({ suppressErrors: true, force: true });
+    }
   } finally {
     isLoading.value = false;
   }
 }
 
 async function loadSaveStatus() {
+  if (!shouldShowConsole.value) {
+    return;
+  }
+
   try {
     const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
     if (!response.ok) {
@@ -76,34 +94,21 @@ async function loadSaveStatus() {
     }
     saveStatus.value = await response.json();
   } catch (error) {
-    // 保存状态失败不阻塞主编辑器渲染，只在控制台排障即可。
     console.error("加载保存状态失败", error);
   }
 }
 
-async function toggleReadonly() {
-  // 只读/可编辑本质上会改变后端生成的 editor-config，因此不能只改本地标记。
-  readonly.value = !readonly.value;
-  await loadEditorConfig();
-}
-
-function togglePanel() {
-  isPanelOpen.value = !isPanelOpen.value;
-}
-
-function closePanel() {
-  isPanelOpen.value = false;
+function toggleConsole() {
+  isConsoleCollapsed.value = !isConsoleCollapsed.value;
 }
 
 function getDocEditorInstance() {
-  // ONLYOFFICE 组件实例通过全局对象暴露，这里集中封装读取逻辑，
-  // 避免业务代码到处直接访问 window.DocEditor。
   return window.DocEditor?.instances?.docEditor;
 }
 
 async function insertRemoteImage() {
-  if (readonly.value) {
-    errorMessage.value = "只读模式下不能插入图片。";
+  if (props.readonly) {
+    errorMessage.value = "预览模式下不能插入图片。";
     return;
   }
 
@@ -117,8 +122,6 @@ async function insertRemoteImage() {
   errorMessage.value = "";
 
   try {
-    // 先让后端完成图片代理、安全校验和插图 payload 生成，
-    // 前端只负责把 payload 交给编辑器，不自己拼接插图协议。
     const response = await apiFetch(`/api/documents/${props.documentId}/images/insert`, {
       method: "POST",
       headers: {
@@ -143,18 +146,16 @@ async function insertRemoteImage() {
 }
 
 function handleDocumentReady() {
-  // 编辑器真正 ready 后再启动状态轮询，避免在组件未挂载完成时提前打接口。
-  console.log("ONLYOFFICE 文档已加载完成");
-  startSaveStatusPolling();
+  if (shouldShowConsole.value) {
+    startSaveStatusPolling();
+  }
 }
 
 function handleLoadComponentError(errorCode, errorDescription) {
-  // ONLYOFFICE 静态资源、脚本或运行时协议异常时，这里统一转换成页面可见错误。
   errorMessage.value = `ONLYOFFICE 组件加载失败（${errorCode}）：${errorDescription}`;
 }
 
 function startSaveStatusPolling() {
-  // 轮询前先清理旧定时器，避免重复进入编辑页或切文档时产生并发轮询。
   stopSaveStatusPolling();
   saveStatusTimer = window.setInterval(() => {
     loadSaveStatus();
@@ -165,6 +166,41 @@ function stopSaveStatusPolling() {
   if (saveStatusTimer !== null) {
     window.clearInterval(saveStatusTimer);
     saveStatusTimer = null;
+  }
+}
+
+async function closeEditingSession(options = {}) {
+  const {
+    keepalive = false,
+    suppressErrors = false,
+    force = false
+  } = options;
+
+  if (props.readonly) {
+    return null;
+  }
+  if (!editingSessionOpened.value && !force) {
+    return null;
+  }
+
+  try {
+    const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/close`, {
+      method: "POST",
+      keepalive
+    });
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `结束编辑会话失败，HTTP ${response.status}`));
+    }
+
+    const payload = await response.json();
+    editingSessionOpened.value = false;
+    saveStatus.value = payload;
+    return payload;
+  } catch (error) {
+    if (!suppressErrors) {
+      throw error;
+    }
+    return null;
   }
 }
 
@@ -180,95 +216,102 @@ function formatTimestamp(value) {
 }
 
 function saveStatusTone(state) {
-  // 保存状态颜色统一在这里映射，模板只负责消费语义化 class。
   return {
     "is-idle": state === "idle",
-    "is-progress": state === "callback-received",
+    "is-progress": state === "callback-received" || state === "editing",
     "is-success": state === "saved",
-    "is-error": state === "save-failed"
+    "is-error": state === "save-failed" || state === "failed"
   };
 }
 
 watch(
-  () => props.documentId,
-  async () => {
-    // 切换文档时必须完整重置运行态：
-    // - 停掉旧轮询；
-    // - 回到可编辑默认值；
-    // - 清空上一个文档的保存状态；
-    // - 重新拉取当前文档配置。
+  () => [props.documentId, props.readonly, props.showConsole],
+  async (_newValue, _oldValue) => {
     stopSaveStatusPolling();
-    readonly.value = false;
     saveStatus.value = null;
+    editingSessionOpened.value = false;
     await loadEditorConfig();
   },
   { immediate: true }
 );
 
-// 组件卸载时要及时停掉轮询，避免离开编辑页后仍持续请求 save-status。
-onBeforeUnmount(stopSaveStatusPolling);
+onBeforeUnmount(async () => {
+  stopSaveStatusPolling();
+  await closeEditingSession({ keepalive: true, suppressErrors: true });
+});
+
+defineExpose({
+  closeEditingSession
+});
 </script>
 
 <template>
-  <section class="editor-workspace">
-    <section v-if="isLoading" class="state-card">
-      <p>正在获取编辑器配置...</p>
-    </section>
-
-    <section v-else-if="errorMessage" class="state-card error">
-      <p>{{ errorMessage }}</p>
-      <p class="hint">
-        请确认当前站点的 <code>/api</code> 反向代理可用，并且 ONLYOFFICE 相关路径已通过同源方式转发。
-      </p>
-    </section>
-
-    <section v-else-if="editorPayload" class="editor-shell">
-      <DocumentEditor
-        :key="editorKey"
-        id="docEditor"
-        :documentServerUrl="editorPayload.documentServerUrl"
-        :config="editorPayload.config"
-        height="100%"
-        width="100%"
-        :events_onDocumentReady="handleDocumentReady"
-        :onLoadComponentError="handleLoadComponentError"
-      />
-    </section>
-
-    <button class="panel-toggle" type="button" @click="togglePanel">
-      {{ isPanelOpen ? "收起控制台" : "打开控制台" }}
-    </button>
-
-    <transition name="panel-fade">
-      <button
-        v-if="isPanelOpen"
-        class="panel-backdrop"
-        type="button"
-        aria-label="关闭控制台"
-        @click="closePanel"
-      />
-    </transition>
-
-    <aside class="side-panel" :class="{ open: isPanelOpen }" aria-label="编辑器控制台">
-      <div class="side-panel-header">
-        <div class="hero-copy">
-          <p class="eyebrow">独立编辑页</p>
-          <h2>{{ props.documentTitle || props.documentId }}</h2>
-          <p class="summary">
-            编辑页只负责当前文档的运行态能力，切换文档、返回列表和创建入口都交给工作台首页与外层页面壳层处理。
-          </p>
-        </div>
-        <button class="panel-close" type="button" @click="closePanel">
-          关闭
-        </button>
+  <section
+    class="editor-workspace"
+    :class="{
+      'with-console': shouldShowConsole,
+      'console-collapsed': shouldShowConsole && isConsoleCollapsed
+    }"
+  >
+    <header class="surface-panel shell-toolbar">
+      <div class="toolbar-copy">
+        <p class="eyebrow">编辑运行态</p>
+        <h2>{{ props.documentTitle || props.documentId }}</h2>
+        <p class="summary">
+          {{ props.readonly ? "当前页面以只读预览方式打开文档，不建立活跃编辑会话。" : "当前页面已进入可编辑工作台，离开页面前会显式结束当前编辑会话。" }}
+        </p>
       </div>
 
-      <div class="drawer-actions">
+      <div class="toolbar-actions">
+        <span class="status-chip is-outline">{{ modeLabel }}</span>
+        <button class="ghost-button secondary compact" type="button" :disabled="isLoading" @click="loadEditorConfig">
+          重新加载配置
+        </button>
+        <button
+          v-if="shouldShowConsole"
+          class="ghost-button compact"
+          type="button"
+          :disabled="isLoading"
+          @click="toggleConsole"
+        >
+          {{ isConsoleCollapsed ? "展开控制台" : "收起控制台" }}
+        </button>
+      </div>
+    </header>
+
+    <section class="editor-stage-stack">
+      <section v-if="isLoading" class="state-card">
+        <p>正在获取编辑器配置...</p>
+      </section>
+
+      <section v-else-if="errorMessage" class="state-card error">
+        <p>{{ errorMessage }}</p>
+        <p class="hint">
+          请确认当前站点的 <code>/api</code> 反向代理可用，并且 ONLYOFFICE 相关路径已通过同源方式转发。
+        </p>
+      </section>
+
+      <section v-else-if="editorPayload" class="editor-shell">
+        <DocumentEditor
+          :key="editorKey"
+          id="docEditor"
+          :documentServerUrl="editorPayload.documentServerUrl"
+          :config="editorPayload.config"
+          height="100%"
+          width="100%"
+          :events_onDocumentReady="handleDocumentReady"
+          :onLoadComponentError="handleLoadComponentError"
+        />
+      </section>
+    </section>
+
+    <aside v-if="shouldShowConsole" class="side-panel docked-console" aria-label="编辑器控制台">
+      <div v-if="!isConsoleCollapsed" class="console-body">
         <section class="panel-section">
           <p class="panel-section-title">当前文档</p>
           <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
           <p class="panel-document-meta">documentId: <code>{{ props.documentId }}</code></p>
-          <p class="panel-document-meta">当前模式：<code>{{ readonly ? "只读" : "可编辑" }}</code></p>
+          <p class="panel-document-meta">当前模式：<code>{{ modeLabel }}</code></p>
         </section>
 
         <section v-if="saveStatus" class="panel-section">
@@ -312,18 +355,18 @@ onBeforeUnmount(stopSaveStatusPolling);
           <button
             class="ghost-button accent"
             type="button"
-            :disabled="isLoading || isInsertingImage || readonly"
+            :disabled="isLoading || isInsertingImage"
             @click="insertRemoteImage"
           >
             {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
           </button>
-          <button class="ghost-button" type="button" :disabled="isLoading" @click="toggleReadonly">
-            {{ readonly ? "切换为可编辑" : "切换为只读" }}
-          </button>
-          <button class="ghost-button secondary" type="button" :disabled="isLoading" @click="loadEditorConfig">
-            重新加载配置
-          </button>
         </section>
+      </div>
+
+      <div v-else class="collapsed-rail">
+        <button class="ghost-button compact" type="button" @click="toggleConsole">
+          展开控制台
+        </button>
       </div>
     </aside>
   </section>
@@ -331,26 +374,88 @@ onBeforeUnmount(stopSaveStatusPolling);
 
 <style scoped>
 .editor-workspace {
+  display: grid;
+  gap: 14px;
   min-height: 0;
   height: 100%;
 }
 
-.side-panel-header {
+.editor-workspace.with-console {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-areas:
+    "toolbar toolbar"
+    "stage console";
+}
+
+.editor-workspace.with-console.console-collapsed {
+  grid-template-columns: minmax(0, 1fr) 96px;
+}
+
+.shell-toolbar {
+  grid-area: toolbar;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.toolbar-copy h2 {
+  margin: 8px 0;
+  font-size: clamp(24px, 2.4vw, 34px);
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.editor-stage-stack {
+  grid-area: stage;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-shell {
+  overflow: hidden;
+  min-height: calc(100vh - 310px);
+}
+
+.editor-shell > div {
+  height: 100%;
+}
+
+.docked-console {
+  grid-area: console;
+  position: sticky;
+  top: 112px;
+  align-self: start;
   display: grid;
-  gap: 14px;
+  min-height: calc(100vh - 220px);
+  max-height: calc(100vh - 220px);
+  overflow: hidden;
 }
 
-.side-panel-header h2 {
-  margin: 8px 0 0;
-  font-size: clamp(26px, 3vw, 38px);
-}
-
-.drawer-actions {
+.console-body {
   display: grid;
   gap: 12px;
   align-content: start;
   overflow: auto;
   padding-right: 4px;
+}
+
+.collapsed-rail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
 }
 
 .field-grid {
@@ -380,12 +485,40 @@ onBeforeUnmount(stopSaveStatusPolling);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--accent);
+  color: var(--accent-main);
 }
 
 .save-status-events span,
 .save-status-events time {
   font-size: 12px;
   color: var(--muted-strong);
+}
+
+@media (max-width: 1180px) {
+  .editor-workspace.with-console,
+  .editor-workspace.with-console.console-collapsed {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "toolbar"
+      "stage"
+      "console";
+  }
+
+  .docked-console {
+    position: static;
+    min-height: auto;
+    max-height: none;
+  }
+
+  .collapsed-rail {
+    writing-mode: horizontal-tb;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell-toolbar {
+    display: grid;
+    gap: 12px;
+  }
 }
 </style>

@@ -29,8 +29,15 @@
 
 当前用户上下文模型遵循 `SPI-first, built-ins included`：
 
-- 内置 provider：`header`、`jwt`、`default`
+- 内置显式策略：`header`、`jwt`
+- 内置补齐策略：`default`
 - 自定义接入：实现 `AccessContextProvider` Bean 并加入 `enabled-providers` / `resolution-order`
+
+其中要特别注意：
+
+- `header` / `jwt` 用来回答“这次请求的身份到底从哪里来”
+- `default` 只负责在允许的场景里补齐缺失字段，不应被当成第三种显式身份来源
+- 如果请求里完全没有命中任何显式策略，而 `require-explicit-context=true`，服务会直接返回明确 `4xx`
 
 默认 Header 输入：
 
@@ -44,6 +51,40 @@
 
 - 通过 `Authorization: Bearer <token>` 透传
 - claim 映射由 `onlyoffice.integration.access-context.jwt.claim-mappings.*` 控制
+
+最小策略配置示例：
+
+```yaml
+onlyoffice:
+  integration:
+    access-context:
+      enabled-providers:
+        - header
+        - jwt
+        - default
+      resolution-order:
+        - header
+        - jwt
+        - default
+      require-explicit-context: true
+      allow-default-context: false
+```
+
+如果你需要接入自定义用户来源，可继续注册新的 `AccessContextProvider`，并把它放到 `resolution-order` 前面；controller 和文档业务服务不需要为了新来源再改解析逻辑。
+
+## 官方前端入口
+
+如果你直接复用仓库内的官方前端，当前页面语义已经拆成两类：
+
+- `/preview/{documentId}`
+  只读查看，不建立活跃编辑会话
+- `/editor/{documentId}`
+  进入独立编辑工作台，建立当前用户的编辑会话
+
+列表页现在会显式区分：
+
+- `查看文件`
+- `编辑文档`
 
 ## 权限与审计边界
 

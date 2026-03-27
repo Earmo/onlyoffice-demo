@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.integration.web;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentEditorSessionMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentRuntimeEventMapper;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
@@ -73,6 +74,9 @@ class DocumentControllerTest {
   @MockBean
   private DocumentRuntimeEventMapper documentRuntimeEventMapper;
 
+  @MockBean
+  private DocumentEditorSessionMapper documentEditorSessionMapper;
+
   @Test
   void shouldPersistCallbackDocumentWhenStatusIs2() throws Exception {
     when(onlyofficeJwtService.verifyCallbackRequest(any())).thenReturn(mock(io.jsonwebtoken.Claims.class));
@@ -133,6 +137,38 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.config.editorConfig.mode").value("view"))
         .andExpect(jsonPath("$.config.document.permissions.download").value(true))
         .andExpect(jsonPath("$.config.document.permissions.comment").value(true));
+
+    verify(documentStatusService).openEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class));
+  }
+
+  @Test
+  void shouldBuildReadonlyPreviewConfigWithoutOpeningEditingSession() throws Exception {
+    when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
+        new AccessContext(
+            "tenant-a",
+            "native",
+            "user-a",
+            "Alice",
+            java.util.Map.of("edit", true, "download", true),
+            "header"
+        )
+    );
+    when(onlyofficeConfigService.buildEditorConfig(
+        anyString(),
+        org.mockito.ArgumentMatchers.anyBoolean(),
+        org.mockito.ArgumentMatchers.any(AccessContext.class),
+        org.mockito.ArgumentMatchers.any()
+    )).thenReturn(new EditorConfigResponse(
+        "https://docs.example.test/",
+        java.util.Map.of(
+            "document", java.util.Map.of("permissions", java.util.Map.of("edit", false)),
+            "editorConfig", java.util.Map.of("mode", "view")
+        )
+    ));
+
+    mockMvc.perform(get("/api/documents/sample/editor-config").param("readonly", "true"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.config.editorConfig.mode").value("view"));
 
     verify(documentStatusService).initialize("sample");
   }
@@ -203,6 +239,30 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.state").value("saved"))
         .andExpect(jsonPath("$.recentEvents[0].eventType").value("save_succeeded"))
         .andExpect(jsonPath("$.recentEvents[0].callbackStatus").value(2));
+  }
+
+  @Test
+  void shouldCloseEditingSessionForCurrentActor() throws Exception {
+    when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
+    );
+    when(documentStatusService.closeEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class)))
+        .thenReturn(new DocumentSaveStatusResponse(
+            "sample",
+            "saved",
+            "当前用户已离开编辑器，文档已退出活跃编辑状态。",
+            2,
+            Instant.parse("2026-03-25T10:00:00Z"),
+            Instant.parse("2026-03-25T10:00:01Z"),
+            List.of()
+        ));
+
+    mockMvc.perform(post("/api/documents/sample/editing-sessions/close"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.state").value("saved"))
+        .andExpect(jsonPath("$.message").value("当前用户已离开编辑器，文档已退出活跃编辑状态。"));
+
+    verify(documentStatusService).closeEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class));
   }
 
   @Test

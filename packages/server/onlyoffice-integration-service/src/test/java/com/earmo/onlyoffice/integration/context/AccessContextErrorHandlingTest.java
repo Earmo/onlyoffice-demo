@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.integration.context;
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
+import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.web.DocumentApiController;
 import com.earmo.onlyoffice.integration.web.GlobalExceptionHandler;
@@ -22,11 +23,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AccessContextErrorHandlingTest {
 
   private DocumentMetadataService documentMetadataService;
+  private DocumentStatusService documentStatusService;
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     documentMetadataService = mock(DocumentMetadataService.class);
+    documentStatusService = mock(DocumentStatusService.class);
     DocumentStorageService documentStorageService = mock(DocumentStorageService.class);
     AccessAuditService accessAuditService = mock(AccessAuditService.class);
 
@@ -46,6 +49,7 @@ class AccessContextErrorHandlingTest {
     DocumentApiController controller = new DocumentApiController(
         documentMetadataService,
         documentStorageService,
+        documentStatusService,
         accessAuditService,
         accessContextResolver
     );
@@ -67,6 +71,7 @@ class AccessContextErrorHandlingTest {
   @Test
   void shouldAllowPartialContextWhenDefaultFillIsEnabled() throws Exception {
     when(documentMetadataService.listDocuments("native", null, null, null, null, "desc")).thenReturn(List.of());
+    when(documentStatusService.countActiveEditingSessions(List.of())).thenReturn(java.util.Map.of());
 
     mockMvc.perform(get("/api/documents")
             .header("X-External-User-Id", "user-a")

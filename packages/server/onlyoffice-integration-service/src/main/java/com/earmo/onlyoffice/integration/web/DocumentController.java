@@ -69,10 +69,27 @@ public class DocumentController {
       HttpServletRequest request
   ) throws IOException {
     AccessContext accessContext = accessContextResolver.resolve(request);
-    // 打开编辑器前先初始化文档状态，保证前端一进页面就能看到一致的保存状态信息。
-    documentStatusService.initialize(documentId);
+    // 预览和编辑从 Phase 9 开始走两条不同语义：
+    // - 只读预览只刷新打开时间，不建立活跃编辑会话；
+    // - 编辑工作台则显式建立当前用户的编辑会话。
+    if (readonly) {
+      documentStatusService.initialize(documentId);
+    } else {
+      documentStatusService.openEditingSession(documentId, accessContext);
+    }
     accessAuditService.recordEditorConfigRequested(documentId, accessContext);
     return onlyofficeConfigService.buildEditorConfig(documentId, readonly, accessContext, request);
+  }
+
+  @PostMapping("/{documentId}/editing-sessions/close")
+  @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。")
+  public DocumentSaveStatusResponse closeEditingSession(
+      @Parameter(description = "文档内部主键。", example = "demo")
+      @PathVariable String documentId,
+      HttpServletRequest request
+  ) {
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    return documentStatusService.closeEditingSession(documentId, accessContext);
   }
 
   @GetMapping("/{documentId}/save-status")

@@ -4,11 +4,13 @@ import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentEditorSessionMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentRuntimeEventMapper;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
+import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import java.time.Instant;
 import java.util.List;
@@ -44,6 +46,9 @@ class DocumentApiControllerTest {
   private DocumentStorageService documentStorageService;
 
   @MockBean
+  private DocumentStatusService documentStatusService;
+
+  @MockBean
   private AccessAuditService accessAuditService;
 
   @MockBean
@@ -58,12 +63,16 @@ class DocumentApiControllerTest {
   @MockBean
   private DocumentRuntimeEventMapper documentRuntimeEventMapper;
 
+  @MockBean
+  private DocumentEditorSessionMapper documentEditorSessionMapper;
+
   @Test
   void shouldListDocumentsForCurrentTenant() throws Exception {
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
     when(documentMetadataService.listDocuments("tenant-a", null, null, null, null, "desc"))
         .thenReturn(List.of(entity("sample")));
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
     mockMvc.perform(get("/api/documents"))
         .andExpect(status().isOk())
@@ -86,6 +95,7 @@ class DocumentApiControllerTest {
     when(documentMetadataService.listDocuments("tenant-a", "roadmap", "failed", "native", "word", "asc"))
         .thenReturn(List.of(entity("sample")));
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
     mockMvc.perform(
             get("/api/documents")
@@ -110,6 +120,8 @@ class DocumentApiControllerTest {
         .thenReturn(true);
     when(documentStorageService.exists(argThat(entity -> entity != null && "missing".equals(entity.getDocumentId()))))
         .thenReturn(false);
+    when(documentStatusService.countActiveEditingSessions(List.of("available", "missing")))
+        .thenReturn(java.util.Map.of("available", 0, "missing", 0));
 
     mockMvc.perform(get("/api/documents").param("storage", "unavailable"))
         .andExpect(status().isOk())
@@ -123,12 +135,42 @@ class DocumentApiControllerTest {
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
     when(documentMetadataService.requireDocument("sample")).thenReturn(entity("sample"));
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(false);
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
     mockMvc.perform(get("/api/documents/sample"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.documentId").value("sample"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
         .andExpect(jsonPath("$.storageAvailable").value(false));
+  }
+
+  @Test
+  void shouldExposeEditingStatusWhenActiveEditorsExist() throws Exception {
+    DocumentMetadataEntity entity = entity("sample");
+    entity.setStatus("saved");
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentMetadataService.listDocuments("tenant-a", null, null, null, null, "desc"))
+        .thenReturn(List.of(entity));
+    when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 2));
+
+    mockMvc.perform(get("/api/documents"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documents[0].status").value("editing"));
+  }
+
+  @Test
+  void shouldExposeEditingStatusForDetailWhenActiveEditorsExist() throws Exception {
+    DocumentMetadataEntity entity = entity("sample");
+    entity.setStatus("saved");
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentMetadataService.requireDocument("sample")).thenReturn(entity);
+    when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 1));
+
+    mockMvc.perform(get("/api/documents/sample"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("editing"));
   }
 
   @Test

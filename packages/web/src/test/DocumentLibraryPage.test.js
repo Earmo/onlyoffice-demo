@@ -58,7 +58,44 @@ describe("DocumentLibraryPage", () => {
     expect(wrapper.text()).toContain("tenant-a");
     expect(wrapper.text()).toContain("Alice");
     expect(wrapper.text()).toContain("项目路线图.docx");
+    expect(wrapper.text()).toContain("查看文件");
+    expect(wrapper.text()).toContain("编辑文档");
     expect(wrapper.find(".document-row.highlighted").exists()).toBe(true);
+  });
+
+  it("应分别把查看文件和编辑文档路由到预览页与编辑页", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse({
+      tenantId: "tenant-a",
+      actorUser: "user-a",
+      actorName: "Alice",
+      documents: [
+        {
+          documentId: "doc-1",
+          title: "项目路线图.docx",
+          status: "saved",
+          tenantId: "tenant-a",
+          ownerUser: "owner-a",
+          actorUser: "user-a",
+          actorName: "Alice",
+          sourceSystem: "native",
+          documentType: "word",
+          storageAvailable: true,
+          lastSavedTime: "2026-03-25T10:00:00Z"
+        }
+      ]
+    }));
+
+    const wrapper = mount(DocumentLibraryPage);
+    await flushPromises();
+
+    const previewButton = wrapper.findAll("button").find(button => button.text().includes("查看文件"));
+    await previewButton.trigger("click");
+    expect(routerPush).toHaveBeenCalledWith({ name: "preview", params: { documentId: "doc-1" } });
+
+    routerPush.mockClear();
+    const editButton = wrapper.findAll("button").find(button => button.text().includes("编辑文档"));
+    await editButton.trigger("click");
+    expect(routerPush).toHaveBeenCalledWith({ name: "editor", params: { documentId: "doc-1" } });
   });
 
   it("应在新建文档后回流列表并显示成功提示", async () => {

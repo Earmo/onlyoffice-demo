@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CustomAccessContextProviderOverrideTest {
 
@@ -35,6 +36,7 @@ class CustomAccessContextProviderOverrideTest {
       AccessContext accessContext = resolver.resolve(request);
 
       assertEquals("custom-user", accessContext.externalUserId());
+      assertTrue(context.getBean("customProvider", AccessContextProvider.class).isExplicitStrategy());
       assertEquals(List.of("custom-provider", "header", "default"), resolver.resolutionOrder());
     });
   }

@@ -10,12 +10,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 按配置顺序聚合访问上下文 provider。
+ * 按配置顺序聚合访问上下文策略。
  *
  * <p>这里把“缺少用户上下文”“部分字段缺失”“访问上下文解析失败”三种语义统一收口：
- * 1. 先按 resolutionOrder 尝试所有显式 provider；
+ * 1. 先按 resolutionOrder 尝试所有显式策略；
  * 2. 如果命中了部分字段，再按 allowDefaultContext 决定是否使用默认值补齐；
- * 3. 如果完全没有显式上下文，则按 requireExplicitContext / allowDefaultContext 决定返回 4xx 还是允许回退默认上下文。
+ * 3. 如果完全没有显式上下文，则按 requireExplicitContext / allowDefaultContext 决定返回 4xx 还是允许回退默认补齐策略。
  */
 @Component
 @RequiredArgsConstructor
@@ -30,12 +30,8 @@ public class AccessContextResolver {
 
     AccessContext partialContext = null;
     for (String providerName : providerNames) {
-      if ("default".equals(providerName)) {
-        continue;
-      }
-
       AccessContextProvider provider = providersByName.get(providerName);
-      if (provider == null) {
+      if (provider == null || !provider.isExplicitStrategy()) {
         continue;
       }
 
@@ -79,7 +75,7 @@ public class AccessContextResolver {
       HttpServletRequest request
   ) {
     AccessContextProvider defaultProvider = providersByName.get("default");
-    if (defaultProvider == null) {
+    if (defaultProvider == null || defaultProvider.isExplicitStrategy()) {
       throw new MissingAccessContextException("缺少用户上下文：未配置 default provider，无法补齐默认值。");
     }
     return defaultProvider.resolve(request)

@@ -47,9 +47,25 @@ SPRING_PROFILES_ACTIVE=dev|test|prod
 | 配置项 | 默认值 | 必填 | 适用场景 | 说明 |
 |---|---|---|---|---|
 | `ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ENABLED_PROVIDERS` | `header,jwt,default` | 否 | 全部 | 允许参与解析的 provider 名称列表 |
-| `ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_RESOLUTION_ORDER` | `header,jwt,default` | 否 | 全部 | provider 实际解析顺序 |
+| `ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_RESOLUTION_ORDER` | `header,jwt,default` | 否 | 全部 | provider 实际解析顺序；前两类通常是显式策略，`default` 应放在最后作为补齐 |
 | `ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_REQUIRE_EXPLICIT_CONTEXT` | `true` | 否 | 正式环境 | 完全缺失上下文时是否直接拒绝 |
 | `ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ALLOW_DEFAULT_CONTEXT` | `false` | 否 | dev/test | 是否允许使用默认值补齐缺失字段 |
+
+### 策略语义说明
+
+| 策略 | 类型 | 说明 |
+|---|---|---|
+| `header` | 显式策略 | 从请求头中解析租户、来源系统、用户和最小权限 |
+| `jwt` | 显式策略 | 从 `Authorization: Bearer <token>` 中解析 claim |
+| `default` | 补齐策略 | 只在允许默认补齐时提供兜底值，不表示请求真的携带了身份来源 |
+
+推荐顺序：
+
+```text
+header -> jwt -> default
+```
+
+如果你注册了自定义 `AccessContextProvider`，通常应把它放在 `default` 之前；`default` 的职责是补齐，而不是参与“显式身份命中”的竞争。
 
 ## 存储与数据库
 
@@ -83,6 +99,14 @@ SPRING_PROFILES_ACTIVE=dev|test|prod
 ```text
 local / minio / cos
 ```
+
+## 官方前端页面入口
+
+| 路由 | 页面意图 | 说明 |
+|---|---|---|
+| `/` | 文档工作台 | 文档列表、搜索筛选、新建、上传、远程导入 |
+| `/preview/{documentId}` | 只读预览 | 只查看文件，不建立活跃编辑会话 |
+| `/editor/{documentId}` | 编辑工作台 | 进入可编辑模式，并在离开页面时显式结束编辑会话 |
 
 ## 远程资源安全
 

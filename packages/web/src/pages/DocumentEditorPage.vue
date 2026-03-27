@@ -11,6 +11,8 @@ const isLoading = ref(true);
 const errorMessage = ref("");
 const currentDocument = ref(null);
 const documents = ref([]);
+const isTopNoticeCollapsed = ref(false);
+const editorShellRef = ref(null);
 
 // 编辑页只认路由里的 documentId，把它视为唯一真相源。
 // 这样“切换文档”“刷新当前页”“回退高亮列表”都能围绕同一个 id 工作。
@@ -27,8 +29,8 @@ async function readErrorMessage(response, fallbackMessage) {
 
 async function loadEditorPageData() {
   // 编辑页需要同时拿到：
-  // 1. 当前文档详情，用于头部和侧栏展示；
-  // 2. 最近文档列表，用于侧栏切换入口。
+  // 1. 当前文档详情，用于顶部提示区和右侧标题栏展示；
+  // 2. 最近文档列表，用于右侧固定栏切换入口。
   // 这里并行请求，减少进入编辑页的等待时间。
   isLoading.value = true;
   errorMessage.value = "";
@@ -56,9 +58,21 @@ async function loadEditorPageData() {
   }
 }
 
-function goBackToLibrary() {
-  // 返回工作台时继续携带 highlight，帮助用户在列表里快速定位刚刚处理的文档。
-  router.push({ path: "/", query: { highlight: currentDocumentId.value } });
+async function closeCurrentEditingSession() {
+  if (!editorShellRef.value?.closeEditingSession) {
+    return;
+  }
+
+  await editorShellRef.value.closeEditingSession();
+}
+
+async function goBackToLibrary() {
+  try {
+    await closeCurrentEditingSession();
+    await router.push({ path: "/", query: { highlight: currentDocumentId.value } });
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "结束当前编辑会话失败";
+  }
 }
 
 async function requestOpenDocument(document) {
@@ -66,14 +80,21 @@ async function requestOpenDocument(document) {
     return;
   }
 
-  const confirmed = window.confirm(`即将离开当前文档并打开“${document.title}”，是否继续？`);
+  const confirmed = window.confirm(`即将结束当前文档会话并打开“${document.title}”，是否继续？`);
   if (!confirmed) {
     return;
   }
 
-  // 独立编辑页之间的切换仍然走路由，而不是内部替换组件 props。
-  // 这样可以保证浏览器地址、页面生命周期和数据加载全部同步更新。
-  await router.push({ name: "editor", params: { documentId: document.documentId } });
+  try {
+    await closeCurrentEditingSession();
+    await router.push({ name: "editor", params: { documentId: document.documentId } });
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "切换文档失败";
+  }
+}
+
+function toggleTopNotice() {
+  isTopNoticeCollapsed.value = !isTopNoticeCollapsed.value;
 }
 
 function formatTimestamp(value) {
@@ -90,8 +111,6 @@ function formatTimestamp(value) {
 watch(
   () => currentDocumentId.value,
   () => {
-    // 只要路由文档 id 变化，就重新拉取编辑页上下文。
-    // 这样同页切文档、刷新页面或直接访问深链接都走统一加载路径。
     loadEditorPageData();
   }
 );
@@ -101,22 +120,29 @@ onMounted(loadEditorPageData);
 
 <template>
   <main class="page-shell editor-page-shell">
-    <section class="surface-panel editor-page-header">
-      <div class="header-copy">
+    <section class="surface-panel editor-page-toolbar">
+      <div class="toolbar-copy">
         <p class="eyebrow">独立编辑工作台</p>
         <h1>{{ currentDocument?.title || currentDocumentId }}</h1>
-        <p class="muted-copy">
-          编辑页和列表页已经分开，返回文档工作台或切换到其他文档时都会走明确入口，不再依赖浏览器隐式回退。
-        </p>
       </div>
-      <div class="header-actions">
+      <div class="toolbar-actions">
         <button class="ghost-button secondary" type="button" @click="goBackToLibrary">
           返回文档列表
         </button>
         <button class="ghost-button compact" type="button" :disabled="isLoading" @click="loadEditorPageData">
           刷新文档上下文
         </button>
+        <button class="ghost-button compact" type="button" @click="toggleTopNotice">
+          {{ isTopNoticeCollapsed ? "展开提示" : "收起提示" }}
+        </button>
       </div>
+    </section>
+
+    <section v-if="!isTopNoticeCollapsed" class="surface-panel top-notice-card">
+      <p class="eyebrow">编辑提示</p>
+      <p class="muted-copy">
+        编辑页从 Phase 9 起固定为可编辑工作台。返回列表或切换文档时会显式结束当前编辑会话，避免列表中的“编辑中”状态滞留。
+      </p>
     </section>
 
     <section v-if="errorMessage" class="state-card error inline-state">
@@ -130,7 +156,15 @@ onMounted(loadEditorPageData);
       <p>正在加载编辑页...</p>
     </section>
 
-    <section v-else class="editor-layout">
+    <section v-else class="editor-layout" :class="{ compact: isTopNoticeCollapsed }">
+      <section class="editor-stage">
+        <EditorShell
+          ref="editorShellRef"
+          :document-id="currentDocumentId"
+          :document-title="currentDocument?.title || currentDocumentId"
+        />
+      </section>
+
       <aside class="surface-panel editor-sidebar">
         <section class="sidebar-section">
           <p class="eyebrow">当前文档</p>
@@ -162,13 +196,6 @@ onMounted(loadEditorPageData);
           </div>
         </section>
       </aside>
-
-      <section class="editor-stage">
-        <EditorShell
-          :document-id="currentDocumentId"
-          :document-title="currentDocument?.title || currentDocumentId"
-        />
-      </section>
     </section>
   </main>
 </template>
@@ -180,36 +207,56 @@ onMounted(loadEditorPageData);
   padding-bottom: 28px;
 }
 
-.editor-page-header {
+.editor-page-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 8;
   display: flex;
   gap: 16px;
   justify-content: space-between;
   align-items: flex-end;
 }
 
-.header-copy h1 {
-  margin: 8px 0 10px;
+.toolbar-copy h1 {
+  margin: 8px 0 0;
   font-size: clamp(30px, 3vw, 42px);
   line-height: 1;
 }
 
-.header-actions {
+.toolbar-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
 }
 
+.top-notice-card {
+  display: grid;
+  gap: 10px;
+}
+
 .editor-layout {
   display: grid;
   gap: 16px;
-  grid-template-columns: 320px minmax(0, 1fr);
-  min-height: calc(100vh - 220px);
+  grid-template-columns: minmax(0, 1fr) 320px;
+  min-height: calc(100vh - 250px);
+}
+
+.editor-layout.compact {
+  min-height: calc(100vh - 180px);
+}
+
+.editor-stage {
+  min-width: 0;
+  height: 100%;
 }
 
 .editor-sidebar {
   display: grid;
   gap: 16px;
   align-content: start;
+  position: sticky;
+  top: 96px;
+  height: fit-content;
 }
 
 .sidebar-section {
@@ -252,18 +299,19 @@ onMounted(loadEditorPageData);
   font-size: 13px;
 }
 
-.editor-stage {
-  min-width: 0;
-}
-
 @media (max-width: 980px) {
-  .editor-page-header {
+  .editor-page-toolbar {
     display: grid;
     gap: 12px;
+    position: static;
   }
 
   .editor-layout {
     grid-template-columns: 1fr;
+  }
+
+  .editor-sidebar {
+    position: static;
   }
 }
 </style>

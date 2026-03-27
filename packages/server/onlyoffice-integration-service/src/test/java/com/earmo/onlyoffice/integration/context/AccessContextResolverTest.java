@@ -7,6 +7,8 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AccessContextResolverTest {
 
@@ -60,6 +62,17 @@ class AccessContextResolverTest {
     assertEquals("native", accessContext.sourceSystem());
     assertEquals("user-a", accessContext.externalUserId());
     assertEquals("Alice", accessContext.displayName());
+  }
+
+  @Test
+  void shouldTreatDefaultProviderAsNonExplicitStrategy() {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+
+    assertFalse(new DefaultAccessContextProvider(properties).isExplicitStrategy());
+    assertTrue(new StubAccessContextProvider(
+        "custom-provider",
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of(), "custom")
+    ).isExplicitStrategy());
   }
 
   private record StubAccessContextProvider(String name, AccessContext accessContext) implements AccessContextProvider {

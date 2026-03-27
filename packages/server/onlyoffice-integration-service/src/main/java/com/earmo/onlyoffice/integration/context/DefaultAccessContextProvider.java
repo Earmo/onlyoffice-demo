@@ -25,6 +25,11 @@ public class DefaultAccessContextProvider implements AccessContextProvider {
   }
 
   @Override
+  public boolean isExplicitStrategy() {
+    return false;
+  }
+
+  @Override
   public Optional<AccessContext> resolve(HttpServletRequest request) {
     return Optional.of(new AccessContext(
         onlyofficeIntegrationProperties.getDefaultTenantId(),

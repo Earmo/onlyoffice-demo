@@ -52,8 +52,6 @@ const statusOptions = computed(() => uniqueOptions(documents.value.map(document 
 const documentTypeOptions = computed(() => uniqueOptions(documents.value.map(document => document.documentType)));
 const sourceSystemOptions = computed(() => uniqueOptions(documents.value.map(document => document.sourceSystem)));
 
-// 后端列表接口返回的是原始数据集，这里在前端侧根据当前结果提炼下拉选项。
-// 去重逻辑保持简单，避免为了 UI 选项再引入额外状态。
 function uniqueOptions(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -67,8 +65,6 @@ async function readErrorMessage(response, fallbackMessage) {
   }
 }
 
-// 统一收口列表查询参数构建，避免 loadDocuments 和其他操作重复拼接 URL。
-// 只在条件偏离默认值时携带查询参数，保持接口请求语义清晰。
 function buildListParams() {
   const params = new URLSearchParams();
   if (searchQuery.value) {
@@ -93,7 +89,6 @@ function buildListParams() {
 }
 
 async function loadDocuments() {
-  // 每次主动刷新列表前都先清空错误，保证页面状态始终围绕“当前这次请求”展示。
   isLoading.value = true;
   errorMessage.value = "";
 
@@ -113,19 +108,16 @@ async function loadDocuments() {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "文档列表加载失败";
   } finally {
-    // 无论成功失败都要结束 loading，让页面能切换到列表态、空态或错误态。
     isLoading.value = false;
   }
 }
 
 function syncHighlightFromRoute() {
-  // highlight 由列表页和编辑页之间共享，用于在返回工作台时把刚处理过的文档高亮出来。
   const highlight = route.query.highlight;
   highlightedDocumentId.value = typeof highlight === "string" ? highlight : "";
 }
 
 async function revealDocument(documentSummary, message) {
-  // 创建成功后的文档必须对用户可见，因此主动回到“全部文档”视图，避免被旧筛选条件隐藏。
   searchQuery.value = "";
   statusFilter.value = "all";
   documentTypeFilter.value = "all";
@@ -139,8 +131,6 @@ async function revealDocument(documentSummary, message) {
 }
 
 async function createDocument() {
-  // 这里仍保留最简单的 prompt 交互，因为这次需求重点是“先回流工作台”，
-  // 而不是在首页引入额外弹窗系统。后续若要升级成正式表单，这里是唯一入口。
   const title = window.prompt("请输入文档标题（可留空使用默认标题）", "未命名文档.docx");
   if (title === null) {
     return;
@@ -204,8 +194,6 @@ async function handleFileSelected(file) {
 }
 
 async function importRemoteDocument() {
-  // 远程导入与本地上传共用 revealDocument 语义：
-  // 创建成功后不直接跳进编辑器，而是先回到工作台列表并显式高亮结果。
   isImporting.value = true;
   successMessage.value = "";
   errorMessage.value = "";
@@ -234,9 +222,11 @@ async function importRemoteDocument() {
   }
 }
 
-function openDocument(document) {
-  // 进入编辑页时只传 documentId，真正的 editor-config、保存状态等运行时数据
-  // 都由独立编辑页自己拉取，保持列表页职责聚焦。
+function previewDocument(document) {
+  router.push({ name: "preview", params: { documentId: document.documentId } });
+}
+
+function editDocument(document) {
   router.push({ name: "editor", params: { documentId: document.documentId } });
 }
 
@@ -252,13 +242,11 @@ function formatTimestamp(value) {
 }
 
 async function applyFilters() {
-  // 用户重新搜索时清空成功提示，避免“创建成功”之类旧消息继续占据页面语义。
   successMessage.value = "";
   await loadDocuments();
 }
 
 async function resetFilters() {
-  // 重置不仅清空本地条件，也同步清理 URL 里的 highlight，保证首页状态完全归零。
   searchQuery.value = "";
   statusFilter.value = "all";
   documentTypeFilter.value = "all";
@@ -273,13 +261,11 @@ async function resetFilters() {
 watch(
   () => route.query.highlight,
   () => {
-    // 高亮信息只从路由同步，不额外依赖全局状态，便于列表页和编辑页解耦。
     syncHighlightFromRoute();
   },
   { immediate: true }
 );
 
-// 首次进入工作台时立即加载列表，后续搜索筛选和创建回流都复用同一入口。
 onMounted(loadDocuments);
 </script>
 
@@ -316,16 +302,24 @@ onMounted(loadDocuments);
           </div>
 
           <div v-if="recentDocuments.length" class="recent-grid">
-            <button
+            <article
               v-for="document in recentDocuments"
               :key="document.documentId"
               class="recent-item"
-              type="button"
-              @click="openDocument(document)"
             >
-              <span class="recent-title">{{ document.title }}</span>
-              <span class="recent-meta">{{ formatTimestamp(document.lastSavedTime) }}</span>
-            </button>
+              <div class="recent-copy">
+                <span class="recent-title">{{ document.title }}</span>
+                <span class="recent-meta">{{ formatTimestamp(document.lastSavedTime) }}</span>
+              </div>
+              <div class="recent-actions">
+                <button class="ghost-button secondary compact" type="button" @click="previewDocument(document)">
+                  查看文件
+                </button>
+                <button class="ghost-button compact" type="button" @click="editDocument(document)">
+                  编辑文档
+                </button>
+              </div>
+            </article>
           </div>
           <p v-else class="muted-copy">还没有最近文档，先创建或上传第一份内容。</p>
         </section>
@@ -436,7 +430,8 @@ onMounted(loadDocuments);
       v-else
       :documents="documents"
       :highlighted-document-id="highlightedDocumentId"
-      @open="openDocument"
+      @preview="previewDocument"
+      @edit="editDocument"
     />
   </main>
 </template>
@@ -483,12 +478,23 @@ onMounted(loadDocuments);
 }
 
 .recent-item {
+  display: grid;
+  gap: 10px;
   border: 1px solid var(--surface-border);
   border-radius: 18px;
   padding: 14px 16px;
   background: rgba(255, 255, 255, 0.72);
-  text-align: left;
-  cursor: pointer;
+}
+
+.recent-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.recent-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .recent-title,
@@ -501,7 +507,6 @@ onMounted(loadDocuments);
 }
 
 .recent-meta {
-  margin-top: 6px;
   color: var(--muted-soft);
   font-size: 13px;
 }

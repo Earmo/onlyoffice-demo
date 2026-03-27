@@ -10,6 +10,7 @@ import com.earmo.onlyoffice.integration.model.DocumentSummaryResponse;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
+import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import java.io.IOException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,6 +22,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,6 +44,7 @@ public class DocumentApiController {
 
   private final DocumentMetadataService documentMetadataService;
   private final DocumentStorageService documentStorageService;
+  private final DocumentStatusService documentStatusService;
   private final AccessAuditService accessAuditService;
   private final AccessContextResolver accessContextResolver;
 
@@ -63,15 +66,20 @@ public class DocumentApiController {
       HttpServletRequest request
   ) {
     AccessContext accessContext = accessContextResolver.resolve(request);
-    List<DocumentSummaryResponse> documents = documentMetadataService.listDocuments(
-            accessContext.tenantId(),
-            query,
-            status,
-            sourceSystem,
-            documentType,
-            sortDirection
-        ).stream()
-        .map(entity -> toSummary(entity, accessContext))
+    List<DocumentMetadataEntity> entities = documentMetadataService.listDocuments(
+        accessContext.tenantId(),
+        query,
+        status,
+        sourceSystem,
+        documentType,
+        sortDirection
+    );
+    Map<String, Integer> activeEditingCounts = documentStatusService.countActiveEditingSessions(
+        entities.stream().map(DocumentMetadataEntity::getDocumentId).toList()
+    );
+
+    List<DocumentSummaryResponse> documents = entities.stream()
+        .map(entity -> toSummary(entity, accessContext, activeEditingCounts.getOrDefault(entity.getDocumentId(), 0)))
         .filter(summary -> matchesStorage(summary, storage))
         .toList();
     return new DocumentListResponse(
@@ -90,7 +98,8 @@ public class DocumentApiController {
       HttpServletRequest request
   ) {
     AccessContext accessContext = accessContextResolver.resolve(request);
-    return toSummary(documentMetadataService.requireDocument(documentId), accessContext);
+    int activeEditors = documentStatusService.countActiveEditingSessions(List.of(documentId)).getOrDefault(documentId, 0);
+    return toSummary(documentMetadataService.requireDocument(documentId), accessContext, activeEditors);
   }
 
   @PostMapping
@@ -158,14 +167,19 @@ public class DocumentApiController {
     return toSummary(storedDocument, accessContext);
   }
 
-  private DocumentSummaryResponse toSummary(DocumentMetadataEntity entity, AccessContext accessContext) {
+  private DocumentSummaryResponse toSummary(
+      DocumentMetadataEntity entity,
+      AccessContext accessContext,
+      int activeEditingCount
+  ) {
     boolean storageAvailable = isStorageAvailable(entity);
+    String effectiveStatus = activeEditingCount > 0 ? DocumentMetadataService.STATUS_EDITING : entity.getStatus();
     return new DocumentSummaryResponse(
         entity.getDocumentId(),
         entity.getTitle(),
         entity.getFileType(),
         entity.getDocumentType(),
-        entity.getStatus(),
+        effectiveStatus,
         entity.getTenantId(),
         entity.getOwnerUser(),
         accessContext.actorUser(),

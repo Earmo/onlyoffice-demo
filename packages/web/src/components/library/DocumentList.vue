@@ -10,7 +10,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["open"]);
+const emit = defineEmits(["preview", "edit"]);
 
 function formatTimestamp(value) {
   if (!value) {
@@ -40,7 +40,6 @@ function statusLabel(document) {
 }
 
 function statusTone(document) {
-  // 列表视觉语义与文档摘要状态保持一致，避免模板里重复写映射逻辑。
   if (!document.storageAvailable) {
     return "is-error";
   }
@@ -54,15 +53,20 @@ function statusTone(document) {
   }[document.status] ?? "is-muted";
 }
 
-function openDocument(document) {
-  emit("open", document);
+function previewDocument(document) {
+  emit("preview", document);
 }
 
-function handleKeyboardOpen(event, document) {
-  // 整行可点击也要保留键盘可达性，方便通过 Enter / Space 进入文档。
+function editDocument(document) {
+  emit("edit", document);
+}
+
+function handleKeyboardPreview(event, document) {
+  // 整行继续保留键盘可达性，但 Phase 9 起整行行为明确为“查看文件”，
+  // 编辑动作则由单独按钮承担，避免整行点击就把用户送进可编辑工作台。
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
-    openDocument(document);
+    previewDocument(document);
   }
 }
 </script>
@@ -72,9 +76,9 @@ function handleKeyboardOpen(event, document) {
     <div class="section-heading">
       <div>
         <p class="eyebrow">文档列表</p>
-        <h2>继续处理你的文档</h2>
+        <h2>先查看，再决定是否进入编辑</h2>
       </div>
-      <p class="muted-copy">整行可直接进入编辑页，异常文档仍会保留在列表里并明确标记。</p>
+      <p class="muted-copy">整行可直接预览文档；“编辑文档”会进入独立可编辑工作台。</p>
     </div>
 
     <div class="document-grid" role="list">
@@ -85,8 +89,8 @@ function handleKeyboardOpen(event, document) {
         :class="{ highlighted: highlightedDocumentId === document.documentId }"
         role="button"
         tabindex="0"
-        @click="openDocument(document)"
-        @keydown="handleKeyboardOpen($event, document)"
+        @click="previewDocument(document)"
+        @keydown="handleKeyboardPreview($event, document)"
       >
         <div class="document-main">
           <div class="document-title-row">
@@ -114,8 +118,11 @@ function handleKeyboardOpen(event, document) {
         </div>
 
         <div class="document-actions">
-          <button class="ghost-button compact" type="button" @click.stop="openDocument(document)">
-            打开文档
+          <button class="ghost-button secondary compact" type="button" @click.stop="previewDocument(document)">
+            查看文件
+          </button>
+          <button class="ghost-button compact" type="button" @click.stop="editDocument(document)">
+            编辑文档
           </button>
         </div>
       </article>
@@ -204,8 +211,10 @@ function handleKeyboardOpen(event, document) {
 }
 
 .document-actions {
-  display: grid;
-  justify-items: end;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: end;
 }
 
 @media (max-width: 860px) {
@@ -219,7 +228,7 @@ function handleKeyboardOpen(event, document) {
   }
 
   .document-actions {
-    justify-items: start;
+    justify-content: start;
   }
 }
 </style>

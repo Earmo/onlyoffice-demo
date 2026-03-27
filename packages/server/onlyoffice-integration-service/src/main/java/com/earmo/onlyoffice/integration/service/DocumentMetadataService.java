@@ -61,11 +61,15 @@ public interface DocumentMetadataService {
 
   DocumentSaveStatusResponse markOpened(String documentId);
 
+  DocumentSaveStatusResponse markEditingStarted(String documentId);
+
   DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus);
 
   DocumentSaveStatusResponse markSaved(String documentId, Integer callbackStatus);
 
   DocumentSaveStatusResponse markFailed(String documentId, Integer callbackStatus, String message);
+
+  DocumentSaveStatusResponse reconcileClosedEditingSession(String documentId);
 
   DocumentSaveStatusResponse getStatus(String documentId);
 
