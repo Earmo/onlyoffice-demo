@@ -3,40 +3,48 @@
 
 spring:
   datasource:
-    # 开发环境默认连接本机 PostgreSQL。
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/onlyoffice}
+    # 本机通过映射端口访问容器内 PostgreSQL。
+    url: jdbc:postgresql://localhost:15434/onlyoffice
     # PostgreSQL 用户名。
-    username: ${SPRING_DATASOURCE_USERNAME:onlyoffice}
+    username: onlyoffice
     # PostgreSQL 密码。
-    password: ${SPRING_DATASOURCE_PASSWORD:onlyoffice}
+    password: onlyoffice
     # JDBC 驱动类。
-    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.postgresql.Driver}
+    driver-class-name: org.postgresql.Driver
+
 
 onlyoffice:
   integration:
-    # 开发环境下浏览器访问本服务的默认公开地址。
-    public-base-url: ${ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL:http://localhost:8080}
-    # 开发环境下 ONLYOFFICE 回调本服务的默认内部地址。
-    internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL:http://host.docker.internal:8080}
-    # 浏览器加载 ONLYOFFICE Docs 的默认地址。
-    document-server-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL:http://localhost:18080}
+    # 浏览器访问本机后端时使用的公开地址。
+    public-base-url: http://localhost:8080
+    # ONLYOFFICE 容器回调 Windows 本机后端时使用的内部地址。
+    internal-base-url: http://host.docker.internal:8080
+    # 浏览器加载 Docker 内 ONLYOFFICE Docs 静态资源时使用的宿主机地址。
+    document-server-url: http://localhost:18080
     access-context:
       # 开发环境允许用默认值补齐缺失字段，便于本地联调。
       allow-default-context: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ALLOW_DEFAULT_CONTEXT:true}
     storage:
-      # 开发环境默认仍以 local 为主，便于不依赖对象存储也能启动。
-      default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:local}
-      cos:
-        # 开发环境下的 COS 地域占位，联调腾讯云时按实际地域覆盖。
-        region: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_REGION:ap-guangzhou}
-        # 开发环境下的 COS bucket 占位，通常需要带 appId 后缀。
-        bucket: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_BUCKET:onlyoffice-documents-1250000000}
-        # 开发环境 SecretId 占位，真正联调时请显式覆盖。
-        secret-id: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_SECRET_ID:placeholder-secret-id}
-        # 开发环境 SecretKey 占位，真正联调时请显式覆盖。
-        secret-key: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_SECRET_KEY:placeholder-secret-key}
-        # COS 域名后缀，默认走腾讯云公有云地址。
-        endpoint-suffix: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_ENDPOINT_SUFFIX:cos.myqcloud.com}
+      # Windows 本地调试时默认直接走 MinIO，方便验证对象存储与 callback 回写。
+      default-provider: minio
+      routing:
+        # 如需按租户切换存储策略，可在此填写 tenantId -> provider 映射。
+        tenants: {}
+        # 如需按来源系统切换存储策略，可在此填写 sourceSystem -> provider 映射。
+        source-systems: {}
+      minio:
+        # 本机通过映射端口访问容器内 MinIO。
+        endpoint: http://localhost:9000
+        # 调试时使用的 bucket 名称。
+        bucket: onlyoffice-documents
+        # 调试时使用的 Access Key。
+        access-key: onlyoffice
+        # 调试时使用的 Secret Key。
+        secret-key: onlyoffice123
+        # MinIO 本地调试保持 path-style 访问。
+        path-style-access: true
+        # 本地调试默认不启用 HTTPS。
+        secure: false
     remote-resource:
       # 开发环境默认仍禁止私网访问，避免本地联调时无意放宽 SSRF 边界。
       allow-private-address-access: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_ALLOW_PRIVATE_ADDRESS_ACCESS:false}

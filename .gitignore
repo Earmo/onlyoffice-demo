@@ -43,6 +43,7 @@ packages/server/storage/
 .trae/
 .kiro/
 .cursor/
+.planning/
 
 **/rebel.xml
 *.iml

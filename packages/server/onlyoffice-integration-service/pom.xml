@@ -73,7 +73,6 @@
       <artifactId>cos_api</artifactId>
       <version>${tencent.cos.version}</version>
     </dependency>
-
     <dependency>
       <groupId>com.squareup.okhttp3</groupId>
       <artifactId>okhttp-jvm</artifactId>

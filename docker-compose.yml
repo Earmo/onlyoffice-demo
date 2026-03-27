@@ -2,7 +2,7 @@ name: onlyoffice-integration-starter
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18.1-alpine
     container_name: onlyoffice-integration-postgres
     environment:
       POSTGRES_DB: onlyoffice
