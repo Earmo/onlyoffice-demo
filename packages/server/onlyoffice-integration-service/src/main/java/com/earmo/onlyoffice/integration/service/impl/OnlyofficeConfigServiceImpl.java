@@ -131,7 +131,9 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     toolbar.put("collaboration", false);
 
     Map<String, Object> leftMenu = new LinkedHashMap<>();
-    leftMenu.put("mode", true);
+    // 左侧文档目录需要默认固定展示，因此隐藏“折叠菜单模式”切换入口，
+    // 让用户进入编辑页后直接看到稳定的导航区，而不是先看到一个折叠按钮。
+    leftMenu.put("mode", false);
     leftMenu.put("navigation", true);
     leftMenu.put("spellcheck", false);
 
@@ -160,7 +162,9 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     customization.put("forcesave", false);
     customization.put("comments", false);
     customization.put("compactHeader", true);
-    customization.put("compactToolbar", true);
+    // 编辑页希望默认展开完整工具栏，而不是仅展示压缩标签栏。
+    customization.put("compactToolbar", false);
+    customization.put("toolbarNoTabs", false);
     customization.put("feedback", Map.of("visible", false));
     customization.put("features", Map.of("featuresTips", false));
     customization.put("help", false);

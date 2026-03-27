@@ -29,8 +29,8 @@ async function readErrorMessage(response, fallbackMessage) {
 
 async function loadEditorPageData() {
   // 编辑页需要同时拿到：
-  // 1. 当前文档详情，用于顶部提示区和右侧标题栏展示；
-  // 2. 最近文档列表，用于右侧固定栏切换入口。
+  // 1. 当前文档详情，用于顶部提示区和左侧固定栏展示；
+  // 2. 最近文档列表，用于左侧固定栏切换入口。
   // 这里并行请求，减少进入编辑页的等待时间。
   isLoading.value = true;
   errorMessage.value = "";
@@ -120,30 +120,36 @@ onMounted(loadEditorPageData);
 
 <template>
   <main class="page-shell editor-page-shell">
-    <section class="surface-panel editor-page-toolbar">
-      <div class="toolbar-copy">
-        <p class="eyebrow">独立编辑工作台</p>
-        <h1>{{ currentDocument?.title || currentDocumentId }}</h1>
-      </div>
-      <div class="toolbar-actions">
-        <button class="ghost-button secondary" type="button" @click="goBackToLibrary">
-          返回文档列表
-        </button>
-        <button class="ghost-button compact" type="button" :disabled="isLoading" @click="loadEditorPageData">
-          刷新文档上下文
-        </button>
-        <button class="ghost-button compact" type="button" @click="toggleTopNotice">
-          {{ isTopNoticeCollapsed ? "展开提示" : "收起提示" }}
-        </button>
-      </div>
-    </section>
+    <template v-if="!isTopNoticeCollapsed">
+      <section class="surface-panel editor-page-toolbar">
+        <div class="toolbar-copy">
+          <p class="eyebrow">独立编辑工作台</p>
+          <h1>{{ currentDocument?.title || currentDocumentId }}</h1>
+        </div>
+        <div class="toolbar-actions">
+          <button class="ghost-button secondary" type="button" @click="goBackToLibrary">
+            返回文档列表
+          </button>
+          <button class="ghost-button compact" type="button" :disabled="isLoading" @click="loadEditorPageData">
+            刷新文档上下文
+          </button>
+          <button class="ghost-button compact" type="button" @click="toggleTopNotice">
+            收起提示
+          </button>
+        </div>
+      </section>
 
-    <section v-if="!isTopNoticeCollapsed" class="surface-panel top-notice-card">
-      <p class="eyebrow">编辑提示</p>
-      <p class="muted-copy">
-        编辑页从 Phase 9 起固定为可编辑工作台。返回列表或切换文档时会显式结束当前编辑会话，避免列表中的“编辑中”状态滞留。
-      </p>
-    </section>
+      <section class="surface-panel top-notice-card">
+        <p class="eyebrow">编辑提示</p>
+        <p class="muted-copy">
+          编辑页从 Phase 9 起固定为可编辑工作台。返回列表或切换文档时会显式结束当前编辑会话，避免列表中的“编辑中”状态滞留。
+        </p>
+      </section>
+    </template>
+
+    <button v-else class="ghost-button compact editor-topbar-reveal" type="button" @click="toggleTopNotice">
+      展开顶部信息
+    </button>
 
     <section v-if="errorMessage" class="state-card error inline-state">
       <p>{{ errorMessage }}</p>
@@ -157,14 +163,6 @@ onMounted(loadEditorPageData);
     </section>
 
     <section v-else class="editor-layout" :class="{ compact: isTopNoticeCollapsed }">
-      <section class="editor-stage">
-        <EditorShell
-          ref="editorShellRef"
-          :document-id="currentDocumentId"
-          :document-title="currentDocument?.title || currentDocumentId"
-        />
-      </section>
-
       <aside class="surface-panel editor-sidebar">
         <section class="sidebar-section">
           <p class="eyebrow">当前文档</p>
@@ -196,6 +194,14 @@ onMounted(loadEditorPageData);
           </div>
         </section>
       </aside>
+
+      <section class="editor-stage">
+        <EditorShell
+          ref="editorShellRef"
+          :document-id="currentDocumentId"
+          :document-title="currentDocument?.title || currentDocumentId"
+        />
+      </section>
     </section>
   </main>
 </template>
@@ -234,11 +240,19 @@ onMounted(loadEditorPageData);
   gap: 10px;
 }
 
+.editor-topbar-reveal {
+  position: sticky;
+  top: 12px;
+  z-index: 8;
+  justify-self: end;
+}
+
 .editor-layout {
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   min-height: calc(100vh - 250px);
+  align-items: start;
 }
 
 .editor-layout.compact {
@@ -247,7 +261,7 @@ onMounted(loadEditorPageData);
 
 .editor-stage {
   min-width: 0;
-  height: 100%;
+  min-height: 0;
 }
 
 .editor-sidebar {
@@ -304,6 +318,11 @@ onMounted(loadEditorPageData);
     display: grid;
     gap: 12px;
     position: static;
+  }
+
+  .editor-topbar-reveal {
+    position: static;
+    justify-self: start;
   }
 
   .editor-layout {

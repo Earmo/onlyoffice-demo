@@ -83,6 +83,9 @@ class OnlyofficeConfigServiceTest {
     Map<String, Object> document = cast(config.get("document"));
     Map<String, Object> editorConfig = cast(config.get("editorConfig"));
     Map<String, Object> permissions = cast(document.get("permissions"));
+    Map<String, Object> customization = cast(editorConfig.get("customization"));
+    Map<String, Object> layout = cast(customization.get("layout"));
+    Map<String, Object> leftMenu = cast(layout.get("leftMenu"));
 
     assertEquals("https://docs.example.test/", response.documentServerUrl());
     assertTrue(document.get("url").toString().contains("http://internal.example.test/api/documents/demo/file"));
@@ -94,6 +97,10 @@ class OnlyofficeConfigServiceTest {
     assertEquals(Boolean.TRUE, permissions.get("comment"));
     assertEquals(Boolean.TRUE, permissions.get("download"));
     assertEquals(Boolean.FALSE, permissions.get("print"));
+    assertEquals(Boolean.FALSE, customization.get("compactToolbar"));
+    assertEquals(Boolean.FALSE, customization.get("toolbarNoTabs"));
+    assertEquals(Boolean.FALSE, leftMenu.get("mode"));
+    assertEquals(Boolean.TRUE, leftMenu.get("navigation"));
     assertNotNull(config.get("token"));
   }
 

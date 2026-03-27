@@ -27,8 +27,10 @@ const props = defineProps({
 // 2. 承载 ONLYOFFICE 编辑器实例；
 // 3. 在编辑模式下轮询 save-status；
 // 4. 在页面离开或切换文档时，向后端显式结束当前编辑会话。
+// Phase 9 的这一版还恢复了“右侧悬浮按钮 -> 固定控制台面板”的交互，
+// 避免编辑器顶部再出现额外一层 shell-toolbar，减少对主工作区的挤压。
 const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
-const isConsoleCollapsed = ref(false);
+const isConsoleOpen = ref(false);
 const isLoading = ref(true);
 const isInsertingImage = ref(false);
 const errorMessage = ref("");
@@ -99,7 +101,11 @@ async function loadSaveStatus() {
 }
 
 function toggleConsole() {
-  isConsoleCollapsed.value = !isConsoleCollapsed.value;
+  isConsoleOpen.value = !isConsoleOpen.value;
+}
+
+function closeConsole() {
+  isConsoleOpen.value = false;
 }
 
 function getDocEditorInstance() {
@@ -226,10 +232,13 @@ function saveStatusTone(state) {
 
 watch(
   () => [props.documentId, props.readonly, props.showConsole],
-  async (_newValue, _oldValue) => {
+  async () => {
     stopSaveStatusPolling();
     saveStatus.value = null;
     editingSessionOpened.value = false;
+    if (!props.showConsole || props.readonly) {
+      isConsoleOpen.value = false;
+    }
     await loadEditorConfig();
   },
   { immediate: true }
@@ -246,39 +255,7 @@ defineExpose({
 </script>
 
 <template>
-  <section
-    class="editor-workspace"
-    :class="{
-      'with-console': shouldShowConsole,
-      'console-collapsed': shouldShowConsole && isConsoleCollapsed
-    }"
-  >
-    <header class="surface-panel shell-toolbar">
-      <div class="toolbar-copy">
-        <p class="eyebrow">编辑运行态</p>
-        <h2>{{ props.documentTitle || props.documentId }}</h2>
-        <p class="summary">
-          {{ props.readonly ? "当前页面以只读预览方式打开文档，不建立活跃编辑会话。" : "当前页面已进入可编辑工作台，离开页面前会显式结束当前编辑会话。" }}
-        </p>
-      </div>
-
-      <div class="toolbar-actions">
-        <span class="status-chip is-outline">{{ modeLabel }}</span>
-        <button class="ghost-button secondary compact" type="button" :disabled="isLoading" @click="loadEditorConfig">
-          重新加载配置
-        </button>
-        <button
-          v-if="shouldShowConsole"
-          class="ghost-button compact"
-          type="button"
-          :disabled="isLoading"
-          @click="toggleConsole"
-        >
-          {{ isConsoleCollapsed ? "展开控制台" : "收起控制台" }}
-        </button>
-      </div>
-    </header>
-
+  <section class="editor-workspace">
     <section class="editor-stage-stack">
       <section v-if="isLoading" class="state-card">
         <p>正在获取编辑器配置...</p>
@@ -305,8 +282,35 @@ defineExpose({
       </section>
     </section>
 
-    <aside v-if="shouldShowConsole" class="side-panel docked-console" aria-label="编辑器控制台">
-      <div v-if="!isConsoleCollapsed" class="console-body">
+    <button
+      v-if="shouldShowConsole && !isConsoleOpen"
+      class="panel-toggle"
+      type="button"
+      @click="toggleConsole"
+    >
+      打开控制台
+    </button>
+
+    <aside
+      v-if="shouldShowConsole"
+      class="side-panel floating-console"
+      :class="{ open: isConsoleOpen }"
+      aria-label="编辑器控制台"
+    >
+      <div class="console-panel-header">
+        <div>
+          <p class="eyebrow">编辑运行态</p>
+          <h2>{{ props.documentTitle || props.documentId }}</h2>
+          <p class="summary">
+            {{ props.readonly ? "当前页面以只读预览方式打开文档，不建立活跃编辑会话。" : "当前页面已进入可编辑工作台，离开页面前会显式结束当前编辑会话。" }}
+          </p>
+        </div>
+        <button class="panel-close" type="button" @click="closeConsole">
+          收起控制台
+        </button>
+      </div>
+
+      <div class="console-body">
         <section class="panel-section">
           <p class="panel-section-title">当前文档</p>
           <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
@@ -342,6 +346,12 @@ defineExpose({
 
         <section class="panel-section">
           <p class="panel-section-title">编辑动作</p>
+          <div class="console-inline-actions">
+            <span class="status-chip is-outline">{{ modeLabel }}</span>
+            <button class="ghost-button secondary compact" type="button" :disabled="isLoading" @click="loadEditorConfig">
+              重新加载配置
+            </button>
+          </div>
           <label class="field-grid">
             <span>网络图片地址</span>
             <input
@@ -362,84 +372,44 @@ defineExpose({
           </button>
         </section>
       </div>
-
-      <div v-else class="collapsed-rail">
-        <button class="ghost-button compact" type="button" @click="toggleConsole">
-          展开控制台
-        </button>
-      </div>
     </aside>
   </section>
 </template>
 
 <style scoped>
 .editor-workspace {
-  display: grid;
-  gap: 14px;
-  min-height: 0;
+  position: relative;
   height: 100%;
 }
 
-.editor-workspace.with-console {
-  grid-template-columns: minmax(0, 1fr) 360px;
-  grid-template-areas:
-    "toolbar toolbar"
-    "stage console";
-}
-
-.editor-workspace.with-console.console-collapsed {
-  grid-template-columns: minmax(0, 1fr) 96px;
-}
-
-.shell-toolbar {
-  grid-area: toolbar;
-  position: sticky;
-  top: 0;
-  z-index: 6;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  align-items: flex-end;
-}
-
-.toolbar-copy h2 {
-  margin: 8px 0;
-  font-size: clamp(24px, 2.4vw, 34px);
-}
-
-.toolbar-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
 .editor-stage-stack {
-  grid-area: stage;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .editor-shell {
-  overflow: hidden;
-  min-height: calc(100vh - 310px);
+  min-height: calc(100vh - 250px);
 }
 
 .editor-shell > div {
   height: 100%;
 }
 
-.docked-console {
-  grid-area: console;
-  position: sticky;
-  top: 112px;
-  align-self: start;
+.floating-console {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.console-panel-header {
   display: grid;
-  min-height: calc(100vh - 220px);
-  max-height: calc(100vh - 220px);
-  overflow: hidden;
+  gap: 14px;
+}
+
+.console-panel-header h2 {
+  margin: 8px 0;
+  font-size: clamp(24px, 2.4vw, 34px);
 }
 
 .console-body {
@@ -448,14 +418,6 @@ defineExpose({
   align-content: start;
   overflow: auto;
   padding-right: 4px;
-}
-
-.collapsed-rail {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
 }
 
 .field-grid {
@@ -494,31 +456,22 @@ defineExpose({
   color: var(--muted-strong);
 }
 
+.console-inline-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 1180px) {
-  .editor-workspace.with-console,
-  .editor-workspace.with-console.console-collapsed {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "toolbar"
-      "stage"
-      "console";
-  }
-
-  .docked-console {
-    position: static;
-    min-height: auto;
-    max-height: none;
-  }
-
-  .collapsed-rail {
-    writing-mode: horizontal-tb;
+  .editor-shell {
+    min-height: calc(100vh - 220px);
   }
 }
 
 @media (max-width: 760px) {
-  .shell-toolbar {
-    display: grid;
-    gap: 12px;
+  .console-panel-header h2 {
+    font-size: 26px;
   }
 }
 </style>

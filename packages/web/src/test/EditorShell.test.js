@@ -17,7 +17,7 @@ describe("EditorShell", () => {
     fetch.mockReset();
   });
 
-  it("应在编辑模式加载配置、展示固定控制台并结束编辑会话", async () => {
+  it("应在编辑模式加载配置、通过悬浮按钮展开控制台并结束编辑会话", async () => {
     fetch
       .mockResolvedValueOnce(jsonResponse({
         documentServerUrl: "https://docs.example.test/",
@@ -63,10 +63,18 @@ describe("EditorShell", () => {
     await flushPromises();
 
     expect(fetch.mock.calls[0][0]).toContain("/api/documents/doc-1/editor-config?readonly=false");
+    expect(wrapper.text()).toContain("最新修改已成功回写到共享存储。");
+    expect(wrapper.find(".panel-toggle").exists()).toBe(true);
+    expect(wrapper.find(".floating-console").classes()).not.toContain("open");
+
+    await wrapper.find(".panel-toggle").trigger("click");
+    expect(wrapper.find(".floating-console").classes()).toContain("open");
     expect(wrapper.text()).toContain("编辑模式");
     expect(wrapper.text()).toContain("路线图.docx");
-    expect(wrapper.text()).toContain("最新修改已成功回写到共享存储。");
-    expect(wrapper.find(".docked-console").exists()).toBe(true);
+
+    const closeButton = wrapper.findAll("button").find(button => button.text().includes("收起控制台"));
+    await closeButton.trigger("click");
+    expect(wrapper.find(".floating-console").classes()).not.toContain("open");
 
     await wrapper.vm.closeEditingSession();
     await flushPromises();
@@ -98,8 +106,9 @@ describe("EditorShell", () => {
     await flushPromises();
 
     expect(fetch.mock.calls[0][0]).toContain("/api/documents/doc-2/editor-config?readonly=true");
-    expect(wrapper.text()).toContain("预览模式");
-    expect(wrapper.find(".docked-console").exists()).toBe(false);
+    expect(wrapper.text()).toContain("预览稿.docx");
+    expect(wrapper.find(".floating-console").exists()).toBe(false);
+    expect(wrapper.find(".panel-toggle").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("编辑动作");
   });
 });
