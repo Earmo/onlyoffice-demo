@@ -13,6 +13,8 @@ const errorMessage = ref("");
 const currentDocument = ref(null);
 const documents = ref([]);
 
+// 编辑页只认路由里的 documentId，把它视为唯一真相源。
+// 这样“切换文档”“刷新当前页”“回退高亮列表”都能围绕同一个 id 工作。
 const currentDocumentId = computed(() => String(route.params.documentId ?? ""));
 
 async function readErrorMessage(response, fallbackMessage) {
@@ -25,6 +27,10 @@ async function readErrorMessage(response, fallbackMessage) {
 }
 
 async function loadEditorPageData() {
+  // 编辑页需要同时拿到：
+  // 1. 当前文档详情，用于头部和侧栏展示；
+  // 2. 最近文档列表，用于侧栏切换入口。
+  // 这里并行请求，减少进入编辑页的等待时间。
   isLoading.value = true;
   errorMessage.value = "";
 
@@ -52,6 +58,7 @@ async function loadEditorPageData() {
 }
 
 function goBackToLibrary() {
+  // 返回工作台时继续携带 highlight，帮助用户在列表里快速定位刚刚处理的文档。
   router.push({ path: "/", query: { highlight: currentDocumentId.value } });
 }
 
@@ -65,6 +72,8 @@ async function requestOpenDocument(document) {
     return;
   }
 
+  // 独立编辑页之间的切换仍然走路由，而不是内部替换组件 props。
+  // 这样可以保证浏览器地址、页面生命周期和数据加载全部同步更新。
   await router.push({ name: "editor", params: { documentId: document.documentId } });
 }
 
@@ -82,6 +91,8 @@ function formatTimestamp(value) {
 watch(
   () => currentDocumentId.value,
   () => {
+    // 只要路由文档 id 变化，就重新拉取编辑页上下文。
+    // 这样同页切文档、刷新页面或直接访问深链接都走统一加载路径。
     loadEditorPageData();
   }
 );

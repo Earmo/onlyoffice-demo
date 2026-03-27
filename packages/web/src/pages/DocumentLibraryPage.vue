@@ -9,6 +9,10 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 const route = useRoute();
 const router = useRouter();
 
+// 这里维护的是“工作台首页”级别状态：
+// - documents 是当前列表结果；
+// - tenant/actor 信息用于顶部上下文提示；
+// - success/error/highlight 用于处理创建回流、错误反馈和列表定位。
 const documents = ref([]);
 const tenantId = ref("");
 const actorUser = ref("");
@@ -23,6 +27,8 @@ const isCreating = ref(false);
 const isUploading = ref(false);
 const isImporting = ref(false);
 
+// 搜索与筛选条件统一放在页面层，列表组件只负责展示，不自己持有筛选逻辑。
+// 这样创建/上传/导入成功后，页面可以主动重置条件并回到“全部文档”视图。
 const searchQuery = ref("");
 const statusFilter = ref("all");
 const documentTypeFilter = ref("all");
@@ -47,6 +53,8 @@ const statusOptions = computed(() => uniqueOptions(documents.value.map(document 
 const documentTypeOptions = computed(() => uniqueOptions(documents.value.map(document => document.documentType)));
 const sourceSystemOptions = computed(() => uniqueOptions(documents.value.map(document => document.sourceSystem)));
 
+// 后端列表接口返回的是原始数据集，这里在前端侧根据当前结果提炼下拉选项。
+// 去重逻辑保持简单，避免为了 UI 选项再引入额外状态。
 function uniqueOptions(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -60,6 +68,8 @@ async function readErrorMessage(response, fallbackMessage) {
   }
 }
 
+// 统一收口列表查询参数构建，避免 loadDocuments 和其他操作重复拼接 URL。
+// 只在条件偏离默认值时携带查询参数，保持接口请求语义清晰。
 function buildListParams() {
   const params = new URLSearchParams();
   if (searchQuery.value) {
@@ -84,6 +94,7 @@ function buildListParams() {
 }
 
 async function loadDocuments() {
+  // 每次主动刷新列表前都先清空错误，保证页面状态始终围绕“当前这次请求”展示。
   isLoading.value = true;
   errorMessage.value = "";
 
@@ -103,11 +114,13 @@ async function loadDocuments() {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "文档列表加载失败";
   } finally {
+    // 无论成功失败都要结束 loading，让页面能切换到列表态、空态或错误态。
     isLoading.value = false;
   }
 }
 
 function syncHighlightFromRoute() {
+  // highlight 由列表页和编辑页之间共享，用于在返回工作台时把刚处理过的文档高亮出来。
   const highlight = route.query.highlight;
   highlightedDocumentId.value = typeof highlight === "string" ? highlight : "";
 }
@@ -127,6 +140,8 @@ async function revealDocument(documentSummary, message) {
 }
 
 async function createDocument() {
+  // 这里仍保留最简单的 prompt 交互，因为这次需求重点是“先回流工作台”，
+  // 而不是在首页引入额外弹窗系统。后续若要升级成正式表单，这里是唯一入口。
   const title = window.prompt("请输入文档标题（可留空使用默认标题）", "未命名文档.docx");
   if (title === null) {
     return;
@@ -190,6 +205,8 @@ async function handleFileSelected(file) {
 }
 
 async function importRemoteDocument() {
+  // 远程导入与本地上传共用 revealDocument 语义：
+  // 创建成功后不直接跳进编辑器，而是先回到工作台列表并显式高亮结果。
   isImporting.value = true;
   successMessage.value = "";
   errorMessage.value = "";
@@ -219,6 +236,8 @@ async function importRemoteDocument() {
 }
 
 function openDocument(document) {
+  // 进入编辑页时只传 documentId，真正的 editor-config、保存状态等运行时数据
+  // 都由独立编辑页自己拉取，保持列表页职责聚焦。
   router.push({ name: "editor", params: { documentId: document.documentId } });
 }
 
@@ -234,11 +253,13 @@ function formatTimestamp(value) {
 }
 
 async function applyFilters() {
+  // 用户重新搜索时清空成功提示，避免“创建成功”之类旧消息继续占据页面语义。
   successMessage.value = "";
   await loadDocuments();
 }
 
 async function resetFilters() {
+  // 重置不仅清空本地条件，也同步清理 URL 里的 highlight，保证首页状态完全归零。
   searchQuery.value = "";
   statusFilter.value = "all";
   documentTypeFilter.value = "all";
@@ -253,11 +274,13 @@ async function resetFilters() {
 watch(
   () => route.query.highlight,
   () => {
+    // 高亮信息只从路由同步，不额外依赖全局状态，便于列表页和编辑页解耦。
     syncHighlightFromRoute();
   },
   { immediate: true }
 );
 
+// 首次进入工作台时立即加载列表，后续搜索筛选和创建回流都复用同一入口。
 onMounted(loadDocuments);
 </script>
 

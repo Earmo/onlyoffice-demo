@@ -27,6 +27,8 @@ const emit = defineEmits([
   "update:remoteDocumentUrl"
 ]);
 
+// 这个组件故意不直接发请求，而是只负责“采集用户意图并向父层抛事件”。
+// 这样页面层可以统一处理 loading、成功提示、错误提示和回流高亮语义。
 const fileInputRef = ref(null);
 
 function openFilePicker() {
@@ -34,6 +36,8 @@ function openFilePicker() {
 }
 
 function handleFileSelected(event) {
+  // 原生 file input 不会在选择同一个文件时重复触发 change，
+  // 所以这里在抛出文件后手动清空 value，保证用户重复上传同一文件也能生效。
   const file = event.target.files?.[0];
   if (file) {
     emit("file-selected", file);

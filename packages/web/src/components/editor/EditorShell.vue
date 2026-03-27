@@ -15,6 +15,12 @@ const props = defineProps({
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 
+// 这个组件只负责“单文档编辑运行态”：
+// - 拉取 editor-config；
+// - 挂载 ONLYOFFICE 编辑器；
+// - 轮询保存状态；
+// - 承接右侧控制台动作。
+// 文档切换、返回列表等页面级能力由外层编辑页负责。
 const readonly = ref(false);
 const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
 const isPanelOpen = ref(false);
@@ -36,6 +42,8 @@ async function readErrorMessage(response, fallbackMessage) {
 }
 
 async function loadEditorConfig() {
+  // editor-config 是 ONLYOFFICE 宿主最核心的运行时配置。
+  // 每当文档切换、只读模式切换或用户主动刷新时，都需要重新向后端获取一次。
   isLoading.value = true;
   errorMessage.value = "";
 
@@ -51,7 +59,10 @@ async function loadEditorConfig() {
     }
 
     editorPayload.value = await response.json();
+    // 重新拿到配置后顺手刷新一次保存状态，保证控制台里的信息与当前文档同步。
     await loadSaveStatus();
+    // ONLYOFFICE Vue 包裹组件对深层配置变化不总是完全响应，
+    // 因此这里通过递增 key 强制重建编辑器实例，确保新配置生效。
     editorKey.value += 1;
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "未知错误";
@@ -68,11 +79,13 @@ async function loadSaveStatus() {
     }
     saveStatus.value = await response.json();
   } catch (error) {
+    // 保存状态失败不阻塞主编辑器渲染，只在控制台排障即可。
     console.error("加载保存状态失败", error);
   }
 }
 
 async function toggleReadonly() {
+  // 只读/可编辑本质上会改变后端生成的 editor-config，因此不能只改本地标记。
   readonly.value = !readonly.value;
   await loadEditorConfig();
 }
@@ -86,6 +99,8 @@ function closePanel() {
 }
 
 function getDocEditorInstance() {
+  // ONLYOFFICE 组件实例通过全局对象暴露，这里集中封装读取逻辑，
+  // 避免业务代码到处直接访问 window.DocEditor。
   return window.DocEditor?.instances?.docEditor;
 }
 
@@ -105,6 +120,8 @@ async function insertRemoteImage() {
   errorMessage.value = "";
 
   try {
+    // 先让后端完成图片代理、安全校验和插图 payload 生成，
+    // 前端只负责把 payload 交给编辑器，不自己拼接插图协议。
     const response = await fetch(`${apiBaseUrl}/api/documents/${props.documentId}/images/insert`, {
       method: "POST",
       headers: {
@@ -129,15 +146,18 @@ async function insertRemoteImage() {
 }
 
 function handleDocumentReady() {
+  // 编辑器真正 ready 后再启动状态轮询，避免在组件未挂载完成时提前打接口。
   console.log("ONLYOFFICE 文档已加载完成");
   startSaveStatusPolling();
 }
 
 function handleLoadComponentError(errorCode, errorDescription) {
+  // ONLYOFFICE 静态资源、脚本或运行时协议异常时，这里统一转换成页面可见错误。
   errorMessage.value = `ONLYOFFICE 组件加载失败（${errorCode}）：${errorDescription}`;
 }
 
 function startSaveStatusPolling() {
+  // 轮询前先清理旧定时器，避免重复进入编辑页或切文档时产生并发轮询。
   stopSaveStatusPolling();
   saveStatusTimer = window.setInterval(() => {
     loadSaveStatus();
@@ -163,6 +183,7 @@ function formatTimestamp(value) {
 }
 
 function saveStatusTone(state) {
+  // 保存状态颜色统一在这里映射，模板只负责消费语义化 class。
   return {
     "is-idle": state === "idle",
     "is-progress": state === "callback-received",
@@ -174,6 +195,11 @@ function saveStatusTone(state) {
 watch(
   () => props.documentId,
   async () => {
+    // 切换文档时必须完整重置运行态：
+    // - 停掉旧轮询；
+    // - 回到可编辑默认值；
+    // - 清空上一个文档的保存状态；
+    // - 重新拉取当前文档配置。
     stopSaveStatusPolling();
     readonly.value = false;
     saveStatus.value = null;
@@ -182,6 +208,7 @@ watch(
   { immediate: true }
 );
 
+// 组件卸载时要及时停掉轮询，避免离开编辑页后仍持续请求 save-status。
 onBeforeUnmount(stopSaveStatusPolling);
 </script>
 

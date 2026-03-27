@@ -24,6 +24,8 @@ function formatTimestamp(value) {
 }
 
 function statusLabel(document) {
+  // storageAvailable 为 false 时，优先把问题表达成“存储异常”，
+  // 这样列表页能第一时间暴露对象丢失或存储不可用等异常，而不是只显示业务状态。
   if (!document.storageAvailable) {
     return "存储异常";
   }
@@ -38,6 +40,7 @@ function statusLabel(document) {
 }
 
 function statusTone(document) {
+  // 列表视觉语义与文档摘要状态保持一致，避免模板里重复写映射逻辑。
   if (!document.storageAvailable) {
     return "is-error";
   }
@@ -56,6 +59,7 @@ function openDocument(document) {
 }
 
 function handleKeyboardOpen(event, document) {
+  // 整行可点击也要保留键盘可达性，方便通过 Enter / Space 进入文档。
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
     openDocument(document);
