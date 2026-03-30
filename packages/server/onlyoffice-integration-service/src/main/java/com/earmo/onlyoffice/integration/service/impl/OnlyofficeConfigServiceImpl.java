@@ -131,9 +131,9 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     toolbar.put("collaboration", false);
 
     Map<String, Object> leftMenu = new LinkedHashMap<>();
-    // 左侧文档目录需要默认固定展示，因此隐藏“折叠菜单模式”切换入口，
-    // 让用户进入编辑页后直接看到稳定的导航区，而不是先看到一个折叠按钮。
-    leftMenu.put("mode", false);
+    // layout.leftMenu.mode: true 表示左侧面板在编辑器加载时默认展开（初始可见）；
+    // false 表示初始隐藏。此处设为 true 让用户进入编辑页后直接看到导航目录面板。
+    leftMenu.put("mode", true);
     leftMenu.put("navigation", true);
     leftMenu.put("spellcheck", false);
 
