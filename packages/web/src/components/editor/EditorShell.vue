@@ -155,6 +155,34 @@ function handleDocumentReady() {
   if (shouldShowConsole.value) {
     startSaveStatusPolling();
   }
+  // OnlyOffice 社区版的 layout.leftMenu.mode 配置不生效（需要 White Label 许可证），
+  // 也无公开 JS API 可控制导航面板的初始展开状态。
+  // 由于 nginx 将 OnlyOffice 路径全部代理到同源，iframe 为同源，
+  // 可在文档加载完成后直接操作 iframe DOM，模拟用户点击导航按钮展开标题面板。
+  openNavigationPanelAfterReady();
+}
+
+function openNavigationPanelAfterReady() {
+  // 等待 OnlyOffice iframe 完成内部 UI 初始化（通常需要 500ms 以上）
+  setTimeout(() => {
+    try {
+      const iframe = document.getElementById("docEditor")?.querySelector("iframe");
+      if (!iframe) return;
+
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) return;
+
+      // 按钮 ID 来自 OnlyOffice 源码 LeftMenu.js：
+      //   this.btnNavigation = new Common.UI.Button({ el: $markup.elementById('#left-btn-navigation') })
+      // 按钮未被按下时点击可展开导航面板；已激活则不重复点击
+      const navBtn = iframeDoc.getElementById("left-btn-navigation");
+      if (navBtn && !navBtn.classList.contains("active") && !navBtn.classList.contains("pressed")) {
+        navBtn.click();
+      }
+    } catch (e) {
+      // 同源判断失败或按钮不存在时静默降级，不影响编辑器正常使用
+    }
+  }, 800);
 }
 
 function handleLoadComponentError(errorCode, errorDescription) {
