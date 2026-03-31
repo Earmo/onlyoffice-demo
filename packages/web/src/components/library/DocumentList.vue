@@ -162,13 +162,16 @@ function tableRowClassName({ row }) {
   display: flex;
   flex: 1;
   flex-direction: column;
-  min-height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
 .list-panel :deep(.el-card__body) {
   display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
+  min-width: 0;
   padding-top: 0;
 }
 
@@ -214,6 +217,8 @@ function tableRowClassName({ row }) {
 
 .document-table {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* Custom row class styling via deep selector for Element Plus Table */

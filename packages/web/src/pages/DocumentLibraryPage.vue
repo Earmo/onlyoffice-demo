@@ -551,15 +551,19 @@ onMounted(loadLibraryWorkspace);
 
 .library-main {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .library-grid {
-  min-height: calc(100vh - 40px);
+  flex: 1;
   align-items: stretch;
+  min-height: 0;
 }
 
 .library-column {
   display: flex;
+  min-width: 0;
 }
 
 .column-stack {
@@ -567,7 +571,8 @@ onMounted(loadLibraryWorkspace);
   flex: 1;
   flex-direction: column;
   gap: 16px;
-  min-height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
 .column-stack-right {
@@ -580,10 +585,16 @@ onMounted(loadLibraryWorkspace);
 
 .library-card-grow {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .library-card-grow :deep(.el-card__body) {
-  height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .eyebrow {
@@ -660,6 +671,7 @@ onMounted(loadLibraryWorkspace);
   flex-direction: column;
   gap: 16px;
   min-height: 0;
+  min-width: 0;
 }
 
 .stack-alert {
@@ -669,12 +681,17 @@ onMounted(loadLibraryWorkspace);
 .results-panel {
   display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
 .document-list-block {
   flex: 1;
-  min-height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .library-empty {
