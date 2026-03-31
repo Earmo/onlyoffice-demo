@@ -12,6 +12,7 @@ import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
+import com.mybatisflex.core.paginate.Page;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -69,8 +72,8 @@ class DocumentApiControllerTest {
   @Test
   void shouldListDocumentsForCurrentTenant() throws Exception {
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
-    when(documentMetadataService.listDocuments("tenant-a", null, null, null, null, "desc"))
-        .thenReturn(List.of(entity("sample")));
+    when(documentMetadataService.listDocumentPage("tenant-a", null, null, null, null, "desc", 1, 10))
+        .thenReturn(page(List.of(entity("sample")), 1, 10, 1));
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
     when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
@@ -79,6 +82,10 @@ class DocumentApiControllerTest {
         .andExpect(jsonPath("$.tenantId").value("tenant-a"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
         .andExpect(jsonPath("$.actorName").value("Alice"))
+        .andExpect(jsonPath("$.pageNumber").value(1))
+        .andExpect(jsonPath("$.pageSize").value(10))
+        .andExpect(jsonPath("$.total").value(1))
+        .andExpect(jsonPath("$.totalPages").value(1))
         .andExpect(jsonPath("$.documents[0].documentId").value("sample"))
         .andExpect(jsonPath("$.documents[0].tenantId").value("tenant-a"))
         .andExpect(jsonPath("$.documents[0].actorUser").value("user-a"))
@@ -86,14 +93,14 @@ class DocumentApiControllerTest {
         .andExpect(jsonPath("$.documents[0].sourceSystem").value("native"))
         .andExpect(jsonPath("$.documents[0].storageAvailable").value(true));
 
-    verify(documentMetadataService).listDocuments("tenant-a", null, null, null, null, "desc");
+    verify(documentMetadataService).listDocumentPage("tenant-a", null, null, null, null, "desc", 1, 10);
   }
 
   @Test
   void shouldForwardQueryAndFilterParameters() throws Exception {
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
-    when(documentMetadataService.listDocuments("tenant-a", "roadmap", "failed", "native", "word", "asc"))
-        .thenReturn(List.of(entity("sample")));
+    when(documentMetadataService.listDocumentPage("tenant-a", "roadmap", "failed", "native", "word", "asc", 2, 20))
+        .thenReturn(page(List.of(entity("sample")), 2, 20, 21));
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
     when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
@@ -104,11 +111,17 @@ class DocumentApiControllerTest {
                 .param("sourceSystem", "native")
                 .param("documentType", "word")
                 .param("sortDirection", "asc")
+                .param("pageNumber", "2")
+                .param("pageSize", "20")
         )
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageNumber").value(2))
+        .andExpect(jsonPath("$.pageSize").value(20))
+        .andExpect(jsonPath("$.total").value(21))
+        .andExpect(jsonPath("$.totalPages").value(2))
         .andExpect(jsonPath("$.documents[0].documentId").value("sample"));
 
-    verify(documentMetadataService).listDocuments("tenant-a", "roadmap", "failed", "native", "word", "asc");
+    verify(documentMetadataService).listDocumentPage("tenant-a", "roadmap", "failed", "native", "word", "asc", 2, 20);
   }
 
   @Test
@@ -125,6 +138,10 @@ class DocumentApiControllerTest {
 
     mockMvc.perform(get("/api/documents").param("storage", "unavailable"))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.pageNumber").value(1))
+        .andExpect(jsonPath("$.pageSize").value(10))
+        .andExpect(jsonPath("$.total").value(1))
+        .andExpect(jsonPath("$.totalPages").value(1))
         .andExpect(jsonPath("$.documents.length()").value(1))
         .andExpect(jsonPath("$.documents[0].documentId").value("missing"))
         .andExpect(jsonPath("$.documents[0].storageAvailable").value(false));
@@ -149,14 +166,29 @@ class DocumentApiControllerTest {
     DocumentMetadataEntity entity = entity("sample");
     entity.setStatus("saved");
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
-    when(documentMetadataService.listDocuments("tenant-a", null, null, null, null, "desc"))
-        .thenReturn(List.of(entity));
+    when(documentMetadataService.listDocumentPage("tenant-a", null, null, null, null, "desc", 1, 10))
+        .thenReturn(page(List.of(entity), 1, 10, 1));
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
     when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 2));
 
     mockMvc.perform(get("/api/documents"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.documents[0].status").value("editing"));
+  }
+
+  @Test
+  void shouldExposePersistedStatusWhenNoActiveEditorsRemainInList() throws Exception {
+    DocumentMetadataEntity entity = entity("sample");
+    entity.setStatus("saved");
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentMetadataService.listDocumentPage("tenant-a", null, null, null, null, "desc", 1, 10))
+        .thenReturn(page(List.of(entity), 1, 10, 1));
+    when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
+
+    mockMvc.perform(get("/api/documents"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documents[0].status").value("saved"));
   }
 
   @Test
@@ -174,10 +206,29 @@ class DocumentApiControllerTest {
   }
 
   @Test
+  void shouldExposePersistedStatusForDetailWhenNoActiveEditorsRemain() throws Exception {
+    DocumentMetadataEntity entity = entity("sample");
+    entity.setStatus("saved");
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentMetadataService.requireDocument("sample")).thenReturn(entity);
+    when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
+
+    mockMvc.perform(get("/api/documents/sample"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("saved"));
+  }
+
+  @Test
   void shouldCreateDocumentExplicitly() throws Exception {
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
-    when(documentStorageService.createNativeDocument(anyString(), anyString(), any(com.earmo.onlyoffice.integration.model.RequestContext.class), anyString()))
-        .thenReturn(storedDocument("doc-1", "alpha.docx", "external-1"));
+    when(documentStorageService.createNativeDocument(
+        nullable(String.class),
+        anyString(),
+        any(com.earmo.onlyoffice.integration.model.RequestContext.class),
+        anyString()
+    ))
+        .thenReturn(storedDocument("01ARZ3NDEKTSV4RRFFQ69G5FAV", "alpha.docx", "external-1"));
 
     mockMvc.perform(post("/api/documents")
             .contentType(MediaType.APPLICATION_JSON)
@@ -189,7 +240,7 @@ class DocumentApiControllerTest {
                 }
                 """))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.documentId").value("doc-1"))
+        .andExpect(jsonPath("$.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAV"))
         .andExpect(jsonPath("$.title").value("alpha.docx"))
         .andExpect(jsonPath("$.ownerUser").value("user-a"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
@@ -197,7 +248,7 @@ class DocumentApiControllerTest {
         .andExpect(jsonPath("$.storageAvailable").value(true));
 
     verify(documentStorageService).createNativeDocument(
-        anyString(),
+        isNull(),
         anyString(),
         any(com.earmo.onlyoffice.integration.model.RequestContext.class),
         anyString()
@@ -211,7 +262,7 @@ class DocumentApiControllerTest {
         anyString(),
         any(byte[].class),
         any(com.earmo.onlyoffice.integration.model.RequestContext.class)
-    )).thenReturn(storedDocument("upload-1", "roadmap.docx", null));
+    )).thenReturn(storedDocument("01ARZ3NDEKTSV4RRFFQ69G5FAA", "roadmap.docx", null));
 
     MockMultipartFile file = new MockMultipartFile(
         "file",
@@ -222,7 +273,7 @@ class DocumentApiControllerTest {
 
     mockMvc.perform(multipart("/api/documents/upload").file(file))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.documentId").value("upload-1"))
+        .andExpect(jsonPath("$.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAA"))
         .andExpect(jsonPath("$.title").value("roadmap.docx"))
         .andExpect(jsonPath("$.ownerUser").value("user-a"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
@@ -236,7 +287,7 @@ class DocumentApiControllerTest {
     when(documentStorageService.importRemoteDocument(
         anyString(),
         any(com.earmo.onlyoffice.integration.model.RequestContext.class)
-    )).thenReturn(storedDocument("import-1", "external.docx", null));
+    )).thenReturn(storedDocument("01ARZ3NDEKTSV4RRFFQ69G5FAB", "external.docx", null));
 
     mockMvc.perform(post("/api/documents/import-remote")
             .contentType(MediaType.APPLICATION_JSON)
@@ -246,7 +297,7 @@ class DocumentApiControllerTest {
                 }
                 """))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.documentId").value("import-1"))
+        .andExpect(jsonPath("$.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAB"))
         .andExpect(jsonPath("$.title").value("external.docx"))
         .andExpect(jsonPath("$.ownerUser").value("user-a"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
@@ -298,5 +349,14 @@ class DocumentApiControllerTest {
         null,
         null
     );
+  }
+
+  private Page<DocumentMetadataEntity> page(
+      List<DocumentMetadataEntity> records,
+      long pageNumber,
+      long pageSize,
+      long total
+  ) {
+    return new Page<>(records, pageNumber, pageSize, total);
   }
 }

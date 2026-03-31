@@ -13,6 +13,7 @@ import com.earmo.onlyoffice.integration.storage.StorageProvider;
 import com.earmo.onlyoffice.integration.storage.StorageProviderResolver;
 import com.earmo.onlyoffice.integration.storage.StorageWriteRequest;
 import com.earmo.onlyoffice.integration.storage.StoredObjectResource;
+import com.mybatisflex.core.keygen.impl.ULIDKeyGenerator;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -49,6 +50,7 @@ import org.springframework.web.client.RestClient;
 public class DocumentStorageServiceImpl implements DocumentStorageService {
 
   private static final String DEFAULT_EXTENSION = "docx";
+  private static final ULIDKeyGenerator DOCUMENT_ID_GENERATOR = new ULIDKeyGenerator();
   private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
       "doc", "docx", "odt", "rtf", "txt",
       "xls", "xlsx", "ods", "csv",
@@ -179,16 +181,17 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
       throw new IllegalArgumentException("上传文件不能为空。");
     }
 
-    String extension = requireSupportedExtension(originalFilename);
-    String documentId = buildGeneratedDocumentId(stripExtension(originalFilename));
+    String normalizedFilename = normalizeFilename(originalFilename);
+    String extension = requireSupportedExtension(normalizedFilename);
+    String documentId = generateDocumentId();
     String storageKey = storageKeyFactory.build(requestContext, documentId, extension);
     DocumentStorageStrategy strategy = resolveStrategy(requestContext);
-    strategy.writeNew(new StorageWriteRequest(storageKey, contentTypeFor(originalFilename), body));
+    strategy.writeNew(new StorageWriteRequest(storageKey, contentTypeFor(normalizedFilename), body));
 
     try {
       DocumentMetadataEntity entity = documentMetadataService.createDocument(
           documentId,
-          documentId + "." + extension,
+          normalizedFilename,
           extension,
           resolveDocumentType(extension),
           storageKey,
@@ -248,13 +251,7 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
       throw new IllegalArgumentException("当前显式创建接口只支持 docx 文档。");
     }
 
-    String documentId = StringUtils.hasText(rawDocumentId)
-        ? sanitizeDocumentId(rawDocumentId)
-        : buildGeneratedDocumentId(stripExtension(title));
-    if (documentMetadataService.findDocument(documentId).isPresent()) {
-      return getRequiredDocument(documentId);
-    }
-
+    String documentId = generateDocumentId();
     String storageKey = storageKeyFactory.build(requestContext, documentId, extension);
     DocumentStorageStrategy strategy = resolveStrategy(requestContext);
     if (!strategy.exists(storageKey)) {
@@ -271,6 +268,7 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
           requestContext,
           externalDocumentId
       );
+      rollbackGeneratedObjectIfEntityReused(strategy, storageKey, entity);
       return getRequiredDocument(entity.getDocumentId());
     } catch (RuntimeException ex) {
       deleteQuietly(strategy, storageKey);
@@ -369,12 +367,18 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return extension;
   }
 
-  private String buildGeneratedDocumentId(String filenameStem) {
-    String baseName = sanitizeDocumentId(filenameStem);
-    if ("sample".equals(baseName)) {
-      baseName = "document";
+  private String generateDocumentId() {
+    return DOCUMENT_ID_GENERATOR.nextMonotonicId();
+  }
+
+  private void rollbackGeneratedObjectIfEntityReused(
+      DocumentStorageStrategy strategy,
+      String generatedStorageKey,
+      DocumentMetadataEntity entity
+  ) {
+    if (!generatedStorageKey.equals(entity.getStorageKey())) {
+      deleteQuietly(strategy, generatedStorageKey);
     }
-    return baseName + "-" + System.currentTimeMillis();
   }
 
   private String stripExtension(String filename) {
@@ -383,6 +387,11 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
       return filename;
     }
     return filename.substring(0, index);
+  }
+
+  private String normalizeFilename(String filename) {
+    String normalized = StringUtils.getFilename(filename);
+    return StringUtils.hasText(normalized) ? normalized : filename;
   }
 
   private URI parseAndValidateRemoteUrl(String sourceUrl) {

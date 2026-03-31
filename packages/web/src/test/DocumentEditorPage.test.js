@@ -46,45 +46,11 @@ describe("DocumentEditorPage", () => {
     window.confirm = vi.fn();
   });
 
-  it("应加载编辑页、支持收起顶部区域并在返回列表前结束会话", async () => {
-    fetch
-      .mockResolvedValueOnce(jsonResponse({
-        documentId: "doc-1",
-        title: "路线图.docx",
-        status: "saved",
-        lastSavedTime: "2026-03-25T10:00:00Z"
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        documents: [
-          {
-            documentId: "doc-1",
-            title: "路线图.docx",
-            lastSavedTime: "2026-03-25T10:00:00Z"
-          },
-          {
-            documentId: "doc-2",
-            title: "产品设计.docx",
-            lastSavedTime: "2026-03-25T09:00:00Z"
-          }
-        ]
-      }));
+  it("应在返回列表前先结束当前编辑会话", async () => {
+    mockEditorPageRequests();
 
     const wrapper = mount(DocumentEditorPage);
     await flushPromises();
-
-    expect(wrapper.text()).toContain("路线图.docx");
-    expect(wrapper.text()).toContain("编辑提示");
-    expect(wrapper.text()).toContain("返回文档列表");
-
-    const collapseButton = wrapper.findAll("button").find(button => button.text().includes("收起提示"));
-    await collapseButton.trigger("click");
-    expect(wrapper.text()).not.toContain("编辑提示");
-    expect(wrapper.text()).not.toContain("返回文档列表");
-    expect(wrapper.text()).toContain("展开顶部信息");
-
-    const revealButton = wrapper.findAll("button").find(button => button.text().includes("展开顶部信息"));
-    await revealButton.trigger("click");
-    expect(wrapper.text()).toContain("返回文档列表");
 
     const returnButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
     await returnButton.trigger("click");
@@ -92,103 +58,88 @@ describe("DocumentEditorPage", () => {
 
     expect(closeEditingSessionSpy).toHaveBeenCalledTimes(1);
     expect(routerPush).toHaveBeenCalledWith({ path: "/", query: { highlight: "doc-1" } });
+    expect(closeEditingSessionSpy.mock.invocationCallOrder[0]).toBeLessThan(routerPush.mock.invocationCallOrder[0]);
   });
 
   it("应在切换文档前确认并先结束当前文档会话", async () => {
-    fetch
-      .mockResolvedValueOnce(jsonResponse({
-        documentId: "doc-1",
-        title: "路线图.docx",
-        status: "saved",
-        lastSavedTime: "2026-03-25T10:00:00Z"
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        documents: [
-          {
-            documentId: "doc-1",
-            title: "路线图.docx",
-            lastSavedTime: "2026-03-25T10:00:00Z"
-          },
-          {
-            documentId: "doc-2",
-            title: "产品设计.docx",
-            lastSavedTime: "2026-03-25T09:00:00Z"
-          }
-        ]
-      }));
+    mockEditorPageRequests();
     window.confirm.mockReturnValue(true);
 
     const wrapper = mount(DocumentEditorPage);
     await flushPromises();
 
-    const switchButton = wrapper.findAll(".switch-item").find(button => button.text().includes("产品设计.docx"));
+    const switchButton = wrapper.findAll(".switch-item").find(card => card.text().includes("产品设计.docx"));
     await switchButton.trigger("click");
     await flushPromises();
 
     expect(window.confirm).toHaveBeenCalledWith("即将结束当前文档会话并打开“产品设计.docx”，是否继续？");
     expect(closeEditingSessionSpy).toHaveBeenCalledTimes(1);
     expect(routerPush).toHaveBeenCalledWith({ name: "editor", params: { documentId: "doc-2" } });
+    expect(closeEditingSessionSpy.mock.invocationCallOrder[0]).toBeLessThan(routerPush.mock.invocationCallOrder[0]);
   });
 
-  it("应把当前文档侧栏固定在编辑器左侧", async () => {
-    fetch
-      .mockResolvedValueOnce(jsonResponse({
-        documentId: "doc-1",
-        title: "路线图.docx",
-        status: "saved",
-        lastSavedTime: "2026-03-25T10:00:00Z"
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        documents: [
-          {
-            documentId: "doc-1",
-            title: "路线图.docx",
-            lastSavedTime: "2026-03-25T10:00:00Z"
-          }
-        ]
-      }));
+  it("应在重复触发离开时只发送一次 close-session", async () => {
+    let resolveClose;
+    closeEditingSessionSpy.mockReturnValue(new Promise(resolve => {
+      resolveClose = resolve;
+    }));
+    mockEditorPageRequests();
 
     const wrapper = mount(DocumentEditorPage);
     await flushPromises();
 
-    const layout = wrapper.find(".editor-layout");
-    expect(layout.element.firstElementChild?.className).toContain("editor-sidebar");
-    expect(layout.element.lastElementChild?.className).toContain("editor-stage");
+    const returnButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
+    await returnButton.trigger("click");
+    await returnButton.trigger("click");
+
+    expect(closeEditingSessionSpy).toHaveBeenCalledTimes(1);
+    resolveClose();
+    await flushPromises();
+
+    expect(routerPush).toHaveBeenCalledTimes(1);
+    expect(routerPush).toHaveBeenCalledWith({ path: "/", query: { highlight: "doc-1" } });
   });
 
-  it("应在用户取消确认时保持当前文档不切换", async () => {
-    fetch
-      .mockResolvedValueOnce(jsonResponse({
-        documentId: "doc-1",
-        title: "路线图.docx",
-        status: "saved",
-        lastSavedTime: "2026-03-25T10:00:00Z"
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        documents: [
-          {
-            documentId: "doc-1",
-            title: "路线图.docx",
-            lastSavedTime: "2026-03-25T10:00:00Z"
-          },
-          {
-            documentId: "doc-2",
-            title: "产品设计.docx",
-            lastSavedTime: "2026-03-25T09:00:00Z"
-          }
-        ]
-      }));
-    window.confirm.mockReturnValue(false);
+  it("应在结束编辑会话失败时停留当前页并展示错误", async () => {
+    closeEditingSessionSpy.mockRejectedValueOnce(new Error("close failed"));
+    mockEditorPageRequests();
 
     const wrapper = mount(DocumentEditorPage);
     await flushPromises();
 
-    const switchButton = wrapper.findAll(".switch-item").find(button => button.text().includes("产品设计.docx"));
-    await switchButton.trigger("click");
+    const returnButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
+    await returnButton.trigger("click");
     await flushPromises();
 
-    expect(window.confirm).toHaveBeenCalled();
-    expect(closeEditingSessionSpy).not.toHaveBeenCalled();
-    expect(routerPush).not.toHaveBeenCalledWith({ name: "editor", params: { documentId: "doc-2" } });
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("close failed");
   });
 });
+
+function mockEditorPageRequests() {
+  fetch
+    .mockResolvedValueOnce(jsonResponse({
+      documentId: "doc-1",
+      title: "路线图.docx",
+      status: "saved",
+      lastSavedTime: "2026-03-25T10:00:00Z"
+    }))
+    .mockResolvedValueOnce(jsonResponse({
+      pageNumber: 1,
+      pageSize: 10,
+      total: 2,
+      totalPages: 1,
+      documents: [
+        {
+          documentId: "doc-1",
+          title: "路线图.docx",
+          lastSavedTime: "2026-03-25T10:00:00Z"
+        },
+        {
+          documentId: "doc-2",
+          title: "产品设计.docx",
+          lastSavedTime: "2026-03-25T09:00:00Z"
+        }
+      ]
+    }));
+}

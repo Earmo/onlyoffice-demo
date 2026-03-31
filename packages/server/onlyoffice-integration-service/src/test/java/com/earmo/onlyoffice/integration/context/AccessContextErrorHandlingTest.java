@@ -7,6 +7,7 @@ import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.web.DocumentApiController;
 import com.earmo.onlyoffice.integration.web.GlobalExceptionHandler;
+import com.mybatisflex.core.paginate.Page;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,8 +61,8 @@ class AccessContextErrorHandlingTest {
 
   @Test
   void shouldReturn4xxWhenContextIsCompletelyMissing() throws Exception {
-    when(documentMetadataService.listDocuments(anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
-        .thenReturn(List.of());
+    when(documentMetadataService.listDocumentPage(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
+        .thenReturn(new Page<>(List.of(), 1, 10, 0));
 
     mockMvc.perform(get("/api/documents"))
         .andExpect(status().is4xxClientError())
@@ -70,7 +71,8 @@ class AccessContextErrorHandlingTest {
 
   @Test
   void shouldAllowPartialContextWhenDefaultFillIsEnabled() throws Exception {
-    when(documentMetadataService.listDocuments("native", null, null, null, null, "desc")).thenReturn(List.of());
+    when(documentMetadataService.listDocumentPage("native", null, null, null, null, "desc", 1, 10))
+        .thenReturn(new Page<>(List.of(), 1, 10, 0));
     when(documentStatusService.countActiveEditingSessions(List.of())).thenReturn(java.util.Map.of());
 
     mockMvc.perform(get("/api/documents")

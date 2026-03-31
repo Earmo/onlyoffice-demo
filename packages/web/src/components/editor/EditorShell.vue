@@ -39,7 +39,9 @@ const editorPayload = ref(null);
 const editorKey = ref(0);
 const saveStatus = ref(null);
 const editingSessionOpened = ref(false);
+const isClosingSession = ref(false);
 let saveStatusTimer = null;
+let closeEditingSessionPromise = null;
 
 const modeLabel = computed(() => (props.readonly ? "预览模式" : "编辑模式"));
 const shouldShowConsole = computed(() => props.showConsole && !props.readonly);
@@ -217,8 +219,20 @@ async function closeEditingSession(options = {}) {
   if (!editingSessionOpened.value && !force) {
     return null;
   }
+  if (closeEditingSessionPromise) {
+    try {
+      return await closeEditingSessionPromise;
+    } catch (error) {
+      if (!suppressErrors) {
+        throw error;
+      }
+      return null;
+    }
+  }
 
-  try {
+  stopSaveStatusPolling();
+  isClosingSession.value = true;
+  closeEditingSessionPromise = (async () => {
     const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/close`, {
       method: "POST",
       keepalive
@@ -231,11 +245,18 @@ async function closeEditingSession(options = {}) {
     editingSessionOpened.value = false;
     saveStatus.value = payload;
     return payload;
+  })();
+
+  try {
+    return await closeEditingSessionPromise;
   } catch (error) {
     if (!suppressErrors) {
       throw error;
     }
     return null;
+  } finally {
+    isClosingSession.value = false;
+    closeEditingSessionPromise = null;
   }
 }
 
@@ -390,7 +411,7 @@ defineExpose({
             <el-form-item>
               <el-button
                 type="primary"
-                :disabled="isLoading || isInsertingImage"
+                :disabled="isLoading || isInsertingImage || isClosingSession"
                 @click="insertRemoteImage"
               >
                 {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}

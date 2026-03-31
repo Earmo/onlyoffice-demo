@@ -7,7 +7,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "显式创建文档时的请求体。")
 public record CreateDocumentRequest(
-    @Schema(description = "调用方希望指定的内部文档 ID；为空时由服务端自动生成。", example = "doc-1")
+    @Schema(
+        description = "兼容旧调用方保留的字段。Phase 11 起服务端会忽略该值，并统一生成内部 ULID documentId。",
+        example = "legacy-doc-id"
+    )
     String documentId,
     @Schema(description = "文档标题，当前显式创建接口只接受 docx。", example = "alpha.docx")
     String title,

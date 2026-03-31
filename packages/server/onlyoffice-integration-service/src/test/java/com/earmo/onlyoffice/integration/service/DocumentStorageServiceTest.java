@@ -128,7 +128,7 @@ class DocumentStorageServiceTest {
           String documentId = invocation.getArgument(0, String.class);
           return entity(
               documentId,
-              documentId + ".xlsx",
+              "sales-report.xlsx",
               "tenant-a/native/" + documentId + ".xlsx",
               "xlsx",
               "cell"
@@ -174,11 +174,10 @@ class DocumentStorageServiceTest {
         new RequestContext("tenant-a", "native", "user-a", "Alice")
     );
 
-    assertTrue(document.title().startsWith("sales-report-"));
-    assertTrue(document.title().endsWith(".xlsx"));
+    assertEquals("sales-report.xlsx", document.title());
     assertEquals("xlsx", document.fileType());
     assertEquals("cell", document.documentType());
-    assertTrue(document.documentId().startsWith("sales-report-"));
+    assertTrue(document.documentId().matches("[0-9a-hjkmnp-tv-z]{26}"));
     assertTrue(document.storageKey().startsWith("tenant-a/native/"));
     assertTrue(document.storageKey().endsWith(".xlsx"));
     assertTrue(java.nio.file.Files.exists(document.path()));

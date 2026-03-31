@@ -12,13 +12,14 @@ import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
-import java.io.IOException;
+import com.mybatisflex.core.paginate.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.io.IOException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -42,6 +43,10 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class DocumentApiController {
 
+  private static final int DEFAULT_PAGE_NUMBER = 1;
+  private static final int DEFAULT_PAGE_SIZE = 10;
+  private static final int MAX_PAGE_SIZE = 100;
+
   private final DocumentMetadataService documentMetadataService;
   private final DocumentStorageService documentStorageService;
   private final DocumentStatusService documentStatusService;
@@ -63,30 +68,36 @@ public class DocumentApiController {
       @RequestParam(defaultValue = "all") String storage,
       @Parameter(description = "列表排序方向：desc/asc。", example = "desc")
       @RequestParam(defaultValue = "desc") String sortDirection,
+      @Parameter(description = "页码，从 1 开始。", example = "1")
+      @RequestParam(defaultValue = "1") Integer pageNumber,
+      @Parameter(description = "每页条数，最大 100。", example = "10")
+      @RequestParam(defaultValue = "10") Integer pageSize,
       HttpServletRequest request
   ) {
     AccessContext accessContext = accessContextResolver.resolve(request);
-    List<DocumentMetadataEntity> entities = documentMetadataService.listDocuments(
-        accessContext.tenantId(),
+    int safePageNumber = sanitizePageNumber(pageNumber);
+    int safePageSize = sanitizePageSize(pageSize);
+
+    DocumentListPage listPage = resolveListPage(
+        accessContext,
         query,
         status,
         sourceSystem,
         documentType,
-        sortDirection
+        storage,
+        sortDirection,
+        safePageNumber,
+        safePageSize
     );
-    Map<String, Integer> activeEditingCounts = documentStatusService.countActiveEditingSessions(
-        entities.stream().map(DocumentMetadataEntity::getDocumentId).toList()
-    );
-
-    List<DocumentSummaryResponse> documents = entities.stream()
-        .map(entity -> toSummary(entity, accessContext, activeEditingCounts.getOrDefault(entity.getDocumentId(), 0)))
-        .filter(summary -> matchesStorage(summary, storage))
-        .toList();
     return new DocumentListResponse(
         accessContext.tenantId(),
         accessContext.actorUser(),
         accessContext.actorName(),
-        documents
+        safePageNumber,
+        safePageSize,
+        listPage.total(),
+        listPage.totalPages(),
+        listPage.documents()
     );
   }
 
@@ -122,7 +133,7 @@ public class DocumentApiController {
     AccessContext accessContext = accessContextResolver.resolve(httpServletRequest);
     CreateDocumentRequest safeRequest = request == null ? new CreateDocumentRequest(null, null, null) : request;
     StoredDocument storedDocument = documentStorageService.createNativeDocument(
-        safeRequest.documentId(),
+        null,
         safeRequest.title(),
         accessContext.toRequestContext(),
         safeRequest.externalDocumentId()
@@ -231,5 +242,80 @@ public class DocumentApiController {
       case "unavailable" -> !summary.storageAvailable();
       default -> true;
     };
+  }
+
+  private DocumentListPage resolveListPage(
+      AccessContext accessContext,
+      String query,
+      String status,
+      String sourceSystem,
+      String documentType,
+      String storage,
+      String sortDirection,
+      int pageNumber,
+      int pageSize
+  ) {
+    if ("all".equalsIgnoreCase(storage)) {
+      Page<DocumentMetadataEntity> entityPage = documentMetadataService.listDocumentPage(
+          accessContext.tenantId(),
+          query,
+          status,
+          sourceSystem,
+          documentType,
+          sortDirection,
+          pageNumber,
+          pageSize
+      );
+      Map<String, Integer> activeEditingCounts = documentStatusService.countActiveEditingSessions(
+          entityPage.getRecords().stream().map(DocumentMetadataEntity::getDocumentId).toList()
+      );
+      List<DocumentSummaryResponse> documents = entityPage.getRecords().stream()
+          .map(entity -> toSummary(entity, accessContext, activeEditingCounts.getOrDefault(entity.getDocumentId(), 0)))
+          .toList();
+      return new DocumentListPage(documents, entityPage.getTotalRow(), entityPage.getTotalPage());
+    }
+
+    List<DocumentMetadataEntity> entities = documentMetadataService.listDocuments(
+        accessContext.tenantId(),
+        query,
+        status,
+        sourceSystem,
+        documentType,
+        sortDirection
+    );
+    Map<String, Integer> activeEditingCounts = documentStatusService.countActiveEditingSessions(
+        entities.stream().map(DocumentMetadataEntity::getDocumentId).toList()
+    );
+    List<DocumentSummaryResponse> filteredDocuments = entities.stream()
+        .map(entity -> toSummary(entity, accessContext, activeEditingCounts.getOrDefault(entity.getDocumentId(), 0)))
+        .filter(summary -> matchesStorage(summary, storage))
+        .toList();
+
+    long total = filteredDocuments.size();
+    long totalPages = total == 0 ? 0 : (total + pageSize - 1) / pageSize;
+    int fromIndex = Math.min((pageNumber - 1) * pageSize, filteredDocuments.size());
+    int toIndex = Math.min(fromIndex + pageSize, filteredDocuments.size());
+    return new DocumentListPage(filteredDocuments.subList(fromIndex, toIndex), total, totalPages);
+  }
+
+  private int sanitizePageNumber(Integer pageNumber) {
+    if (pageNumber == null || pageNumber < 1) {
+      return DEFAULT_PAGE_NUMBER;
+    }
+    return pageNumber;
+  }
+
+  private int sanitizePageSize(Integer pageSize) {
+    if (pageSize == null || pageSize < 1) {
+      return DEFAULT_PAGE_SIZE;
+    }
+    return Math.min(pageSize, MAX_PAGE_SIZE);
+  }
+
+  private record DocumentListPage(
+      List<DocumentSummaryResponse> documents,
+      long total,
+      long totalPages
+  ) {
   }
 }

@@ -17,41 +17,45 @@ describe("EditorShell", () => {
     fetch.mockReset();
   });
 
-  it("应在编辑模式加载配置、通过悬浮按钮展开控制台并结束编辑会话", async () => {
+  it("应在编辑模式加载配置、展开控制台，并在显式关闭后卸载时不重复请求 close-session", async () => {
     fetch
-      .mockResolvedValueOnce(jsonResponse({
-        documentServerUrl: "https://docs.example.test/",
-        config: {
-          document: {
-            title: "路线图.docx"
-          },
-          editorConfig: {
-            mode: "edit"
-          }
-        }
-      }))
-      .mockResolvedValueOnce(jsonResponse({
-        state: "saved",
-        message: "最新修改已成功回写到共享存储。",
-        lastCallbackStatus: 2,
-        lastCallbackTime: "2026-03-25T10:00:00Z",
-        lastSavedTime: "2026-03-25T10:00:01Z",
-        recentEvents: [
-          {
-            eventType: "save_succeeded",
-            message: "最新修改已成功回写到共享存储。",
-            eventTime: "2026-03-25T10:00:01Z"
-          }
-        ]
-      }))
-      .mockResolvedValueOnce(jsonResponse({
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))
+      .mockResolvedValueOnce(jsonResponse(closedStatusPayload()));
+
+    const wrapper = mount(EditorShell, {
+      props: {
         documentId: "doc-1",
-        state: "saved",
-        message: "当前用户已离开编辑器，文档已退出活跃编辑状态。",
-        lastCallbackStatus: 2,
-        lastCallbackTime: "2026-03-25T10:00:00Z",
-        lastSavedTime: "2026-03-25T10:00:01Z",
-        recentEvents: []
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/doc-1/editor-config?readonly=false");
+    expect(wrapper.text()).toContain("路线图.docx");
+    expect(wrapper.find(".stage-edge-toggle").exists()).toBe(true);
+
+    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await flushPromises();
+    expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
+    expect(wrapper.text()).toContain("编辑模式");
+
+    await wrapper.vm.closeEditingSession();
+    await flushPromises();
+    wrapper.unmount();
+    await flushPromises();
+
+    const closeCalls = fetch.mock.calls.filter(call => String(call[0]).includes("/editing-sessions/close"));
+    expect(closeCalls).toHaveLength(1);
+  });
+
+  it("应在 close-session 进行中复用同一个请求而不是重复发送", async () => {
+    let resolveCloseRequest;
+    fetch
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))
+      .mockImplementationOnce(() => new Promise(resolve => {
+        resolveCloseRequest = () => resolve(jsonResponse(closedStatusPayload()));
       }));
 
     const wrapper = mount(EditorShell, {
@@ -62,38 +66,21 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    expect(fetch.mock.calls[0][0]).toContain("/api/documents/doc-1/editor-config?readonly=false");
-    expect(wrapper.text()).toContain("最新修改已成功回写到共享存储。");
-    expect(wrapper.find(".panel-toggle").exists()).toBe(true);
-    expect(wrapper.find(".floating-console").classes()).not.toContain("open");
+    const firstClose = wrapper.vm.closeEditingSession();
+    const secondClose = wrapper.vm.closeEditingSession();
 
-    await wrapper.find(".panel-toggle").trigger("click");
-    expect(wrapper.find(".floating-console").classes()).toContain("open");
-    expect(wrapper.text()).toContain("编辑模式");
-    expect(wrapper.text()).toContain("路线图.docx");
+    const closeCalls = fetch.mock.calls.filter(call => String(call[0]).includes("/editing-sessions/close"));
+    expect(closeCalls).toHaveLength(1);
 
-    const closeButton = wrapper.findAll("button").find(button => button.text().includes("收起控制台"));
-    await closeButton.trigger("click");
-    expect(wrapper.find(".floating-console").classes()).not.toContain("open");
+    resolveCloseRequest();
+    const [firstPayload, secondPayload] = await Promise.all([firstClose, secondClose]);
 
-    await wrapper.vm.closeEditingSession();
-    await flushPromises();
-
-    expect(fetch.mock.calls[2][0]).toContain("/api/documents/doc-1/editing-sessions/close");
+    expect(firstPayload.state).toBe("saved");
+    expect(secondPayload.state).toBe("saved");
   });
 
   it("应在只读预览模式下请求 readonly 配置且不展示控制台", async () => {
-    fetch.mockResolvedValueOnce(jsonResponse({
-      documentServerUrl: "https://docs.example.test/",
-      config: {
-        document: {
-          title: "预览稿.docx"
-        },
-        editorConfig: {
-          mode: "view"
-        }
-      }
-    }));
+    fetch.mockResolvedValueOnce(jsonResponse(editorConfigPayload("预览稿.docx", "view")));
 
     const wrapper = mount(EditorShell, {
       props: {
@@ -105,10 +92,52 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    expect(fetch.mock.calls[0][0]).toContain("/api/documents/doc-2/editor-config?readonly=true");
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/doc-2/editor-config?readonly=true");
     expect(wrapper.text()).toContain("预览稿.docx");
-    expect(wrapper.find(".floating-console").exists()).toBe(false);
-    expect(wrapper.find(".panel-toggle").exists()).toBe(false);
-    expect(wrapper.text()).not.toContain("编辑动作");
+    expect(wrapper.find(".floating-console").isVisible()).toBe(false);
+    expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
   });
 });
+
+function editorConfigPayload(title, mode = "edit") {
+  return {
+    documentServerUrl: "https://docs.example.test/",
+    config: {
+      document: {
+        title
+      },
+      editorConfig: {
+        mode
+      }
+    }
+  };
+}
+
+function saveStatusPayload() {
+  return {
+    state: "saved",
+    message: "最新修改已成功回写到共享存储。",
+    lastCallbackStatus: 2,
+    lastCallbackTime: "2026-03-25T10:00:00Z",
+    lastSavedTime: "2026-03-25T10:00:01Z",
+    recentEvents: [
+      {
+        eventType: "save_succeeded",
+        message: "最新修改已成功回写到共享存储。",
+        eventTime: "2026-03-25T10:00:01Z"
+      }
+    ]
+  };
+}
+
+function closedStatusPayload() {
+  return {
+    documentId: "doc-1",
+    state: "saved",
+    message: "当前用户已离开编辑器，文档已退出活跃编辑状态。",
+    lastCallbackStatus: 2,
+    lastCallbackTime: "2026-03-25T10:00:00Z",
+    lastSavedTime: "2026-03-25T10:00:01Z",
+    recentEvents: []
+  };
+}

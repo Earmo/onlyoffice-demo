@@ -14,6 +14,7 @@ const currentDocument = ref(null);
 const documents = ref([]);
 const isSidebarOpen = ref(true);
 const editorShellRef = ref(null);
+const isLeaving = ref(false);
 
 // 编辑页只认路由里的 documentId，把它视为唯一真相源。
 // 这样“切换文档”“刷新当前页”“回退高亮列表”都能围绕同一个 id 工作。
@@ -56,6 +57,7 @@ async function loadEditorPageData() {
     errorMessage.value = error instanceof Error ? error.message : "编辑页加载失败";
   } finally {
     isLoading.value = false;
+    isLeaving.value = false;
   }
 }
 
@@ -68,16 +70,14 @@ async function closeCurrentEditingSession() {
 }
 
 async function goBackToLibrary() {
-  try {
-    await closeCurrentEditingSession();
-    await router.push({ path: "/", query: { highlight: currentDocumentId.value } });
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "结束当前编辑会话失败";
-  }
+  await runLeaveFlow(
+    () => router.push({ path: "/", query: { highlight: currentDocumentId.value } }),
+    "结束当前编辑会话失败"
+  );
 }
 
 async function requestOpenDocument(document) {
-  if (!document || document.documentId === currentDocumentId.value) {
+  if (!document || document.documentId === currentDocumentId.value || isLeaving.value) {
     return;
   }
 
@@ -86,12 +86,10 @@ async function requestOpenDocument(document) {
     return;
   }
 
-  try {
-    await closeCurrentEditingSession();
-    await router.push({ name: "editor", params: { documentId: document.documentId } });
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "切换文档失败";
-  }
+  await runLeaveFlow(
+    () => router.push({ name: "editor", params: { documentId: document.documentId } }),
+    "切换文档失败"
+  );
 }
 
 function toggleSidebar() {
@@ -107,6 +105,23 @@ function formatTimestamp(value) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+async function runLeaveFlow(navigate, fallbackMessage) {
+  if (isLeaving.value) {
+    return;
+  }
+
+  isLeaving.value = true;
+  errorMessage.value = "";
+
+  try {
+    await closeCurrentEditingSession();
+    await navigate();
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : fallbackMessage;
+    isLeaving.value = false;
+  }
 }
 
 watch(
@@ -158,8 +173,12 @@ onMounted(loadEditorPageData);
             Phase 9 起固定为可编辑工作台。离开页面前会显式结束编辑会话。
           </p>
           <div class="toolbar-actions">
-            <el-button size="small" @click="goBackToLibrary">返回文档列表</el-button>
-            <el-button type="primary" size="small" :disabled="isLoading" @click="loadEditorPageData">刷新文档上下文</el-button>
+            <el-button size="small" :loading="isLeaving" :disabled="isLeaving" @click="goBackToLibrary">
+              返回文档列表
+            </el-button>
+            <el-button type="primary" size="small" :disabled="isLoading || isLeaving" @click="loadEditorPageData">
+              刷新文档上下文
+            </el-button>
           </div>
         </div>
 
@@ -186,7 +205,7 @@ onMounted(loadEditorPageData);
               :key="document.documentId"
               shadow="hover"
               class="switch-item"
-              :class="{ active: document.documentId === currentDocumentId }"
+              :class="{ active: document.documentId === currentDocumentId, disabled: isLeaving }"
               @click="requestOpenDocument(document)"
               body-style="padding: 12px;"
             >
@@ -300,6 +319,11 @@ onMounted(loadEditorPageData);
 .switch-item.active {
   border-color: var(--el-color-primary-light-5);
   background-color: var(--el-color-primary-light-9);
+}
+
+.switch-item.disabled {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .switch-title {

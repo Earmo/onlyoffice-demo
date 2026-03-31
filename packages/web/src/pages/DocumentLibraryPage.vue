@@ -21,40 +21,50 @@ const errorMessage = ref("");
 const successMessage = ref("");
 const highlightedDocumentId = ref("");
 const remoteDocumentUrl = ref("");
+const showCreateDialog = ref(false);
 
 const isCreating = ref(false);
 const isUploading = ref(false);
 const isImporting = ref(false);
+const pageNumber = ref(1);
+const pageSize = ref(10);
+const total = ref(0);
+const totalPages = ref(0);
 
 // 搜索与筛选条件统一放在页面层，列表组件只负责展示，不自己持有筛选逻辑。
 // 这样创建/上传/导入成功后，页面可以主动重置条件并回到“全部文档”视图。
 const searchQuery = ref("");
 const statusFilter = ref("all");
 const documentTypeFilter = ref("all");
-const sourceSystemFilter = ref("all");
+const sourceSystemFilter = ref("");
 const storageFilter = ref("all");
 const sortDirection = ref("desc");
 
 const recentDocuments = computed(() => documents.value.slice(0, 3));
+const statusOptions = [
+  { label: "草稿", value: "draft" },
+  { label: "编辑中", value: "editing" },
+  { label: "已保存", value: "saved" },
+  { label: "保存失败", value: "failed" },
+  { label: "已归档", value: "archived" }
+];
+const documentTypeOptions = [
+  { label: "文本文档", value: "word" },
+  { label: "电子表格", value: "cell" },
+  { label: "演示文稿", value: "slide" },
+  { label: "PDF", value: "pdf" }
+];
 
 const hasActiveQuery = computed(() => {
   return Boolean(
     searchQuery.value
       || statusFilter.value !== "all"
       || documentTypeFilter.value !== "all"
-      || sourceSystemFilter.value !== "all"
+      || sourceSystemFilter.value
       || storageFilter.value !== "all"
       || sortDirection.value !== "desc"
   );
 });
-
-const statusOptions = computed(() => uniqueOptions(documents.value.map(document => document.status)));
-const documentTypeOptions = computed(() => uniqueOptions(documents.value.map(document => document.documentType)));
-const sourceSystemOptions = computed(() => uniqueOptions(documents.value.map(document => document.sourceSystem)));
-
-function uniqueOptions(values) {
-  return [...new Set(values.filter(Boolean))];
-}
 
 async function readErrorMessage(response, fallbackMessage) {
   try {
@@ -67,6 +77,8 @@ async function readErrorMessage(response, fallbackMessage) {
 
 function buildListParams() {
   const params = new URLSearchParams();
+  params.set("pageNumber", String(pageNumber.value));
+  params.set("pageSize", String(pageSize.value));
   if (searchQuery.value) {
     params.set("query", searchQuery.value);
   }
@@ -76,7 +88,7 @@ function buildListParams() {
   if (documentTypeFilter.value !== "all") {
     params.set("documentType", documentTypeFilter.value);
   }
-  if (sourceSystemFilter.value !== "all") {
+  if (sourceSystemFilter.value) {
     params.set("sourceSystem", sourceSystemFilter.value);
   }
   if (storageFilter.value !== "all") {
@@ -105,6 +117,10 @@ async function loadDocuments() {
     tenantId.value = payload.tenantId ?? "";
     actorUser.value = payload.actorUser ?? "";
     actorName.value = payload.actorName ?? "";
+    pageNumber.value = payload.pageNumber ?? pageNumber.value;
+    pageSize.value = payload.pageSize ?? pageSize.value;
+    total.value = payload.total ?? documents.value.length;
+    totalPages.value = payload.totalPages ?? 0;
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "文档列表加载失败";
   } finally {
@@ -118,12 +134,14 @@ function syncHighlightFromRoute() {
 }
 
 async function revealDocument(documentSummary, message) {
+  showCreateDialog.value = false;
   searchQuery.value = "";
   statusFilter.value = "all";
   documentTypeFilter.value = "all";
-  sourceSystemFilter.value = "all";
+  sourceSystemFilter.value = "";
   storageFilter.value = "all";
   sortDirection.value = "desc";
+  pageNumber.value = 1;
   highlightedDocumentId.value = documentSummary.documentId;
   successMessage.value = message;
   await router.replace({ path: "/", query: { highlight: documentSummary.documentId } });
@@ -243,6 +261,7 @@ function formatTimestamp(value) {
 
 async function applyFilters() {
   successMessage.value = "";
+  pageNumber.value = 1;
   await loadDocuments();
 }
 
@@ -250,11 +269,25 @@ async function resetFilters() {
   searchQuery.value = "";
   statusFilter.value = "all";
   documentTypeFilter.value = "all";
-  sourceSystemFilter.value = "all";
+  sourceSystemFilter.value = "";
   storageFilter.value = "all";
   sortDirection.value = "desc";
+  pageNumber.value = 1;
   successMessage.value = "";
   await router.replace({ path: "/", query: {} });
+  await loadDocuments();
+}
+
+async function handlePageNumberChange(nextPageNumber) {
+  pageNumber.value = nextPageNumber;
+  successMessage.value = "";
+  await loadDocuments();
+}
+
+async function handlePageSizeChange(nextPageSize) {
+  pageSize.value = nextPageSize;
+  pageNumber.value = 1;
+  successMessage.value = "";
   await loadDocuments();
 }
 
@@ -272,20 +305,9 @@ onMounted(loadDocuments);
 <template>
   <el-container class="library-shell">
     <el-main>
-      <el-row :gutter="16" class="hero-grid">
-        <el-col :xs="24" :sm="16">
-          <DocumentCreateActions
-            :is-creating="isCreating"
-            :is-uploading="isUploading"
-            :is-importing="isImporting"
-            :remote-document-url="remoteDocumentUrl"
-            @create="createDocument"
-            @file-selected="handleFileSelected"
-            @import-remote="importRemoteDocument"
-            @update:remoteDocumentUrl="remoteDocumentUrl = $event"
-          />
-        </el-col>
-        <el-col :xs="24" :sm="8">
+      <el-row :gutter="24">
+        <!-- 左侧栏：当前上下文与最近文档 -->
+        <el-col :xs="24" :lg="10">
           <el-card class="context-card" shadow="hover" style="margin-bottom: 16px;">
             <template #header>
               <div class="card-header">
@@ -299,7 +321,7 @@ onMounted(loadDocuments);
             </p>
           </el-card>
 
-          <el-card class="recent-card" shadow="hover">
+          <el-card class="recent-card" shadow="hover" style="margin-bottom: 16px;">
             <template #header>
               <div class="card-header">
                 <span class="eyebrow">最近文档</span>
@@ -321,72 +343,116 @@ onMounted(loadDocuments);
             <p v-else class="muted-copy">还没有最近文档，先创建或上传第一份内容。</p>
           </el-card>
         </el-col>
+        
+        <!-- 右侧栏：搜索条件与文档列表 -->
+        <el-col :xs="24" :lg="14">
+          <el-card class="toolbar-panel" shadow="never" style="margin-bottom: 16px;">
+            <el-form :inline="true" @submit.prevent="applyFilters">
+              <el-form-item label="搜索文档">
+                <el-input v-model="searchQuery" placeholder="按标题、ID 搜索" clearable style="width: 200px;" />
+              </el-form-item>
+              <el-form-item label="状态">
+                <el-select v-model="statusFilter" style="width: 120px;">
+                  <el-option label="全部状态" value="all" />
+                  <el-option
+                    v-for="status in statusOptions"
+                    :key="status.value"
+                    :label="status.label"
+                    :value="status.value"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="文档类型">
+                <el-select v-model="documentTypeFilter" style="width: 120px;">
+                  <el-option label="全部类型" value="all" />
+                  <el-option
+                    v-for="type in documentTypeOptions"
+                    :key="type.value"
+                    :label="type.label"
+                    :value="type.value"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="来源系统">
+                <el-input
+                  v-model="sourceSystemFilter"
+                  placeholder="如 native / oa"
+                  clearable
+                  style="width: 140px;"
+                />
+              </el-form-item>
+              <el-form-item label="对象可用性">
+                <el-select v-model="storageFilter" style="width: 120px;">
+                  <el-option label="全部" value="all" />
+                  <el-option label="仅可用" value="available" />
+                  <el-option label="仅异常" value="unavailable" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="排序">
+                <el-select v-model="sortDirection" style="width: 120px;">
+                  <el-option label="最近优先" value="desc" />
+                  <el-option label="较早优先" value="asc" />
+                </el-select>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" native-type="submit" :loading="isLoading">搜索与筛选</el-button>
+                <el-button @click="resetFilters" :disabled="isLoading">重置</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
+
+          <el-alert v-if="successMessage" :title="successMessage" type="success" show-icon style="margin-bottom: 16px;" />
+          
+          <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon style="margin-bottom: 16px;">
+            <el-button size="small" @click="loadDocuments" style="margin-top: 8px;">重新加载</el-button>
+          </el-alert>
+
+          <el-empty v-else-if="isLoading" description="正在加载文档工作台..." />
+
+          <el-empty v-else-if="!documents.length && hasActiveQuery" description="当前搜索或筛选条件下没有找到文档。">
+            <el-button @click="resetFilters">清空筛选</el-button>
+          </el-empty>
+
+          <el-empty v-else-if="!documents.length" description="当前租户下还没有任何文档。可以开始新建或上传第一份文档。">
+            <el-button type="primary" @click="showCreateDialog = true" class="start-edit-empty-btn">开始编辑</el-button>
+          </el-empty>
+
+          <DocumentList
+            v-else
+            :documents="documents"
+            :highlighted-document-id="highlightedDocumentId"
+            @preview="previewDocument"
+            @edit="editDocument"
+            @start-edit="showCreateDialog = true"
+          />
+
+          <el-pagination
+            v-if="total > 0"
+            v-model:current-page="pageNumber"
+            v-model:page-size="pageSize"
+            class="library-pagination"
+            :total="total"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            background
+            @current-change="handlePageNumberChange"
+            @size-change="handlePageSizeChange"
+          />
+        </el-col>
       </el-row>
-
-      <el-card class="toolbar-panel" shadow="never" style="margin-top: 16px; margin-bottom: 16px;">
-        <el-form :inline="true" @submit.prevent="applyFilters">
-          <el-form-item label="搜索文档">
-            <el-input v-model="searchQuery" placeholder="按标题、ID 搜索" clearable style="width: 200px;" />
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="statusFilter" style="width: 120px;">
-              <el-option label="全部状态" value="all" />
-              <el-option v-for="status in statusOptions" :key="status" :label="status" :value="status" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="文档类型">
-            <el-select v-model="documentTypeFilter" style="width: 120px;">
-              <el-option label="全部类型" value="all" />
-              <el-option v-for="t in documentTypeOptions" :key="t" :label="t" :value="t" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="来源系统">
-            <el-select v-model="sourceSystemFilter" style="width: 120px;">
-              <el-option label="全部来源" value="all" />
-              <el-option v-for="s in sourceSystemOptions" :key="s" :label="s" :value="s" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="对象可用性">
-            <el-select v-model="storageFilter" style="width: 120px;">
-              <el-option label="全部" value="all" />
-              <el-option label="仅可用" value="available" />
-              <el-option label="仅异常" value="unavailable" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="排序">
-            <el-select v-model="sortDirection" style="width: 120px;">
-              <el-option label="最近优先" value="desc" />
-              <el-option label="较早优先" value="asc" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" native-type="submit" :loading="isLoading">搜索与筛选</el-button>
-            <el-button @click="resetFilters" :disabled="isLoading">重置</el-button>
-          </el-form-item>
-        </el-form>
-      </el-card>
-
-      <el-alert v-if="successMessage" :title="successMessage" type="success" show-icon style="margin-bottom: 16px;" />
       
-      <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon style="margin-bottom: 16px;">
-        <el-button size="small" @click="loadDocuments" style="margin-top: 8px;">重新加载</el-button>
-      </el-alert>
-
-      <el-empty v-else-if="isLoading" description="正在加载文档工作台..." />
-
-      <el-empty v-else-if="!documents.length && hasActiveQuery" description="当前搜索或筛选条件下没有找到文档。">
-        <el-button @click="resetFilters">清空筛选</el-button>
-      </el-empty>
-
-      <el-empty v-else-if="!documents.length" description="当前租户下还没有任何文档。从上方主操作区新建或上传第一份文档。" />
-
-      <DocumentList
-        v-else
-        :documents="documents"
-        :highlighted-document-id="highlightedDocumentId"
-        @preview="previewDocument"
-        @edit="editDocument"
-      />
+      <el-dialog v-model="showCreateDialog" width="640px" destroy-on-close>
+        <DocumentCreateActions
+          :is-creating="isCreating"
+          :is-uploading="isUploading"
+          :is-importing="isImporting"
+          :remote-document-url="remoteDocumentUrl"
+          @create="createDocument"
+          @file-selected="handleFileSelected"
+          @import-remote="importRemoteDocument"
+          @update:remoteDocumentUrl="remoteDocumentUrl = $event"
+        />
+      </el-dialog>
     </el-main>
   </el-container>
 </template>
@@ -420,5 +486,10 @@ onMounted(loadDocuments);
 .recent-meta {
   font-size: 12px;
   color: var(--el-text-color-regular);
+}
+
+.library-pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
 }
 </style>
