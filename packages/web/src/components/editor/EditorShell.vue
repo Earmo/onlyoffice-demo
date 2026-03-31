@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 import { apiFetch } from "../../lib/api";
 
@@ -283,20 +284,17 @@ defineExpose({
 </script>
 
 <template>
-  <section class="editor-workspace">
-    <section class="editor-stage-stack">
-      <section v-if="isLoading" class="state-card">
-        <p>正在获取编辑器配置...</p>
-      </section>
+  <el-container class="editor-workspace">
+    <el-main class="editor-stage-stack">
+      <el-empty v-if="isLoading" description="正在获取编辑器配置..." />
 
-      <section v-else-if="errorMessage" class="state-card error">
-        <p>{{ errorMessage }}</p>
+      <el-alert v-else-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false" style="margin: 16px;">
         <p class="hint">
           请确认当前站点的 <code>/api</code> 反向代理可用，并且 ONLYOFFICE 相关路径已通过同源方式转发。
         </p>
-      </section>
+      </el-alert>
 
-      <section v-else-if="editorPayload" class="editor-shell">
+      <div v-else-if="editorPayload" class="editor-shell">
         <DocumentEditor
           :key="editorKey"
           id="docEditor"
@@ -307,49 +305,48 @@ defineExpose({
           :events_onDocumentReady="handleDocumentReady"
           :onLoadComponentError="handleLoadComponentError"
         />
-      </section>
-    </section>
+      </div>
 
-    <button
-      v-if="shouldShowConsole && !isConsoleOpen"
-      class="stage-edge-toggle"
-      type="button"
-      title="打开控制台"
-      @click="toggleConsole"
-    >▶</button>
+      <!-- Arrow toggle -->
+      <div 
+        v-if="shouldShowConsole && !isConsoleOpen" 
+        class="stage-edge-toggle" 
+        title="打开控制台"
+        @click="toggleConsole"
+      >
+        <el-icon><ArrowLeft /></el-icon>
+      </div>
+    </el-main>
 
-    <aside
-      v-if="shouldShowConsole"
-      class="side-panel floating-console"
-      :class="{ open: isConsoleOpen }"
-      :style="isConsoleOpen ? {} : { width: '0', opacity: '0', overflow: 'hidden', padding: '0' }"
-      aria-label="编辑器控制台"
+    <div
+      v-show="shouldShowConsole && isConsoleOpen"
+      class="floating-console"
     >
       <div class="console-panel-header">
-        <div>
+        <div style="flex: 1;">
           <p class="eyebrow">编辑运行态</p>
-          <h2>{{ props.documentTitle || props.documentId }}</h2>
+          <h2 class="title">{{ props.documentTitle || props.documentId }}</h2>
           <p class="summary">
             {{ props.readonly ? "当前页面以只读预览方式打开文档，不建立活跃编辑会话。" : "当前页面已进入可编辑工作台，离开页面前会显式结束当前编辑会话。" }}
           </p>
         </div>
-        <button class="panel-close" type="button" @click="closeConsole">
-          收起控制台
-        </button>
+        <el-button class="panel-close" circle @click="closeConsole">
+          <el-icon><ArrowRight /></el-icon>
+        </el-button>
       </div>
 
       <div class="console-body">
-        <section class="panel-section">
-          <p class="panel-section-title">当前文档</p>
+        <el-card shadow="never" class="panel-section">
+          <template #header>当前文档</template>
           <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
           <p class="panel-document-meta">documentId: <code>{{ props.documentId }}</code></p>
-          <p class="panel-document-meta">当前模式：<code>{{ modeLabel }}</code></p>
-        </section>
+          <p class="panel-document-meta">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
+        </el-card>
 
-        <section v-if="saveStatus" class="panel-section">
-          <p class="panel-section-title">最近保存状态</p>
+        <el-card v-if="saveStatus" shadow="never" class="panel-section">
+          <template #header>最近保存状态</template>
           <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
-            <p class="save-status-headline">{{ saveStatus.message }}</p>
+            <p class="save-status-headline" style="font-weight: bold; margin-bottom: 8px;">{{ saveStatus.message }}</p>
             <p class="save-status-meta">
               最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
             </p>
@@ -367,49 +364,52 @@ defineExpose({
               <time>{{ formatTimestamp(event.eventTime) }}</time>
             </li>
           </ul>
-          <button class="ghost-button secondary compact" type="button" @click="loadSaveStatus">
+          <el-button style="margin-top: 12px;" @click="loadSaveStatus">
             刷新保存状态
-          </button>
-        </section>
+          </el-button>
+        </el-card>
 
-        <section class="panel-section">
-          <p class="panel-section-title">编辑动作</p>
-          <div class="console-inline-actions">
-            <span class="status-chip is-outline">{{ modeLabel }}</span>
-            <button class="ghost-button secondary compact" type="button" :disabled="isLoading" @click="loadEditorConfig">
+        <el-card shadow="never" class="panel-section">
+          <template #header>编辑动作</template>
+          <div class="console-inline-actions" style="margin-bottom: 16px;">
+            <el-tag type="info" style="margin-right: 8px;">{{ modeLabel }}</el-tag>
+            <el-button size="small" :disabled="isLoading" @click="loadEditorConfig">
               重新加载配置
-            </button>
+            </el-button>
           </div>
-          <label class="field-grid">
-            <span>网络图片地址</span>
-            <input
-              v-model="imageUrl"
-              class="surface-input"
-              type="url"
-              placeholder="https://example.com/demo.png"
-              :disabled="isLoading || isInsertingImage"
-            />
-          </label>
-          <button
-            class="ghost-button accent"
-            type="button"
-            :disabled="isLoading || isInsertingImage"
-            @click="insertRemoteImage"
-          >
-            {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
-          </button>
-        </section>
+          
+          <el-form label-position="top">
+            <el-form-item label="网络图片地址">
+              <el-input
+                v-model="imageUrl"
+                type="url"
+                placeholder="https://example.com/demo.png"
+                :disabled="isLoading || isInsertingImage"
+              />
+            </el-form-item>
+            <el-form-item>
+              <el-button
+                type="primary"
+                :disabled="isLoading || isInsertingImage"
+                @click="insertRemoteImage"
+              >
+                {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
       </div>
-    </aside>
-  </section>
+    </div>
+  </el-container>
 </template>
 
 <style scoped>
 .editor-workspace {
   display: flex;
   flex-direction: row;
-  height: 100%;
+  height: 100vh;
   min-height: 0;
+  background: var(--el-bg-color-page);
 }
 
 .editor-stage-stack {
@@ -419,6 +419,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   position: relative;
+  padding: 0; /* Override el-main padding for full editor */
 }
 
 .editor-shell {
@@ -426,97 +427,120 @@ defineExpose({
   min-height: 0;
 }
 
-
 .editor-shell > div {
   height: 100%;
 }
 
-.floating-console {
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
-.console-panel-header {
-  display: grid;
-  gap: 14px;
-}
-
-.console-panel-header h2 {
-  margin: 8px 0;
-  font-size: clamp(24px, 2.4vw, 34px);
-}
-
-.console-body {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  overflow: auto;
-  padding-right: 4px;
-}
-
-.field-grid {
-  display: grid;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--muted-strong);
-}
-
-.save-status-events {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.save-status-events li {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.save-status-events strong {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--accent-main);
-}
-
-.save-status-events span,
-.save-status-events time {
-  font-size: 12px;
-  color: var(--muted-strong);
-}
-
-.console-inline-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-
 .stage-edge-toggle {
-  flex-shrink: 0;
-  width: 32px;
-  align-self: stretch;
-  border: 1px solid var(--surface-border);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--muted-strong);
-  cursor: pointer;
-  font-size: 14px;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 48px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-right: none;
+  border-radius: 4px 0 0 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 160ms ease;
+  cursor: pointer;
+  z-index: 100;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.05);
 }
 
+.floating-console {
+  width: 400px;
+  max-width: 100vw;
+  background: var(--el-bg-color);
+  border-left: 1px solid var(--el-border-color);
+  display: flex;
+  flex-direction: column;
+}
 
-@media (max-width: 760px) {
-  .console-panel-header h2 {
-    font-size: 26px;
-  }
+.console-panel-header {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.eyebrow {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.title {
+  margin: 8px 0;
+  font-size: 20px;
+}
+
+.summary {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.console-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel-section {
+  --el-card-padding: 16px;
+}
+
+.panel-document-title,
+.panel-document-meta {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+.panel-document-title {
+  font-weight: bold;
+}
+
+.save-status-card {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  margin-bottom: 12px;
+}
+.save-status-meta {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.save-status-events {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.save-status-events li {
+  padding: 8px 12px;
+  background: var(--el-fill-color);
+  border-radius: 6px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.save-status-events strong {
+  color: var(--el-color-primary);
+}
+.save-status-events time {
+  color: var(--el-text-color-secondary);
 }
 </style>

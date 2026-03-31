@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
 import EditorShell from "../components/editor/EditorShell.vue";
 import { apiFetch } from "../lib/api";
 
@@ -119,32 +120,29 @@ onMounted(loadEditorPageData);
 </script>
 
 <template>
-  <main class="page-shell editor-page-shell">
-    <section v-if="errorMessage" class="state-card error inline-state">
-      <p>{{ errorMessage }}</p>
-      <button class="ghost-button secondary compact" type="button" @click="loadEditorPageData">
-        重新加载
-      </button>
-    </section>
+  <el-container class="editor-page-shell" direction="vertical">
+    <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon style="margin: 16px;">
+      <el-button size="small" @click="loadEditorPageData" style="margin-top: 8px;">重新加载</el-button>
+    </el-alert>
 
-    <section v-else-if="isLoading" class="state-card inline-state">
-      <p>正在加载编辑页...</p>
-    </section>
+    <el-empty v-else-if="isLoading" description="正在加载编辑页..." />
 
-    <section v-else class="editor-layout">
-      <button
+    <el-container v-else class="editor-layout">
+      <div
         v-if="!isSidebarOpen"
         class="sidebar-strip-toggle"
-        type="button"
         @click="toggleSidebar"
         title="展开侧边栏"
-      >◄</button>
-
-      <aside
-        class="surface-panel editor-sidebar"
-        :style="{ width: isSidebarOpen ? '300px' : '0', opacity: isSidebarOpen ? '1' : '0', padding: isSidebarOpen ? undefined : '0', overflow: isSidebarOpen ? undefined : 'hidden' }"
       >
-        <section class="sidebar-section sidebar-header">
+        <el-icon><ArrowRight /></el-icon>
+      </div>
+
+      <el-aside
+        v-show="isSidebarOpen"
+        width="300px"
+        class="editor-sidebar"
+      >
+        <div class="sidebar-header">
           <div class="sidebar-header-row">
             <div class="sidebar-header-meta">
               <p class="eyebrow">独立编辑工作台</p>
@@ -152,189 +150,168 @@ onMounted(loadEditorPageData);
                 {{ currentDocument?.title || currentDocumentId }}
               </h1>
             </div>
-            <button class="ghost-button compact" type="button" @click="toggleSidebar" title="收起侧边栏">▶</button>
+            <el-button circle @click="toggleSidebar" title="收起侧边栏">
+              <el-icon><ArrowLeft /></el-icon>
+            </el-button>
           </div>
-          <p class="muted-copy sidebar-notice">
+          <p class="muted-copy sidebar-notice" style="margin-bottom: 12px;">
             Phase 9 起固定为可编辑工作台。离开页面前会显式结束编辑会话。
           </p>
           <div class="toolbar-actions">
-            <button class="ghost-button secondary compact" type="button" @click="goBackToLibrary">返回文档列表</button>
-            <button class="ghost-button compact" type="button" :disabled="isLoading" @click="loadEditorPageData">刷新文档上下文</button>
+            <el-button size="small" @click="goBackToLibrary">返回文档列表</el-button>
+            <el-button type="primary" size="small" :disabled="isLoading" @click="loadEditorPageData">刷新文档上下文</el-button>
           </div>
-        </section>
+        </div>
 
-        <section class="sidebar-section">
+        <el-divider style="margin: 16px 0" />
+
+        <div class="sidebar-section">
           <p class="eyebrow">当前文档</p>
-          <h2>{{ currentDocument?.title || "未命名文档" }}</h2>
+          <h2 style="margin: 4px 0 8px; font-size: 16px;">{{ currentDocument?.title || "未命名文档" }}</h2>
           <p class="muted-copy">最近保存：<code>{{ formatTimestamp(currentDocument?.lastSavedTime) }}</code></p>
-          <p class="muted-copy">当前状态：<code>{{ currentDocument?.status || "未知" }}</code></p>
-        </section>
+          <p class="muted-copy">当前状态：<el-tag size="small">{{ currentDocument?.status || "未知" }}</el-tag></p>
+        </div>
 
-        <section class="sidebar-section">
-          <div class="sidebar-heading">
-            <div>
-              <p class="eyebrow">切换文档</p>
-              <h3>最近文档</h3>
-            </div>
+        <el-divider style="margin: 16px 0" />
+
+        <div class="sidebar-section">
+          <div class="sidebar-heading" style="margin-bottom: 8px;">
+            <p class="eyebrow">切换文档</p>
+            <h3 style="margin: 4px 0; font-size: 16px;">最近文档</h3>
           </div>
 
           <div class="switch-list">
-            <button
+            <el-card
               v-for="document in documents"
               :key="document.documentId"
+              shadow="hover"
               class="switch-item"
               :class="{ active: document.documentId === currentDocumentId }"
-              :title="document.title"
-              type="button"
               @click="requestOpenDocument(document)"
+              body-style="padding: 12px;"
             >
-              <span class="switch-title">{{ document.title }}</span>
-              <span class="switch-meta">{{ formatTimestamp(document.lastSavedTime) }}</span>
-            </button>
+              <div class="switch-title" :title="document.title">{{ document.title }}</div>
+              <div class="switch-meta">{{ formatTimestamp(document.lastSavedTime) }}</div>
+            </el-card>
           </div>
-        </section>
-      </aside>
+        </div>
+      </el-aside>
 
-      <section class="editor-stage">
+      <el-main class="editor-stage">
         <EditorShell
           ref="editorShellRef"
           :document-id="currentDocumentId"
           :document-title="currentDocument?.title || currentDocumentId"
         />
-      </section>
-    </section>
-  </main>
+      </el-main>
+    </el-container>
+  </el-container>
 </template>
 
 <style scoped>
 .editor-page-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100dvh;
-  padding-bottom: 0;
-  gap: 0;
+  min-height: 100vh;
+  background-color: var(--el-bg-color-page);
 }
 
 .editor-layout {
-  flex: 1;
-  display: flex;
-  align-items: stretch;
-  gap: 16px;
-  padding: 18px 0 18px;
+  height: 100vh;
   min-height: 0;
 }
 
 .editor-stage {
-  flex: 1;
+  padding: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
 .editor-sidebar {
-  display: grid;
-  gap: 16px;
-  align-content: start;
-  width: 300px;
-  flex-shrink: 0;
-  overflow: hidden;
-  transition: width 220ms ease, opacity 220ms ease;
-}
-
-.sidebar-section {
-  display: grid;
-  gap: 12px;
-}
-
-.sidebar-section h2,
-.sidebar-section h3 {
-  margin: 4px 0 0;
+  background: var(--el-bg-color);
+  border-right: 1px solid var(--el-border-color);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-strip-toggle {
-  flex-shrink: 0;
-  width: 32px;
-  align-self: stretch;
-  border: 1px solid var(--surface-border);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--muted-strong);
-  cursor: pointer;
-  font-size: 14px;
+  height: 48px;
+  width: 24px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-left: none;
+  border-radius: 0 4px 4px 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 160ms ease;
+  cursor: pointer;
+  z-index: 100;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.eyebrow {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.muted-copy {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 4px 0;
 }
 
 .sidebar-header-row {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 8px;
 }
 
 .sidebar-doc-title {
-  margin: 8px 0 0;
-  font-size: clamp(18px, 2vw, 26px);
-  line-height: 1.2;
+  margin: 4px 0 0;
+  font-size: 18px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 200px;
 }
 
-.sidebar-notice {
-  font-size: 12px;
-}
-
 .toolbar-actions {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .switch-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .switch-item {
-  display: grid;
-  gap: 6px;
-  text-align: left;
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.72);
   cursor: pointer;
 }
 
 .switch-item.active {
-  border-color: rgba(139, 94, 52, 0.26);
-  background: rgba(255, 248, 240, 0.88);
+  border-color: var(--el-color-primary-light-5);
+  background-color: var(--el-color-primary-light-9);
 }
 
 .switch-title {
   font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
 }
-
 .switch-meta {
-  color: var(--muted-soft);
-  font-size: 13px;
-}
-
-@media (max-width: 980px) {
-  .editor-layout {
-    flex-direction: column;
-  }
-
-  .editor-sidebar {
-    width: 100% !important;
-  }
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  margin-top: 4px;
 }
 </style>

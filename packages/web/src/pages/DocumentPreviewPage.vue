@@ -69,137 +69,129 @@ onMounted(loadPreviewPageData);
 </script>
 
 <template>
-  <main class="page-shell preview-page-shell">
-    <section class="surface-panel preview-header">
-      <div class="preview-copy">
-        <p class="eyebrow">只读预览</p>
-        <h1>{{ currentDocument?.title || currentDocumentId }}</h1>
-        <p class="muted-copy">
-          这里用于安全查看文档内容，不建立活跃编辑会话；若需要修改，请进入独立编辑工作台。
-        </p>
-      </div>
-      <div class="preview-actions">
-        <button class="ghost-button secondary" type="button" @click="goBackToLibrary">
-          返回文档列表
-        </button>
-        <button class="ghost-button compact" type="button" :disabled="isLoading" @click="goToEditor">
-          编辑文档
-        </button>
-      </div>
-    </section>
-
-    <section v-if="errorMessage" class="state-card error inline-state">
-      <p>{{ errorMessage }}</p>
-      <button class="ghost-button secondary compact" type="button" @click="loadPreviewPageData">
-        重新加载
-      </button>
-    </section>
-
-    <section v-else-if="isLoading" class="state-card inline-state">
-      <p>正在加载预览页...</p>
-    </section>
-
-    <section v-else class="preview-layout">
-      <section class="preview-stage">
-        <EditorShell
-          :document-id="currentDocumentId"
-          :document-title="currentDocument?.title || currentDocumentId"
-          :readonly="true"
-          :show-console="false"
-        />
-      </section>
-
-      <aside class="surface-panel preview-sidebar">
-        <section class="preview-meta-section">
-          <p class="eyebrow">文档信息</p>
-          <h2>{{ currentDocument?.title || "未命名文档" }}</h2>
-          <p class="muted-copy">最近保存：<code>{{ formatTimestamp(currentDocument?.lastSavedTime) }}</code></p>
-          <p class="muted-copy">当前状态：<code>{{ currentDocument?.status || "未知" }}</code></p>
-          <p class="muted-copy">documentId：<code>{{ currentDocumentId }}</code></p>
-        </section>
-
-        <section class="preview-meta-section">
-          <p class="eyebrow">下一步</p>
+  <el-container class="preview-page-shell" direction="vertical">
+    <el-card shadow="never" class="preview-header-card" style="margin-bottom: 16px;">
+      <div class="preview-header">
+        <div class="preview-copy">
+          <p class="eyebrow">只读预览</p>
+          <h1>{{ currentDocument?.title || currentDocumentId }}</h1>
           <p class="muted-copy">
-            预览页只负责查看内容，不会显示编辑控制台，也不会建立“编辑中”会话状态。
+            这里用于安全查看文档内容，不建立活跃编辑会话；若需要修改，请进入独立编辑工作台。
           </p>
-          <button class="ghost-button compact" type="button" @click="goToEditor">
-            进入编辑工作台
-          </button>
-        </section>
-      </aside>
-    </section>
-  </main>
+        </div>
+        <div class="preview-actions">
+           <el-button @click="goBackToLibrary">返回文档列表</el-button>
+           <el-button type="primary" :disabled="isLoading" @click="goToEditor">编辑文档</el-button>
+        </div>
+      </div>
+    </el-card>
+
+    <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon style="margin-bottom: 16px;">
+      <el-button size="small" @click="loadPreviewPageData" style="margin-top: 8px;">重新加载</el-button>
+    </el-alert>
+
+    <el-empty v-else-if="isLoading" description="正在加载预览页..." />
+
+    <el-row v-else :gutter="16" class="preview-layout" style="flex: 1; min-height: 0;">
+      <el-col :xs="24" :md="16" :lg="18" class="preview-stage-col">
+        <div class="preview-stage">
+          <EditorShell
+            :document-id="currentDocumentId"
+            :document-title="currentDocument?.title || currentDocumentId"
+            :readonly="true"
+            :show-console="false"
+          />
+        </div>
+      </el-col>
+
+      <el-col :xs="24" :md="8" :lg="6">
+        <el-card shadow="never" class="preview-sidebar">
+          <div class="preview-meta-section" style="margin-bottom: 24px;">
+            <p class="eyebrow">文档信息</p>
+            <h2 style="margin: 4px 0 8px; font-size: 18px;">{{ currentDocument?.title || "未命名文档" }}</h2>
+            <p class="muted-copy">最近保存：<code>{{ formatTimestamp(currentDocument?.lastSavedTime) }}</code></p>
+            <p class="muted-copy">当前状态：<el-tag size="small">{{ currentDocument?.status || "未知" }}</el-tag></p>
+            <p class="muted-copy">documentId：<code>{{ currentDocumentId }}</code></p>
+          </div>
+
+          <div class="preview-meta-section">
+            <p class="eyebrow">下一步</p>
+            <p class="muted-copy" style="margin-bottom: 12px;">
+              预览页只负责查看内容，不会显示编辑控制台，也不会建立“编辑中”会话状态。
+            </p>
+            <el-button type="primary" plain @click="goToEditor">
+              进入编辑工作台
+            </el-button>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+  </el-container>
 </template>
 
 <style scoped>
 .preview-page-shell {
-  display: grid;
-  gap: 18px;
-  padding-bottom: 28px;
+  min-height: 100vh;
+  padding: 18px;
+  background-color: var(--el-bg-color-page);
+  display: flex;
+  flex-direction: column;
 }
 
 .preview-header {
   display: flex;
-  gap: 16px;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .preview-copy h1 {
-  margin: 8px 0 10px;
-  font-size: clamp(30px, 3vw, 42px);
-  line-height: 1;
+  margin: 4px 0 8px;
+  font-size: 24px;
 }
 
 .preview-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
+.eyebrow {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.muted-copy {
+  margin: 4px 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .preview-layout {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  min-height: calc(100vh - 220px);
+  display: flex;
+}
+
+.preview-stage-col {
+  display: flex;
+  flex-direction: column;
 }
 
 .preview-stage {
-  min-width: 0;
-  height: 100%;
+  flex: 1;
+  min-height: 600px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--el-border-radius-base);
+  overflow: hidden;
 }
 
 .preview-sidebar {
-  display: grid;
-  gap: 16px;
-  align-content: start;
   position: sticky;
-  top: 20px;
-  height: fit-content;
-}
-
-.preview-meta-section {
-  display: grid;
-  gap: 12px;
-}
-
-.preview-meta-section h2 {
-  margin: 4px 0 0;
-}
-
-@media (max-width: 980px) {
-  .preview-header {
-    display: grid;
-    gap: 12px;
-  }
-
-  .preview-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .preview-sidebar {
-    position: static;
-  }
+  top: 18px;
 }
 </style>

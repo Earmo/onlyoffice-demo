@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from "vue";
+import { Plus, UploadFilled, Link as LinkIcon } from "@element-plus/icons-vue";
 
 const props = defineProps({
   isCreating: {
@@ -47,19 +48,22 @@ function handleFileSelected(event) {
 </script>
 
 <template>
-  <section class="surface-panel actions-panel">
-    <div class="section-header">
-      <p class="eyebrow">文档入口</p>
-      <h2>开始新的编辑流程</h2>
-      <p class="muted-copy">
-        首页直接提供新建、上传和远程导入三类入口，所有结果都会先回到工作台列表，再由你决定进入哪份文档。
-      </p>
-    </div>
+  <el-card shadow="never" class="actions-panel">
+    <template #header>
+      <div class="section-header">
+        <p class="eyebrow">文档入口</p>
+        <h2 style="margin: 0; font-size: 20px;">开始新的编辑流程</h2>
+        <p class="muted-copy" style="margin: 8px 0 0;">
+          首页直接提供新建、上传和远程导入三类入口，所有结果都会先回到工作台列表，再由你决定进入哪份文档。
+        </p>
+      </div>
+    </template>
 
-    <div class="action-grid">
-      <button class="ghost-button primary" type="button" :disabled="isCreating" @click="$emit('create')">
-        {{ isCreating ? "创建中..." : "新建空白文档" }}
-      </button>
+    <div class="action-grid" style="margin-bottom: 24px;">
+      <el-button type="primary" :loading="isCreating" @click="$emit('create')" size="large">
+        <el-icon v-if="!isCreating" style="margin-right: 6px;"><Plus /></el-icon>
+        新建空白文档
+      </el-button>
 
       <input
         ref="fileInputRef"
@@ -67,62 +71,66 @@ function handleFileSelected(event) {
         type="file"
         accept=".doc,.docx,.odt,.rtf,.txt,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.odp,.pdf"
         @change="handleFileSelected"
+        style="display: none;"
       />
-      <button class="ghost-button" type="button" :disabled="isUploading" @click="openFilePicker">
-        {{ isUploading ? "上传中..." : "上传本地文档" }}
-      </button>
+      <el-button :loading="isUploading" @click="openFilePicker" size="large">
+        <el-icon v-if="!isUploading" style="margin-right: 6px;"><UploadFilled /></el-icon>
+        上传本地文档
+      </el-button>
     </div>
 
-    <label class="field-grid">
-      <span>远程文档地址</span>
-      <input
-        :value="remoteDocumentUrl"
-        class="surface-input"
-        type="url"
-        placeholder="https://example.com/roadmap.docx"
-        :disabled="isImporting"
-        @input="$emit('update:remoteDocumentUrl', $event.target.value)"
-      />
-    </label>
-
-    <button
-      class="ghost-button secondary"
-      type="button"
-      :disabled="isImporting || !props.remoteDocumentUrl"
-      @click="$emit('import-remote')"
-    >
-      {{ isImporting ? "导入中..." : "导入网络文档" }}
-    </button>
-  </section>
+    <el-form label-position="top">
+      <el-form-item label="远程文档地址">
+        <el-input
+          :model-value="remoteDocumentUrl"
+          type="url"
+          placeholder="https://example.com/roadmap.docx"
+          :disabled="isImporting"
+          @update:model-value="$emit('update:remoteDocumentUrl', $event)"
+        >
+          <template #prefix>
+            <el-icon><LinkIcon /></el-icon>
+          </template>
+        </el-input>
+      </el-form-item>
+      
+      <el-form-item style="margin-bottom: 0;">
+        <el-button
+          type="primary"
+          plain
+          :loading="isImporting"
+          :disabled="!props.remoteDocumentUrl"
+          @click="$emit('import-remote')"
+        >
+          导入网络文档
+        </el-button>
+      </el-form-item>
+    </el-form>
+  </el-card>
 </template>
 
 <style scoped>
 .actions-panel {
-  display: grid;
-  gap: 18px;
+  border-radius: var(--el-border-radius-base);
 }
 
-.section-header {
-  display: grid;
-  gap: 10px;
+.eyebrow {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 4px;
 }
 
-.section-header h2 {
-  margin: 0;
-  font-size: clamp(24px, 3vw, 34px);
-  line-height: 1.02;
+.muted-copy {
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .action-grid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.field-grid {
-  display: grid;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--muted-strong);
 }
 </style>

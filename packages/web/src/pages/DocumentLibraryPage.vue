@@ -270,295 +270,155 @@ onMounted(loadDocuments);
 </script>
 
 <template>
-  <main class="page-shell library-shell">
-    <section class="hero-grid">
-      <DocumentCreateActions
-        :is-creating="isCreating"
-        :is-uploading="isUploading"
-        :is-importing="isImporting"
-        :remote-document-url="remoteDocumentUrl"
-        @create="createDocument"
-        @file-selected="handleFileSelected"
-        @import-remote="importRemoteDocument"
-        @update:remoteDocumentUrl="remoteDocumentUrl = $event"
-      />
-
-      <div class="library-side-stack">
-        <section class="surface-panel context-card">
-          <p class="eyebrow">当前上下文</p>
-          <h2>文档工作台</h2>
-          <p class="muted-copy">
-            当前租户 <code>{{ tenantId || "未解析" }}</code>，当前用户
-            <code>{{ actorName || actorUser || "未解析" }}</code>。
-          </p>
-        </section>
-
-        <section class="surface-panel recent-card">
-          <div class="section-header compact">
-            <div>
-              <p class="eyebrow">最近文档</p>
-              <h2>继续上次工作</h2>
-            </div>
-          </div>
-
-          <div v-if="recentDocuments.length" class="recent-grid">
-            <article
-              v-for="document in recentDocuments"
-              :key="document.documentId"
-              class="recent-item"
-            >
-              <div class="recent-copy">
-                <span class="recent-title">{{ document.title }}</span>
-                <span class="recent-meta">{{ formatTimestamp(document.lastSavedTime) }}</span>
-              </div>
-              <div class="recent-actions">
-                <button class="ghost-button secondary compact" type="button" @click="previewDocument(document)">
-                  查看文件
-                </button>
-                <button class="ghost-button compact" type="button" @click="editDocument(document)">
-                  编辑文档
-                </button>
-              </div>
-            </article>
-          </div>
-          <p v-else class="muted-copy">还没有最近文档，先创建或上传第一份内容。</p>
-        </section>
-      </div>
-    </section>
-
-    <section class="surface-panel toolbar-panel">
-      <form class="toolbar-grid" @submit.prevent="applyFilters">
-        <label class="field-grid wide">
-          <span>搜索文档</span>
-          <input
-            v-model="searchQuery"
-            class="surface-input"
-            type="search"
-            placeholder="按标题、documentId 或外部文档 ID 搜索"
+  <el-container class="library-shell">
+    <el-main>
+      <el-row :gutter="16" class="hero-grid">
+        <el-col :xs="24" :sm="16">
+          <DocumentCreateActions
+            :is-creating="isCreating"
+            :is-uploading="isUploading"
+            :is-importing="isImporting"
+            :remote-document-url="remoteDocumentUrl"
+            @create="createDocument"
+            @file-selected="handleFileSelected"
+            @import-remote="importRemoteDocument"
+            @update:remoteDocumentUrl="remoteDocumentUrl = $event"
           />
-        </label>
+        </el-col>
+        <el-col :xs="24" :sm="8">
+          <el-card class="context-card" shadow="hover" style="margin-bottom: 16px;">
+            <template #header>
+              <div class="card-header">
+                <span class="eyebrow">当前上下文</span>
+                <h2>文档工作台</h2>
+              </div>
+            </template>
+            <p class="muted-copy">
+              当前租户 <el-tag size="small">{{ tenantId || "未解析" }}</el-tag>，当前用户
+              <el-tag size="small" type="info">{{ actorName || actorUser || "未解析" }}</el-tag>。
+            </p>
+          </el-card>
 
-        <label class="field-grid">
-          <span>状态</span>
-          <select v-model="statusFilter" class="surface-select">
-            <option value="all">全部状态</option>
-            <option v-for="status in statusOptions" :key="status" :value="status">
-              {{ status }}
-            </option>
-          </select>
-        </label>
+          <el-card class="recent-card" shadow="hover">
+            <template #header>
+              <div class="card-header">
+                <span class="eyebrow">最近文档</span>
+                <h2>继续上次工作</h2>
+              </div>
+            </template>
+            <div v-if="recentDocuments.length" class="recent-grid">
+              <el-card v-for="document in recentDocuments" :key="document.documentId" shadow="never" class="recent-item">
+                <div class="recent-copy">
+                  <span class="recent-title">{{ document.title }}</span>
+                  <span class="recent-meta">{{ formatTimestamp(document.lastSavedTime) }}</span>
+                </div>
+                <div class="recent-actions" style="margin-top: 8px;">
+                  <el-button size="small" @click="previewDocument(document)">查看文件</el-button>
+                  <el-button size="small" type="primary" @click="editDocument(document)">编辑文档</el-button>
+                </div>
+              </el-card>
+            </div>
+            <p v-else class="muted-copy">还没有最近文档，先创建或上传第一份内容。</p>
+          </el-card>
+        </el-col>
+      </el-row>
 
-        <label class="field-grid">
-          <span>文档类型</span>
-          <select v-model="documentTypeFilter" class="surface-select">
-            <option value="all">全部类型</option>
-            <option v-for="documentType in documentTypeOptions" :key="documentType" :value="documentType">
-              {{ documentType }}
-            </option>
-          </select>
-        </label>
+      <el-card class="toolbar-panel" shadow="never" style="margin-top: 16px; margin-bottom: 16px;">
+        <el-form :inline="true" @submit.prevent="applyFilters">
+          <el-form-item label="搜索文档">
+            <el-input v-model="searchQuery" placeholder="按标题、ID 搜索" clearable style="width: 200px;" />
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="statusFilter" style="width: 120px;">
+              <el-option label="全部状态" value="all" />
+              <el-option v-for="status in statusOptions" :key="status" :label="status" :value="status" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="文档类型">
+            <el-select v-model="documentTypeFilter" style="width: 120px;">
+              <el-option label="全部类型" value="all" />
+              <el-option v-for="t in documentTypeOptions" :key="t" :label="t" :value="t" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="来源系统">
+            <el-select v-model="sourceSystemFilter" style="width: 120px;">
+              <el-option label="全部来源" value="all" />
+              <el-option v-for="s in sourceSystemOptions" :key="s" :label="s" :value="s" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="对象可用性">
+            <el-select v-model="storageFilter" style="width: 120px;">
+              <el-option label="全部" value="all" />
+              <el-option label="仅可用" value="available" />
+              <el-option label="仅异常" value="unavailable" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="排序">
+            <el-select v-model="sortDirection" style="width: 120px;">
+              <el-option label="最近优先" value="desc" />
+              <el-option label="较早优先" value="asc" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" native-type="submit" :loading="isLoading">搜索与筛选</el-button>
+            <el-button @click="resetFilters" :disabled="isLoading">重置</el-button>
+          </el-form-item>
+        </el-form>
+      </el-card>
 
-        <label class="field-grid">
-          <span>来源系统</span>
-          <select v-model="sourceSystemFilter" class="surface-select">
-            <option value="all">全部来源</option>
-            <option v-for="sourceSystem in sourceSystemOptions" :key="sourceSystem" :value="sourceSystem">
-              {{ sourceSystem }}
-            </option>
-          </select>
-        </label>
+      <el-alert v-if="successMessage" :title="successMessage" type="success" show-icon style="margin-bottom: 16px;" />
+      
+      <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon style="margin-bottom: 16px;">
+        <el-button size="small" @click="loadDocuments" style="margin-top: 8px;">重新加载</el-button>
+      </el-alert>
 
-        <label class="field-grid">
-          <span>对象可用性</span>
-          <select v-model="storageFilter" class="surface-select">
-            <option value="all">全部</option>
-            <option value="available">仅可用</option>
-            <option value="unavailable">仅异常</option>
-          </select>
-        </label>
+      <el-empty v-else-if="isLoading" description="正在加载文档工作台..." />
 
-        <label class="field-grid">
-          <span>排序</span>
-          <select v-model="sortDirection" class="surface-select">
-            <option value="desc">最近优先</option>
-            <option value="asc">较早优先</option>
-          </select>
-        </label>
+      <el-empty v-else-if="!documents.length && hasActiveQuery" description="当前搜索或筛选条件下没有找到文档。">
+        <el-button @click="resetFilters">清空筛选</el-button>
+      </el-empty>
 
-        <div class="toolbar-actions">
-          <button class="ghost-button compact" type="submit" :disabled="isLoading">
-            搜索与筛选
-          </button>
-          <button class="ghost-button secondary compact" type="button" :disabled="isLoading" @click="resetFilters">
-            重置
-          </button>
-        </div>
-      </form>
-    </section>
+      <el-empty v-else-if="!documents.length" description="当前租户下还没有任何文档。从上方主操作区新建或上传第一份文档。" />
 
-    <section v-if="successMessage" class="state-card success-banner">
-      <p>{{ successMessage }}</p>
-    </section>
-
-    <section v-if="errorMessage" class="state-card error inline-state">
-      <p>{{ errorMessage }}</p>
-      <button class="ghost-button secondary compact" type="button" @click="loadDocuments">
-        重新加载
-      </button>
-    </section>
-
-    <section v-else-if="isLoading" class="state-card inline-state">
-      <p>正在加载文档工作台...</p>
-    </section>
-
-    <section
-      v-else-if="!documents.length && hasActiveQuery"
-      class="state-card inline-state"
-    >
-      <p>当前搜索或筛选条件下没有找到文档。</p>
-      <button class="ghost-button secondary compact" type="button" @click="resetFilters">
-        清空筛选
-      </button>
-    </section>
-
-    <section v-else-if="!documents.length" class="state-card inline-state">
-      <p>当前租户下还没有任何文档。</p>
-      <p class="hint">从上方主操作区新建或上传第一份文档后，这里会变成你的工作台列表。</p>
-    </section>
-
-    <DocumentList
-      v-else
-      :documents="documents"
-      :highlighted-document-id="highlightedDocumentId"
-      @preview="previewDocument"
-      @edit="editDocument"
-    />
-  </main>
+      <DocumentList
+        v-else
+        :documents="documents"
+        :highlighted-document-id="highlightedDocumentId"
+        @preview="previewDocument"
+        @edit="editDocument"
+      />
+    </el-main>
+  </el-container>
 </template>
 
 <style scoped>
 .library-shell {
-  display: grid;
-  gap: 18px;
-  padding-bottom: 28px;
+  min-height: 100vh;
+  background-color: transparent;
 }
-
-.hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
-  gap: 16px;
+.eyebrow {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
-
-.library-side-stack {
-  display: grid;
-  gap: 16px;
+.card-header h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
 }
-
-.context-card,
-.recent-card,
-.toolbar-panel {
-  display: grid;
-  gap: 16px;
+.muted-copy {
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
 }
-
-.context-card h2,
-.recent-card h2 {
-  margin: 6px 0 0;
-  font-size: 24px;
-}
-
-.section-header.compact h2 {
-  margin: 6px 0 0;
-  font-size: 22px;
-}
-
-.recent-grid {
-  display: grid;
-  gap: 10px;
-}
-
 .recent-item {
-  display: grid;
-  gap: 10px;
-  border: 1px solid var(--surface-border);
-  border-radius: 18px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.72);
+  margin-bottom: 8px;
 }
-
-.recent-copy {
-  display: grid;
-  gap: 6px;
-}
-
-.recent-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.recent-title,
-.recent-meta {
-  display: block;
-}
-
 .recent-title {
-  font-weight: 600;
+  display: block;
+  font-weight: bold;
 }
-
 .recent-meta {
-  color: var(--muted-soft);
-  font-size: 13px;
-}
-
-.toolbar-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 2fr) repeat(5, minmax(120px, 1fr)) auto;
-  align-items: end;
-}
-
-.field-grid {
-  display: grid;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--muted-strong);
-}
-
-.field-grid.wide {
-  min-width: 0;
-}
-
-.toolbar-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.inline-state {
-  display: grid;
-  gap: 12px;
-  justify-items: start;
-}
-
-.success-banner {
-  border-color: rgba(16, 110, 84, 0.18);
-  background: rgba(238, 249, 242, 0.92);
-}
-
-@media (max-width: 1180px) {
-  .hero-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .toolbar-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 760px) {
-  .toolbar-grid {
-    grid-template-columns: 1fr;
-  }
+  font-size: 12px;
+  color: var(--el-text-color-regular);
 }
 </style>
