@@ -10,7 +10,11 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["preview", "edit"]);
+const emit = defineEmits(["preview", "edit", "start-edit"]);
+
+function startEdit() {
+  emit("start-edit");
+}
 
 function formatTimestamp(value) {
   if (!value) {
@@ -72,9 +76,12 @@ function tableRowClassName({ row }) {
   <el-card shadow="never" class="list-panel">
     <template #header>
       <div class="section-heading">
-        <div>
-          <p class="eyebrow">文档列表</p>
-          <h2 style="margin: 0; font-size: 18px;">先查看，再决定是否进入编辑</h2>
+        <div class="heading-left">
+          <div class="heading-titles">
+            <p class="eyebrow">文档列表</p>
+            <h2 style="margin: 0; font-size: 18px;">先查看，再决定是否进入编辑</h2>
+          </div>
+          <el-button type="primary" @click="startEdit">开始编辑</el-button>
         </div>
         <p class="muted-copy" style="margin: 0;">点击行可直接预览文档；“编辑文档”会进入独立可编辑工作台。</p>
       </div>
@@ -138,9 +145,15 @@ function tableRowClassName({ row }) {
 .section-heading {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.heading-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .eyebrow {
