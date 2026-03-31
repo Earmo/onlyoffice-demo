@@ -28,6 +28,8 @@ public interface DocumentMetadataService {
 
   DocumentMetadataEntity requireDocument(String documentId);
 
+  DocumentMetadataEntity requireAccessibleDocument(String documentId);
+
   List<DocumentMetadataEntity> listDocuments(String tenantId);
 
   List<DocumentMetadataEntity> listDocuments(
@@ -50,6 +52,8 @@ public interface DocumentMetadataService {
       int pageSize
   );
 
+  List<DocumentMetadataEntity> listRecentDocuments(String tenantId, int limit);
+
   DocumentMetadataEntity createDocument(
       String documentId,
       String title,
@@ -70,6 +74,8 @@ public interface DocumentMetadataService {
       String ownerUser,
       String externalDocumentId
   );
+
+  DocumentMetadataEntity archiveDocument(String documentId);
 
   DocumentSaveStatusResponse markOpened(String documentId);
 

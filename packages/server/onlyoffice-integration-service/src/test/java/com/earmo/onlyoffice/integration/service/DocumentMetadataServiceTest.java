@@ -10,6 +10,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -74,5 +75,50 @@ class DocumentMetadataServiceTest {
     assertEquals("external-1", entity.getExternalDocumentId());
     assertEquals("draft", entity.getStatus());
     assertEquals("doc-1", entity.getDocumentId());
+  }
+
+  @Test
+  void shouldArchiveDocumentByUpdatingStatusAndTimestamp() {
+    DocumentMetadataMapper mapper = mock(DocumentMetadataMapper.class);
+    DocumentMetadataRepository repository = mock(DocumentMetadataRepository.class);
+    DocumentMetadataEntity entity = new DocumentMetadataEntity();
+    entity.setDocumentId("doc-archived");
+    entity.setStatus("saved");
+    when(mapper.selectOneById("doc-archived")).thenReturn(entity);
+    when(mapper.update(any(DocumentMetadataEntity.class))).thenReturn(1);
+
+    DocumentMetadataService service = new DocumentMetadataServiceImpl(mapper, repository);
+    DocumentMetadataEntity archived = service.archiveDocument("doc-archived");
+
+    assertEquals("archived", archived.getStatus());
+    assertNotNull(archived.getUpdatedTime());
+  }
+
+  @Test
+  void shouldCreateNewDocumentWhenExternalMappingWasArchived() {
+    DocumentMetadataMapper mapper = mock(DocumentMetadataMapper.class);
+    DocumentMetadataRepository repository = mock(DocumentMetadataRepository.class);
+    DocumentMetadataEntity archived = new DocumentMetadataEntity();
+    archived.setDocumentId("doc-old");
+    archived.setStatus("archived");
+
+    when(repository.findBySourceSystemAndExternalDocument(eq("native"), eq("external-1")))
+        .thenReturn(Optional.of(archived));
+    when(mapper.selectOneById("doc-new")).thenReturn(null);
+    when(mapper.insert(any(DocumentMetadataEntity.class))).thenReturn(1);
+
+    DocumentMetadataService service = new DocumentMetadataServiceImpl(mapper, repository);
+    DocumentMetadataEntity entity = service.createDocument(
+        "doc-new",
+        "alpha.docx",
+        "docx",
+        "word",
+        "documents/doc-new.docx",
+        new RequestContext("tenant-a", "native", "user-a", "Alice"),
+        "external-1"
+    );
+
+    assertEquals("doc-new", entity.getDocumentId());
+    assertEquals("draft", entity.getStatus());
   }
 }

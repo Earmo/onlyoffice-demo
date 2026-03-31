@@ -32,6 +32,8 @@ public record DocumentSummaryResponse(
     String externalDocumentId,
     @Schema(description = "当前文档对象是否仍然可从底层存储读取。", example = "true")
     boolean storageAvailable,
+    @Schema(description = "最近一次编辑时间。")
+    Instant lastEditedTime,
     @Schema(description = "最近一次打开时间。")
     Instant lastOpenedTime,
     @Schema(description = "最近一次成功保存时间。")

@@ -16,6 +16,8 @@ public interface AccessAuditService {
 
   void recordDocumentImported(String documentId, AccessContext accessContext);
 
+  void recordDocumentArchived(String documentId, AccessContext accessContext);
+
   void recordEditorConfigRequested(String documentId, AccessContext accessContext);
 
   void recordCallbackReceived(String documentId, Integer callbackStatus);

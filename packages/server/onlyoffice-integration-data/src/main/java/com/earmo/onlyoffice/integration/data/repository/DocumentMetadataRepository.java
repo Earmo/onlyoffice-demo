@@ -22,10 +22,12 @@ import static com.earmo.onlyoffice.integration.data.entity.table.DocumentMetadat
 @RequiredArgsConstructor
 public class DocumentMetadataRepository {
 
+  private static final String STATUS_ARCHIVED = "archived";
+
   private final DocumentMetadataMapper documentMetadataMapper;
 
   public List<DocumentMetadataEntity> listByTenant(String tenantId) {
-    return listByTenant(tenantId, null, null, null, null, "desc");
+    return listVisibleByTenant(tenantId, null, null, null, null, "desc");
   }
 
   public List<DocumentMetadataEntity> listByTenant(
@@ -36,8 +38,19 @@ public class DocumentMetadataRepository {
       String documentType,
       String sortDirection
   ) {
+    return listVisibleByTenant(tenantId, query, status, sourceSystem, documentType, sortDirection);
+  }
+
+  public List<DocumentMetadataEntity> listVisibleByTenant(
+      String tenantId,
+      String query,
+      String status,
+      String sourceSystem,
+      String documentType,
+      String sortDirection
+  ) {
     return documentMetadataMapper.selectListByQuery(
-        buildTenantQuery(tenantId, query, status, sourceSystem, documentType, sortDirection)
+        buildTenantQuery(tenantId, query, status, sourceSystem, documentType, sortDirection, true, null)
     );
   }
 
@@ -51,10 +64,23 @@ public class DocumentMetadataRepository {
       int pageNumber,
       int pageSize
   ) {
+    return paginateVisibleByTenant(tenantId, query, status, sourceSystem, documentType, sortDirection, pageNumber, pageSize);
+  }
+
+  public Page<DocumentMetadataEntity> paginateVisibleByTenant(
+      String tenantId,
+      String query,
+      String status,
+      String sourceSystem,
+      String documentType,
+      String sortDirection,
+      int pageNumber,
+      int pageSize
+  ) {
     return documentMetadataMapper.paginate(
         pageNumber,
         pageSize,
-        buildTenantQuery(tenantId, query, status, sourceSystem, documentType, sortDirection)
+        buildTenantQuery(tenantId, query, status, sourceSystem, documentType, sortDirection, true, null)
     );
   }
 
@@ -69,17 +95,28 @@ public class DocumentMetadataRepository {
     return Optional.ofNullable(documentMetadataMapper.selectOneByQuery(queryWrapper));
   }
 
+  public List<DocumentMetadataEntity> listRecentVisibleByTenant(String tenantId, int limit) {
+    return documentMetadataMapper.selectListByQuery(
+        buildTenantQuery(tenantId, null, null, null, null, "desc", true, limit)
+    );
+  }
+
   private QueryWrapper buildTenantQuery(
       String tenantId,
       String query,
       String status,
       String sourceSystem,
       String documentType,
-      String sortDirection
+      String sortDirection,
+      boolean visibleOnly,
+      Integer limit
   ) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_METADATA_ENTITY.TENANT_ID.eq(tenantId));
 
+    if (visibleOnly) {
+      queryWrapper.and(DOCUMENT_METADATA_ENTITY.STATUS.ne(STATUS_ARCHIVED));
+    }
     if (StringUtils.hasText(query)) {
       String normalizedQuery = query.trim();
       queryWrapper.and(
@@ -101,7 +138,10 @@ public class DocumentMetadataRepository {
     if ("asc".equalsIgnoreCase(sortDirection)) {
       queryWrapper.orderBy(DOCUMENT_METADATA_ENTITY.UPDATED_TIME.asc(), DOCUMENT_METADATA_ENTITY.TITLE.asc());
     } else {
-      queryWrapper.orderBy(DOCUMENT_METADATA_ENTITY.UPDATED_TIME.desc(), DOCUMENT_METADATA_ENTITY.TITLE.desc());
+      queryWrapper.orderBy(DOCUMENT_METADATA_ENTITY.UPDATED_TIME.desc(), DOCUMENT_METADATA_ENTITY.TITLE.asc());
+    }
+    if (limit != null && limit > 0) {
+      queryWrapper.limit(limit);
     }
     return queryWrapper;
   }

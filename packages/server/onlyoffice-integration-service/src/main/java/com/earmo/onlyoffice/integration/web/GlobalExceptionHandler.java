@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.integration.web;
 import com.earmo.onlyoffice.integration.context.AccessContextException;
 import com.earmo.onlyoffice.integration.model.ApiErrorResponse;
 import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
+import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -32,6 +33,12 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(DocumentNotFoundException.class)
   public ResponseEntity<ApiErrorResponse> handleDocumentNotFound(DocumentNotFoundException exception) {
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(new ApiErrorResponse(exception.getMessage()));
+  }
+
+  @ExceptionHandler(DocumentOperationConflictException.class)
+  public ResponseEntity<ApiErrorResponse> handleDocumentOperationConflict(DocumentOperationConflictException exception) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(new ApiErrorResponse(exception.getMessage()));
   }
 

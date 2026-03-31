@@ -39,6 +39,11 @@ public class AccessAuditServiceImpl implements AccessAuditService {
   }
 
   @Override
+  public void recordDocumentArchived(String documentId, AccessContext accessContext) {
+    saveEvent(documentId, accessContext, "document_archived", "success", "文档已逻辑删除并归档。");
+  }
+
+  @Override
   public void recordEditorConfigRequested(String documentId, AccessContext accessContext) {
     saveEvent(documentId, accessContext, "editor_config_requested", "success", "请求 editor-config。");
   }

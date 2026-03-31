@@ -10,6 +10,7 @@ import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
+import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeConfigService;
@@ -280,5 +281,38 @@ class DocumentControllerTest {
     mockMvc.perform(get("/api/documents/sample/editor-config"))
         .andExpect(status().isInternalServerError())
         .andExpect(jsonPath("$.message").value("ONLYOFFICE 运行配置缺失：onlyoffice.integration.document-server-url 不能为空。"));
+  }
+
+  @Test
+  void shouldRejectArchivedDocumentWhenOpeningEditorConfig() throws Exception {
+    when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
+    );
+    when(documentStatusService.openEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class)))
+        .thenThrow(new DocumentNotFoundException("archived"));
+
+    mockMvc.perform(get("/api/documents/archived/editor-config"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.message").value("文档不存在：archived"));
+  }
+
+  @Test
+  void shouldRejectArchivedDocumentWhenDownloadingFile() throws Exception {
+    when(documentStorageService.getRequiredDocument("archived"))
+        .thenThrow(new DocumentNotFoundException("archived"));
+
+    mockMvc.perform(get("/api/documents/archived/file"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.message").value("文档不存在：archived"));
+  }
+
+  @Test
+  void shouldRejectArchivedDocumentWhenReadingSaveStatus() throws Exception {
+    when(documentStatusService.getStatus("archived"))
+        .thenThrow(new DocumentNotFoundException("archived"));
+
+    mockMvc.perform(get("/api/documents/archived/save-status"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.message").value("文档不存在：archived"));
   }
 }

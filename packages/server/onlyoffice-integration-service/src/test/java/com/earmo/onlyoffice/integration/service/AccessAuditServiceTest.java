@@ -48,4 +48,21 @@ class AccessAuditServiceTest {
     assertNull(captor.getValue().getActorUser());
     assertTrue(captor.getValue().getMessage().contains("status=2"));
   }
+
+  @Test
+  void shouldRecordDocumentArchivedWithActorInfo() {
+    AccessAuditEventRepository repository = mock(AccessAuditEventRepository.class);
+    AccessAuditService service = new AccessAuditServiceImpl(repository);
+
+    service.recordDocumentArchived(
+        "doc-3",
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of(), "header")
+    );
+
+    ArgumentCaptor<AccessAuditEventEntity> captor = ArgumentCaptor.forClass(AccessAuditEventEntity.class);
+    verify(repository).save(captor.capture());
+    assertEquals("document_archived", captor.getValue().getEventType());
+    assertEquals("user-a", captor.getValue().getActorUser());
+    assertEquals("doc-3", captor.getValue().getDocumentId());
+  }
 }

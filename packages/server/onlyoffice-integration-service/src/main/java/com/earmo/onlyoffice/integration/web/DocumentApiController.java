@@ -10,6 +10,7 @@ import com.earmo.onlyoffice.integration.model.DocumentSummaryResponse;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
+import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.mybatisflex.core.paginate.Page;
@@ -19,12 +20,14 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.io.IOException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -46,6 +50,8 @@ public class DocumentApiController {
   private static final int DEFAULT_PAGE_NUMBER = 1;
   private static final int DEFAULT_PAGE_SIZE = 10;
   private static final int MAX_PAGE_SIZE = 100;
+  private static final int DEFAULT_RECENT_LIMIT = 3;
+  private static final int MAX_RECENT_LIMIT = 10;
 
   private final DocumentMetadataService documentMetadataService;
   private final DocumentStorageService documentStorageService;
@@ -101,6 +107,24 @@ public class DocumentApiController {
     );
   }
 
+  @GetMapping("/recent")
+  @Operation(summary = "查询最近编辑文档", description = "返回当前租户最近编辑的活跃文档列表。")
+  public List<DocumentSummaryResponse> recent(
+      @Parameter(description = "最近文档数量，默认 3，最大 10。", example = "3")
+      @RequestParam(defaultValue = "3") Integer limit,
+      HttpServletRequest request
+  ) {
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    int safeLimit = sanitizeRecentLimit(limit);
+    List<DocumentMetadataEntity> entities = documentMetadataService.listRecentDocuments(accessContext.tenantId(), safeLimit);
+    Map<String, Integer> activeEditingCounts = documentStatusService.countActiveEditingSessions(
+        entities.stream().map(DocumentMetadataEntity::getDocumentId).toList()
+    );
+    return entities.stream()
+        .map(entity -> toSummary(entity, accessContext, activeEditingCounts.getOrDefault(entity.getDocumentId(), 0)))
+        .toList();
+  }
+
   @GetMapping("/{documentId}")
   @Operation(summary = "查询文档详情", description = "根据内部 documentId 查询文档概要信息。")
   public DocumentSummaryResponse detail(
@@ -110,7 +134,7 @@ public class DocumentApiController {
   ) {
     AccessContext accessContext = accessContextResolver.resolve(request);
     int activeEditors = documentStatusService.countActiveEditingSessions(List.of(documentId)).getOrDefault(documentId, 0);
-    return toSummary(documentMetadataService.requireDocument(documentId), accessContext, activeEditors);
+    return toSummary(documentMetadataService.requireAccessibleDocument(documentId), accessContext, activeEditors);
   }
 
   @PostMapping
@@ -178,6 +202,23 @@ public class DocumentApiController {
     return toSummary(storedDocument, accessContext);
   }
 
+  @DeleteMapping("/{documentId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  @Operation(summary = "删除文档", description = "逻辑删除文档并将状态归档。")
+  public void delete(
+      @Parameter(description = "文档内部主键。", example = "sample")
+      @PathVariable String documentId,
+      HttpServletRequest request
+  ) {
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    int activeEditors = documentStatusService.countActiveEditingSessions(List.of(documentId)).getOrDefault(documentId, 0);
+    if (activeEditors > 0) {
+      throw new DocumentOperationConflictException("文档仍有活跃编辑会话，暂时不能删除。");
+    }
+    documentMetadataService.archiveDocument(documentId);
+    accessAuditService.recordDocumentArchived(documentId, accessContext);
+  }
+
   private DocumentSummaryResponse toSummary(
       DocumentMetadataEntity entity,
       AccessContext accessContext,
@@ -198,6 +239,7 @@ public class DocumentApiController {
         entity.getSourceSystem(),
         entity.getExternalDocumentId(),
         storageAvailable,
+        entity.getUpdatedTime(),
         entity.getLastOpenedTime(),
         entity.getLastSavedTime()
     );
@@ -217,6 +259,7 @@ public class DocumentApiController {
         storedDocument.sourceSystem(),
         storedDocument.externalDocumentId(),
         true,
+        storedDocument.lastModified(),
         storedDocument.lastOpenedTime(),
         storedDocument.lastSavedTime()
     );
@@ -310,6 +353,13 @@ public class DocumentApiController {
       return DEFAULT_PAGE_SIZE;
     }
     return Math.min(pageSize, MAX_PAGE_SIZE);
+  }
+
+  private int sanitizeRecentLimit(Integer limit) {
+    if (limit == null || limit < 1) {
+      return DEFAULT_RECENT_LIMIT;
+    }
+    return Math.min(limit, MAX_RECENT_LIMIT);
   }
 
   private record DocumentListPage(

@@ -120,7 +120,7 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
   @Override
   public StoredDocument getRequiredDocument(String rawDocumentId) throws IOException {
     String documentId = sanitizeDocumentId(rawDocumentId);
-    DocumentMetadataEntity entity = documentMetadataService.requireDocument(documentId);
+    DocumentMetadataEntity entity = documentMetadataService.requireAccessibleDocument(documentId);
     DocumentStorageStrategy strategy = resolveStrategy(entity);
     if (!strategy.exists(entity.getStorageKey())) {
       throw new IOException("文档内容不存在：" + entity.getStorageKey());
@@ -131,7 +131,7 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
   @Override
   public byte[] readDocument(String rawDocumentId) throws IOException {
     String documentId = sanitizeDocumentId(rawDocumentId);
-    DocumentMetadataEntity entity = documentMetadataService.requireDocument(documentId);
+    DocumentMetadataEntity entity = documentMetadataService.requireAccessibleDocument(documentId);
     DocumentStorageStrategy strategy = resolveStrategy(entity);
     return strategy.read(entity.getStorageKey()).body();
   }
@@ -149,7 +149,7 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
 
     String documentId = sanitizeDocumentId(rawDocumentId);
-    DocumentMetadataEntity entity = documentMetadataService.requireDocument(documentId);
+    DocumentMetadataEntity entity = documentMetadataService.requireAccessibleDocument(documentId);
     DocumentStorageStrategy strategy = resolveStrategy(entity);
     byte[] latestFile = getRestClient().get()
         .uri(downloadUrl)

@@ -55,7 +55,7 @@ class DocumentStorageServiceTest {
         any(RequestContext.class),
         nullable(String.class)
     )).thenReturn(entity);
-    when(metadataService.requireDocument("sample")).thenReturn(entity);
+    when(metadataService.requireAccessibleDocument("sample")).thenReturn(entity);
     when(metadataService.toStoredDocument(any(DocumentMetadataEntity.class), any(), any()))
         .thenAnswer(invocation -> {
           DocumentMetadataEntity actual = invocation.getArgument(0, DocumentMetadataEntity.class);
@@ -123,7 +123,7 @@ class DocumentStorageServiceTest {
       String documentType = invocation.getArgument(3, String.class);
       return entity(documentId, title, storageKey, fileType, documentType);
     });
-    when(metadataService.requireDocument(anyString()))
+    when(metadataService.requireAccessibleDocument(anyString()))
         .thenAnswer(invocation -> {
           String documentId = invocation.getArgument(0, String.class);
           return entity(

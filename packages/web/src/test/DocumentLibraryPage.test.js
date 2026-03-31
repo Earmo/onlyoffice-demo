@@ -42,7 +42,7 @@ vi.mock("../components/library/DocumentList.vue", () => ({
         default: ""
       }
     },
-    emits: ["preview", "edit", "start-edit"],
+    emits: ["preview", "edit", "delete", "start-edit"],
     template: `
       <div class="document-list-stub">
         <button class="start-edit-btn" @click="$emit('start-edit')">开始编辑</button>
@@ -52,6 +52,7 @@ vi.mock("../components/library/DocumentList.vue", () => ({
         </div>
         <button v-if="documents[0]" class="preview-doc" @click="$emit('preview', documents[0])">查看文件</button>
         <button v-if="documents[0]" class="edit-doc" @click="$emit('edit', documents[0])">编辑文档</button>
+        <button v-if="documents[0]" class="delete-doc" @click="$emit('delete', documents[0])">删除文档</button>
       </div>
     `
   })
@@ -67,35 +68,46 @@ describe("DocumentLibraryPage", () => {
     routerReplace.mockReset();
     routerReplace.mockResolvedValue(undefined);
     window.prompt = vi.fn();
+    vi.stubGlobal("confirm", vi.fn(() => true));
   });
 
   it("应按后端分页参数加载文档工作台，并展示当前上下文与高亮文档", async () => {
     routeState.query = { highlight: "doc-1" };
-    fetch.mockResolvedValueOnce(jsonResponse(listPayload({
-      total: 42,
-      totalPages: 5,
-      documents: [documentSummary({ documentId: "doc-1", title: "项目路线图.docx" })]
-    })));
+    fetch
+      .mockResolvedValueOnce(jsonResponse(listPayload({
+        total: 42,
+        totalPages: 5,
+        documents: [documentSummary({ documentId: "doc-1", title: "项目路线图.docx" })]
+      })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload([
+        recentSummary({ documentId: "doc-9", title: "最近编辑文档.docx" })
+      ])));
 
     const wrapper = mount(DocumentLibraryPage);
     await flushPromises();
 
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(requestUrl(0).pathname).toBe("/api/documents");
     expect(requestUrl(0).searchParams.get("pageNumber")).toBe("1");
     expect(requestUrl(0).searchParams.get("pageSize")).toBe("10");
+    expect(requestUrl(0).searchParams.get("sortDirection")).toBeNull();
+    expect(requestUrl(1).pathname).toBe("/api/documents/recent");
+    expect(requestUrl(1).searchParams.get("limit")).toBe("3");
     expect(fetch.mock.calls[0][1]?.headers?.["X-External-User-Id"]).toBe("starter-user");
     expect(wrapper.text()).toContain("tenant-a");
     expect(wrapper.text()).toContain("Alice");
     expect(wrapper.text()).toContain("项目路线图.docx");
+    expect(wrapper.text()).toContain("最近编辑文档.docx");
     expect(wrapper.find(".highlighted-document").text()).toBe("doc-1");
     expect(wrapper.findComponent({ name: "ElPagination" }).props("total")).toBe(42);
   });
 
   it("应分别把查看文件和编辑文档路由到预览页与编辑页", async () => {
-    fetch.mockResolvedValueOnce(jsonResponse(listPayload({
-      documents: [documentSummary({ documentId: "doc-1", title: "项目路线图.docx" })]
-    })));
+    fetch
+      .mockResolvedValueOnce(jsonResponse(listPayload({
+        documents: [documentSummary({ documentId: "doc-1", title: "项目路线图.docx" })]
+      })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload()));
 
     const wrapper = mount(DocumentLibraryPage);
     await flushPromises();
@@ -111,7 +123,8 @@ describe("DocumentLibraryPage", () => {
   it("应在新建文档后回流第一页并显示成功提示", async () => {
     window.prompt.mockReturnValue("新计划.docx");
     fetch
-      .mockResolvedValueOnce(jsonResponse(listPayload({ documents: [] })))
+      .mockResolvedValueOnce(jsonResponse(listPayload({ documents: [], total: 0, totalPages: 0 })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload()))
       .mockResolvedValueOnce(jsonResponse({
         documentId: "doc-2",
         title: "新计划.docx",
@@ -121,11 +134,15 @@ describe("DocumentLibraryPage", () => {
         sourceSystem: "native",
         documentType: "word",
         storageAvailable: true,
-        status: "draft"
+        status: "draft",
+        lastEditedTime: "2026-03-25T10:00:00Z"
       }))
       .mockResolvedValueOnce(jsonResponse(listPayload({
         documents: [documentSummary({ documentId: "doc-2", title: "新计划.docx", status: "draft" })]
-      })));
+      })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload([
+        recentSummary({ documentId: "doc-2", title: "新计划.docx" })
+      ])));
 
     const wrapper = mount(DocumentLibraryPage);
     await flushPromises();
@@ -149,13 +166,14 @@ describe("DocumentLibraryPage", () => {
     }
     await flushPromises();
 
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(requestUrl(1).pathname).toBe("/api/documents");
-    expect(fetch.mock.calls[1][1]?.method).toBe("POST");
-    expect(fetch.mock.calls[1][1]?.body).toContain("\"title\":\"新计划.docx\"");
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(requestUrl(2).pathname).toBe("/api/documents");
+    expect(fetch.mock.calls[2][1]?.method).toBe("POST");
+    expect(fetch.mock.calls[2][1]?.body).toContain("\"title\":\"新计划.docx\"");
     expect(routerReplace).toHaveBeenCalledWith({ path: "/", query: { highlight: "doc-2" } });
-    expect(requestUrl(2).searchParams.get("pageNumber")).toBe("1");
-    expect(requestUrl(2).searchParams.get("pageSize")).toBe("10");
+    expect(requestUrl(3).searchParams.get("pageNumber")).toBe("1");
+    expect(requestUrl(3).searchParams.get("pageSize")).toBe("10");
+    expect(requestUrl(4).pathname).toBe("/api/documents/recent");
     expect(wrapper.text()).toContain("已创建 新计划.docx，结果已回到工作台列表。");
     expect(wrapper.text()).toContain("新计划.docx|draft");
   });
@@ -167,6 +185,7 @@ describe("DocumentLibraryPage", () => {
         totalPages: 5,
         documents: [documentSummary({ documentId: "doc-1", title: "第一页文档.docx" })]
       })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload()))
       .mockResolvedValueOnce(jsonResponse(listPayload({
         pageNumber: 2,
         pageSize: 10,
@@ -190,18 +209,52 @@ describe("DocumentLibraryPage", () => {
     pagination.vm.$emit("current-change", 2);
     await flushPromises();
 
-    expect(requestUrl(1).searchParams.get("pageNumber")).toBe("2");
-    expect(requestUrl(1).searchParams.get("pageSize")).toBe("10");
+    expect(requestUrl(2).searchParams.get("pageNumber")).toBe("2");
+    expect(requestUrl(2).searchParams.get("pageSize")).toBe("10");
     expect(wrapper.text()).toContain("第二页文档.docx|saved");
 
     pagination.vm.$emit("update:page-size", 50);
     pagination.vm.$emit("size-change", 50);
     await flushPromises();
 
-    expect(requestUrl(2).searchParams.get("pageNumber")).toBe("1");
-    expect(requestUrl(2).searchParams.get("pageSize")).toBe("50");
+    expect(requestUrl(3).searchParams.get("pageNumber")).toBe("1");
+    expect(requestUrl(3).searchParams.get("pageSize")).toBe("50");
     expect(wrapper.findComponent({ name: "ElPagination" }).props("total")).toBe(42);
     expect(wrapper.text()).toContain("大页文档.docx|saved");
+  });
+
+  it("应在删除文档后刷新列表与最近文档，并清理高亮参数", async () => {
+    routeState.query = { highlight: "doc-1" };
+    fetch
+      .mockResolvedValueOnce(jsonResponse(listPayload({
+        documents: [documentSummary({ documentId: "doc-1", title: "待删除文档.docx" })]
+      })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload([
+        recentSummary({ documentId: "doc-1", title: "待删除文档.docx" })
+      ])))
+      .mockResolvedValueOnce(jsonResponse({}, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse(listPayload({
+        documents: [documentSummary({ documentId: "doc-2", title: "保留文档.docx" })]
+      })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload([
+        recentSummary({ documentId: "doc-2", title: "保留文档.docx" })
+      ])));
+
+    const wrapper = mount(DocumentLibraryPage);
+    await flushPromises();
+
+    await wrapper.find(".delete-doc").trigger("click");
+    await flushPromises();
+
+    expect(window.confirm).toHaveBeenCalledWith("确认删除《待删除文档.docx》吗？删除后它不会再出现在文档列表和最近文档中。");
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(requestUrl(2).pathname).toBe("/api/documents/doc-1");
+    expect(fetch.mock.calls[2][1]?.method).toBe("DELETE");
+    expect(routerReplace).toHaveBeenCalledWith({ path: "/", query: {} });
+    expect(requestUrl(3).pathname).toBe("/api/documents");
+    expect(requestUrl(4).pathname).toBe("/api/documents/recent");
+    expect(wrapper.text()).toContain("已删除 待删除文档.docx。");
+    expect(wrapper.text()).toContain("保留文档.docx|saved");
   });
 });
 
@@ -228,6 +281,10 @@ function listPayload({
   };
 }
 
+function recentPayload(documents = [recentSummary()]) {
+  return documents;
+}
+
 function documentSummary(overrides = {}) {
   return {
     documentId: "doc-1",
@@ -240,7 +297,17 @@ function documentSummary(overrides = {}) {
     sourceSystem: "native",
     documentType: "word",
     storageAvailable: true,
+    lastEditedTime: "2026-03-25T10:00:00Z",
     lastSavedTime: "2026-03-25T10:00:00Z",
+    ...overrides
+  };
+}
+
+function recentSummary(overrides = {}) {
+  return {
+    documentId: "doc-9",
+    title: "最近编辑文档.docx",
+    lastEditedTime: "2026-03-25T10:00:00Z",
     ...overrides
   };
 }

@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -91,6 +92,7 @@ class DocumentApiControllerTest {
         .andExpect(jsonPath("$.documents[0].actorUser").value("user-a"))
         .andExpect(jsonPath("$.documents[0].actorName").value("Alice"))
         .andExpect(jsonPath("$.documents[0].sourceSystem").value("native"))
+        .andExpect(jsonPath("$.documents[0].lastEditedTime").value("2026-03-19T08:00:00Z"))
         .andExpect(jsonPath("$.documents[0].storageAvailable").value(true));
 
     verify(documentMetadataService).listDocumentPage("tenant-a", null, null, null, null, "desc", 1, 10);
@@ -119,9 +121,28 @@ class DocumentApiControllerTest {
         .andExpect(jsonPath("$.pageSize").value(20))
         .andExpect(jsonPath("$.total").value(21))
         .andExpect(jsonPath("$.totalPages").value(2))
-        .andExpect(jsonPath("$.documents[0].documentId").value("sample"));
+        .andExpect(jsonPath("$.documents[0].documentId").value("sample"))
+        .andExpect(jsonPath("$.documents[0].lastEditedTime").value("2026-03-19T08:00:00Z"));
 
     verify(documentMetadataService).listDocumentPage("tenant-a", "roadmap", "failed", "native", "word", "asc", 2, 20);
+  }
+
+  @Test
+  void shouldListRecentDocumentsIndependentFromPagination() throws Exception {
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentMetadataService.listRecentDocuments("tenant-a", 2))
+        .thenReturn(List.of(entity("recent-2", Instant.parse("2026-03-19T09:00:00Z")), entity("recent-1")));
+    when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+    when(documentStatusService.countActiveEditingSessions(List.of("recent-2", "recent-1")))
+        .thenReturn(java.util.Map.of("recent-2", 0, "recent-1", 0));
+
+    mockMvc.perform(get("/api/documents/recent").param("limit", "2"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].documentId").value("recent-2"))
+        .andExpect(jsonPath("$[0].lastEditedTime").value("2026-03-19T09:00:00Z"))
+        .andExpect(jsonPath("$[1].documentId").value("recent-1"));
+
+    verify(documentMetadataService).listRecentDocuments("tenant-a", 2);
   }
 
   @Test
@@ -150,7 +171,7 @@ class DocumentApiControllerTest {
   @Test
   void shouldExposeStorageAvailabilityForDocumentDetail() throws Exception {
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
-    when(documentMetadataService.requireDocument("sample")).thenReturn(entity("sample"));
+    when(documentMetadataService.requireAccessibleDocument("sample")).thenReturn(entity("sample"));
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(false);
     when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
@@ -158,6 +179,7 @@ class DocumentApiControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.documentId").value("sample"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
+        .andExpect(jsonPath("$.lastEditedTime").value("2026-03-19T08:00:00Z"))
         .andExpect(jsonPath("$.storageAvailable").value(false));
   }
 
@@ -196,7 +218,7 @@ class DocumentApiControllerTest {
     DocumentMetadataEntity entity = entity("sample");
     entity.setStatus("saved");
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
-    when(documentMetadataService.requireDocument("sample")).thenReturn(entity);
+    when(documentMetadataService.requireAccessibleDocument("sample")).thenReturn(entity);
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
     when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 1));
 
@@ -210,7 +232,7 @@ class DocumentApiControllerTest {
     DocumentMetadataEntity entity = entity("sample");
     entity.setStatus("saved");
     when(accessContextResolver.resolve(any())).thenReturn(accessContext());
-    when(documentMetadataService.requireDocument("sample")).thenReturn(entity);
+    when(documentMetadataService.requireAccessibleDocument("sample")).thenReturn(entity);
     when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
     when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
@@ -245,6 +267,7 @@ class DocumentApiControllerTest {
         .andExpect(jsonPath("$.ownerUser").value("user-a"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
         .andExpect(jsonPath("$.actorName").value("Alice"))
+        .andExpect(jsonPath("$.lastEditedTime").value("2026-03-19T08:00:00Z"))
         .andExpect(jsonPath("$.storageAvailable").value(true));
 
     verify(documentStorageService).createNativeDocument(
@@ -278,6 +301,7 @@ class DocumentApiControllerTest {
         .andExpect(jsonPath("$.ownerUser").value("user-a"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
         .andExpect(jsonPath("$.actorName").value("Alice"))
+        .andExpect(jsonPath("$.lastEditedTime").value("2026-03-19T08:00:00Z"))
         .andExpect(jsonPath("$.storageAvailable").value(true));
   }
 
@@ -302,7 +326,30 @@ class DocumentApiControllerTest {
         .andExpect(jsonPath("$.ownerUser").value("user-a"))
         .andExpect(jsonPath("$.actorUser").value("user-a"))
         .andExpect(jsonPath("$.actorName").value("Alice"))
+        .andExpect(jsonPath("$.lastEditedTime").value("2026-03-19T08:00:00Z"))
         .andExpect(jsonPath("$.storageAvailable").value(true));
+  }
+
+  @Test
+  void shouldArchiveDocumentWhenNoActiveEditorsRemain() throws Exception {
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
+
+    mockMvc.perform(delete("/api/documents/sample"))
+        .andExpect(status().isNoContent());
+
+    verify(documentMetadataService).archiveDocument("sample");
+    verify(accessAuditService).recordDocumentArchived("sample", accessContext());
+  }
+
+  @Test
+  void shouldRejectArchiveWhenDocumentStillHasActiveEditors() throws Exception {
+    when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+    when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 1));
+
+    mockMvc.perform(delete("/api/documents/sample"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.message").value("文档仍有活跃编辑会话，暂时不能删除。"));
   }
 
   private AccessContext accessContext() {
@@ -317,6 +364,10 @@ class DocumentApiControllerTest {
   }
 
   private DocumentMetadataEntity entity(String documentId) {
+    return entity(documentId, Instant.parse("2026-03-19T08:00:00Z"));
+  }
+
+  private DocumentMetadataEntity entity(String documentId, Instant updatedTime) {
     DocumentMetadataEntity entity = new DocumentMetadataEntity();
     entity.setDocumentId(documentId);
     entity.setTenantId("tenant-a");
@@ -327,6 +378,7 @@ class DocumentApiControllerTest {
     entity.setFileType("docx");
     entity.setDocumentType("word");
     entity.setStatus("draft");
+    entity.setUpdatedTime(updatedTime);
     return entity;
   }
 

@@ -7,10 +7,14 @@ const props = defineProps({
   highlightedDocumentId: {
     type: String,
     default: ""
+  },
+  deletingDocumentId: {
+    type: String,
+    default: ""
   }
 });
 
-const emit = defineEmits(["preview", "edit", "start-edit"]);
+const emit = defineEmits(["preview", "edit", "delete", "start-edit"]);
 
 function startEdit() {
   emit("start-edit");
@@ -64,6 +68,10 @@ function editDocument(document) {
   emit("edit", document);
 }
 
+function deleteDocument(document) {
+  emit("delete", document);
+}
+
 function tableRowClassName({ row }) {
   if (row.documentId === props.highlightedDocumentId) {
     return "highlighted-row";
@@ -77,20 +85,21 @@ function tableRowClassName({ row }) {
     <template #header>
       <div class="section-heading">
         <div class="heading-left">
+          <el-button type="primary" class="start-edit-btn" @click="startEdit">开始编辑</el-button>
           <div class="heading-titles">
             <p class="eyebrow">文档列表</p>
-            <h2 style="margin: 0; font-size: 18px;">先查看，再决定是否进入编辑</h2>
+            <p class="muted-copy intro-copy">先查看，再决定是否进入编辑</p>
           </div>
-          <el-button type="primary" @click="startEdit">开始编辑</el-button>
         </div>
-        <p class="muted-copy" style="margin: 0;">点击行可直接预览文档；“编辑文档”会进入独立可编辑工作台。</p>
+        <p class="muted-copy helper-copy">点击行可直接预览文档；“编辑文档”会进入独立可编辑工作台。</p>
       </div>
     </template>
-    
-    <el-table 
-      :data="documents" 
-      style="width: 100%" 
-      :row-class-name="tableRowClassName" 
+
+    <el-table
+      :data="documents"
+      class="document-table"
+      style="width: 100%"
+      :row-class-name="tableRowClassName"
       @row-click="previewDocument"
     >
       <el-table-column prop="title" label="文档标题" min-width="200">
@@ -114,9 +123,9 @@ function tableRowClassName({ row }) {
         </template>
       </el-table-column>
       
-      <el-table-column label="最近保存" width="160">
+      <el-table-column label="最近编辑" width="180">
         <template #default="{ row }">
-          <span style="font-size: 13px;">{{ formatTimestamp(row.lastSavedTime) }}</span>
+          <span style="font-size: 13px;">{{ formatTimestamp(row.lastEditedTime) }}</span>
         </template>
       </el-table-column>
       
@@ -127,10 +136,20 @@ function tableRowClassName({ row }) {
         </template>
       </el-table-column>
       
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click.stop="previewDocument(row)">查看文件</el-button>
-          <el-button size="small" type="primary" @click.stop="editDocument(row)">编辑文档</el-button>
+          <el-button size="small" class="preview-document-btn" @click.stop="previewDocument(row)">查看文件</el-button>
+          <el-button size="small" type="primary" class="edit-document-btn" @click.stop="editDocument(row)">编辑文档</el-button>
+          <el-button
+            size="small"
+            type="danger"
+            plain
+            class="delete-document-btn"
+            :loading="deletingDocumentId === row.documentId"
+            @click.stop="deleteDocument(row)"
+          >
+            删除文档
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -140,20 +159,32 @@ function tableRowClassName({ row }) {
 <style scoped>
 .list-panel {
   border-radius: var(--el-border-radius-base);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.list-panel :deep(.el-card__body) {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding-top: 0;
 }
 
 .section-heading {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 12px;
 }
 
 .heading-left {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
 }
 
 .eyebrow {
@@ -164,9 +195,25 @@ function tableRowClassName({ row }) {
   margin: 0 0 4px;
 }
 
+.heading-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .muted-copy {
   color: var(--el-text-color-secondary);
   font-size: 14px;
+  margin: 0;
+}
+
+.intro-copy,
+.helper-copy {
+  line-height: 1.5;
+}
+
+.document-table {
+  flex: 1;
 }
 
 /* Custom row class styling via deep selector for Element Plus Table */
@@ -175,5 +222,11 @@ function tableRowClassName({ row }) {
 }
 :deep(.el-table .el-table__row) {
   cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .section-heading {
+    flex-direction: column;
+  }
 }
 </style>

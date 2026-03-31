@@ -50,8 +50,18 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
 
   @Override
   @Transactional(readOnly = true)
+  public DocumentMetadataEntity requireAccessibleDocument(String documentId) {
+    DocumentMetadataEntity entity = requireDocument(documentId);
+    if (STATUS_ARCHIVED.equals(entity.getStatus())) {
+      throw new DocumentNotFoundException(documentId);
+    }
+    return entity;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public List<DocumentMetadataEntity> listDocuments(String tenantId) {
-    return documentMetadataRepository.listByTenant(tenantId);
+    return documentMetadataRepository.listVisibleByTenant(tenantId, null, null, null, null, "desc");
   }
 
   /**
@@ -71,7 +81,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
       String documentType,
       String sortDirection
   ) {
-    return documentMetadataRepository.listByTenant(
+    return documentMetadataRepository.listVisibleByTenant(
         tenantId,
         query,
         status,
@@ -93,7 +103,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
       int pageNumber,
       int pageSize
   ) {
-    return documentMetadataRepository.paginateByTenant(
+    return documentMetadataRepository.paginateVisibleByTenant(
         tenantId,
         query,
         status,
@@ -103,6 +113,12 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
         pageNumber,
         pageSize
     );
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<DocumentMetadataEntity> listRecentDocuments(String tenantId, int limit) {
+    return documentMetadataRepository.listRecentVisibleByTenant(tenantId, limit);
   }
 
   @Override
@@ -151,12 +167,13 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
           requestContext.sourceSystem(),
           externalDocumentId
       );
-      if (mapped.isPresent()) {
+      if (mapped.isPresent() && !STATUS_ARCHIVED.equals(mapped.get().getStatus())) {
         return mapped.get();
       }
     }
 
     return findDocument(documentId)
+        .filter(entity -> !STATUS_ARCHIVED.equals(entity.getStatus()))
         .orElseGet(() -> saveNewDocument(
             documentId,
             title,
@@ -171,8 +188,22 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
 
   @Override
   @Transactional
-  public DocumentSaveStatusResponse markOpened(String documentId) {
+  public DocumentMetadataEntity archiveDocument(String documentId) {
     DocumentMetadataEntity entity = requireDocument(documentId);
+    if (STATUS_ARCHIVED.equals(entity.getStatus())) {
+      return entity;
+    }
+
+    entity.setStatus(STATUS_ARCHIVED);
+    entity.setUpdatedTime(Instant.now());
+    updateEntity(entity);
+    return entity;
+  }
+
+  @Override
+  @Transactional
+  public DocumentSaveStatusResponse markOpened(String documentId) {
+    DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     Instant now = Instant.now();
     entity.setLastOpenedTime(now);
     if (!StringUtils.hasText(entity.getStatus())) {
@@ -186,7 +217,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
   @Override
   @Transactional
   public DocumentSaveStatusResponse markEditingStarted(String documentId) {
-    DocumentMetadataEntity entity = requireDocument(documentId);
+    DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     Instant now = Instant.now();
     entity.setStatus(STATUS_EDITING);
     entity.setLastOpenedTime(now);
@@ -198,7 +229,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
   @Override
   @Transactional
   public DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus) {
-    DocumentMetadataEntity entity = requireDocument(documentId);
+    DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     Instant now = Instant.now();
     entity.setStatus(STATUS_EDITING);
     entity.setLastCallbackStatus(callbackStatus);
@@ -212,7 +243,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
   @Override
   @Transactional
   public DocumentSaveStatusResponse markSaved(String documentId, Integer callbackStatus) {
-    DocumentMetadataEntity entity = requireDocument(documentId);
+    DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     Instant now = Instant.now();
     entity.setStatus(STATUS_SAVED);
     entity.setLastCallbackStatus(callbackStatus);
@@ -227,7 +258,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
   @Override
   @Transactional
   public DocumentSaveStatusResponse markFailed(String documentId, Integer callbackStatus, String message) {
-    DocumentMetadataEntity entity = requireDocument(documentId);
+    DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     Instant now = Instant.now();
     entity.setStatus(STATUS_FAILED);
     entity.setLastCallbackStatus(callbackStatus);
@@ -241,7 +272,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
   @Override
   @Transactional
   public DocumentSaveStatusResponse reconcileClosedEditingSession(String documentId) {
-    DocumentMetadataEntity entity = requireDocument(documentId);
+    DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     if (!STATUS_EDITING.equals(entity.getStatus())) {
       return toSaveStatus(entity);
     }
@@ -255,7 +286,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
   @Override
   @Transactional(readOnly = true)
   public DocumentSaveStatusResponse getStatus(String documentId) {
-    return toSaveStatus(requireDocument(documentId));
+    return toSaveStatus(requireAccessibleDocument(documentId));
   }
 
   @Override
