@@ -21,7 +21,7 @@ describe("EditorShell", () => {
     fetch
       .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))  // 1. editor-config
       .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))                 // 2. 初始 save-status
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))                 // 3. closeSession 中 waitForSaveCompleted 轮询
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))                 // 3. 显式保存
       .mockResolvedValueOnce(jsonResponse(closedStatusPayload()));              // 4. close-session
 
     const wrapper = mount(EditorShell, {
@@ -51,10 +51,10 @@ describe("EditorShell", () => {
   });
 
   it("应在 close-session 进行中复用同一个请求而不是重复发送", async () => {
-    let resolveCloseRequest;
-    let closeCallCount = 0;
+    let resolveSaveRequest;
+    let saveCallCount = 0;
 
-    // 使用 URL 路由式 mock，让 waitForSaveCompleted 的轮询和 close 请求各走各的分支。
+    // 使用 URL 路由式 mock，让保存请求和 close 请求各走各的分支。
     fetch.mockImplementation((url) => {
       const urlStr = String(url);
       if (urlStr.includes("/editor-config")) {
@@ -63,11 +63,18 @@ describe("EditorShell", () => {
       if (urlStr.includes("/save-status")) {
         return Promise.resolve(jsonResponse(saveStatusPayload()));
       }
-      if (urlStr.includes("/editing-sessions/close")) {
-        closeCallCount++;
+      if (urlStr.includes("/save")) {
+        saveCallCount++;
         return new Promise(resolve => {
-          resolveCloseRequest = () => resolve(jsonResponse(closedStatusPayload()));
+          resolveSaveRequest = () => resolve(jsonResponse(saveStatusPayload({
+            lastSavedTime: "2026-03-25T10:00:02Z"
+          })));
         });
+      }
+      if (urlStr.includes("/editing-sessions/close")) {
+        return Promise.resolve(jsonResponse(closedStatusPayload({
+          lastSavedTime: "2026-03-25T10:00:02Z"
+        })));
       }
       return Promise.reject(new Error("unexpected fetch: " + urlStr));
     });
@@ -83,17 +90,66 @@ describe("EditorShell", () => {
     const firstClose = wrapper.vm.closeEditingSession();
     const secondClose = wrapper.vm.closeEditingSession();
 
-    // 等待 waitForSaveCompleted 内部的 setTimeout(500ms) 过期 + fetch 完成 + close 请求发出
-    await new Promise(r => setTimeout(r, 700));
+    await new Promise(r => setTimeout(r, 100));
     await flushPromises();
 
-    expect(closeCallCount).toBe(1);
+    expect(saveCallCount).toBe(1);
 
-    resolveCloseRequest();
+    resolveSaveRequest();
     const [firstPayload, secondPayload] = await Promise.all([firstClose, secondClose]);
 
     expect(firstPayload.state).toBe("saved");
     expect(secondPayload.state).toBe("saved");
+  });
+
+  it("应先等待后端保存完成，再发送 close-session", async () => {
+    let resolveSaveRequest;
+    let closeCallCount = 0;
+    fetch.mockImplementation((url) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/editor-config")) {
+        return Promise.resolve(jsonResponse(editorConfigPayload("路线图.docx")));
+      }
+      if (urlStr.includes("/editing-sessions/heartbeat")) {
+        return Promise.resolve(jsonResponse({}, { status: 204 }));
+      }
+      if (urlStr.includes("/save-status")) {
+        return Promise.resolve(jsonResponse(saveStatusPayload()));
+      }
+      if (urlStr.includes("/save")) {
+        return new Promise(resolve => {
+          resolveSaveRequest = () => resolve(jsonResponse(saveStatusPayload({
+            lastSavedTime: "2026-03-25T10:00:05Z"
+          })));
+        });
+      }
+      if (urlStr.includes("/editing-sessions/close")) {
+        closeCallCount++;
+        return Promise.resolve(jsonResponse(closedStatusPayload({
+          lastSavedTime: "2026-03-25T10:00:05Z"
+        })));
+      }
+      return Promise.reject(new Error("unexpected fetch: " + urlStr));
+    });
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    const closing = wrapper.vm.closeEditingSession();
+
+    await new Promise(r => setTimeout(r, 200));
+    await flushPromises();
+    expect(closeCallCount).toBe(0);
+
+    resolveSaveRequest();
+    const payload = await closing;
+    expect(closeCallCount).toBe(1);
+    expect(payload.lastSavedTime).toBe("2026-03-25T10:00:05Z");
   });
 
   it("应在只读预览模式下请求 readonly 配置且不展示控制台", async () => {
@@ -130,7 +186,7 @@ function editorConfigPayload(title, mode = "edit") {
   };
 }
 
-function saveStatusPayload() {
+function saveStatusPayload(overrides = {}) {
   return {
     state: "saved",
     message: "最新修改已成功回写到共享存储。",
@@ -143,11 +199,12 @@ function saveStatusPayload() {
         message: "最新修改已成功回写到共享存储。",
         eventTime: "2026-03-25T10:00:01Z"
       }
-    ]
+    ],
+    ...overrides
   };
 }
 
-function closedStatusPayload() {
+function closedStatusPayload(overrides = {}) {
   return {
     documentId: "doc-1",
     state: "saved",
@@ -155,6 +212,7 @@ function closedStatusPayload() {
     lastCallbackStatus: 2,
     lastCallbackTime: "2026-03-25T10:00:00Z",
     lastSavedTime: "2026-03-25T10:00:01Z",
-    recentEvents: []
+    recentEvents: [],
+    ...overrides
   };
 }

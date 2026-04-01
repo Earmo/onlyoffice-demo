@@ -283,6 +283,28 @@ class DocumentControllerTest {
   }
 
   @Test
+  void shouldTriggerForceSaveAndReturnLatestStatus() throws Exception {
+    when(documentStatusService.getStatus("sample")).thenReturn(new DocumentSaveStatusResponse(
+        "sample",
+        "saved",
+        "最新修改已成功回写到共享存储。",
+        6,
+        Instant.parse("2026-03-25T10:00:02Z"),
+        Instant.parse("2026-03-25T10:00:03Z"),
+        List.of()
+    ));
+    when(onlyofficeCommandService.forceSaveAndAwait("sample", 8000L)).thenReturn(true);
+
+    mockMvc.perform(post("/api/documents/sample/save"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.state").value("saved"))
+        .andExpect(jsonPath("$.lastCallbackStatus").value(6));
+
+    verify(onlyofficeCommandService).forceSaveAndAwait("sample", 8000L);
+    verify(documentStatusService).getStatus("sample");
+  }
+
+  @Test
   void shouldReturnExplicitErrorWhenEditorConfigFailsFastOnRuntimeUrls() throws Exception {
     when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
         new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")

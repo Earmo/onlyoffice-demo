@@ -106,6 +106,16 @@ public class DocumentController {
     return ResponseEntity.noContent().build();
   }
 
+  @PostMapping("/{documentId}/save")
+  @Operation(summary = "保存当前编辑内容", description = "通过 ONLYOFFICE Command Service 触发 forcesave，并等待本次 callback 回写完成后返回最新保存状态。")
+  public DocumentSaveStatusResponse saveDocument(
+      @Parameter(description = "文档内部主键。", example = "demo")
+      @PathVariable String documentId
+  ) {
+    onlyofficeCommandService.forceSaveAndAwait(documentId, 8000L);
+    return documentStatusService.getStatus(documentId);
+  }
+
   @GetMapping("/{documentId}/save-status")
   @Operation(summary = "查询保存状态", description = "返回文档最近一次 callback 和保存回写状态。")
   public DocumentSaveStatusResponse saveStatus(
@@ -199,4 +209,3 @@ public class DocumentController {
     return Map.of("error", 0);
   }
 }
-

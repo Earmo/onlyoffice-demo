@@ -42,12 +42,50 @@ public class OnlyofficeCommandServiceImpl implements OnlyofficeCommandService {
 
   @Override
   public void forceSave(String documentId) {
+    invokeForceSave(documentId);
+  }
+
+  @Override
+  public boolean forceSaveAndAwait(String documentId, long timeoutMillis) {
+    CompletableFuture<Void> future = new CompletableFuture<>();
+    pendingSaves.put(documentId, future);
+    StoredDocument storedDocument;
+    try {
+      Integer errorCode = invokeForceSave(documentId);
+      if (Integer.valueOf(4).equals(errorCode)) {
+        log.debug("forceSaveAndAwait 命中无待保存修改，直接返回成功：documentId={}", documentId);
+        return true;
+      }
+      if (errorCode != null && !Integer.valueOf(0).equals(errorCode)) {
+        log.warn("forceSaveAndAwait 命令返回非零错误码：error={}, documentId={}", errorCode, documentId);
+        return false;
+      }
+      future.get(timeoutMillis, TimeUnit.MILLISECONDS);
+      log.debug("forceSaveAndAwait 成功等到 callback 回写完成：documentId={}", documentId);
+      return true;
+    } catch (Exception ex) {
+      log.warn("forceSaveAndAwait 等待超时或失败，documentId={}：{}", documentId, ex.getMessage());
+      return false;
+    } finally {
+      pendingSaves.remove(documentId);
+    }
+  }
+
+  @Override
+  public void notifySaveCompleted(String documentId) {
+    CompletableFuture<Void> future = pendingSaves.get(documentId);
+    if (future != null) {
+      future.complete(null);
+    }
+  }
+
+  private Integer invokeForceSave(String documentId) {
     StoredDocument storedDocument;
     try {
       storedDocument = documentStorageService.getRequiredDocument(documentId);
     } catch (Exception ex) {
       log.warn("获取文档信息失败，跳过 forcesave，documentId={}：{}", documentId, ex.getMessage());
-      return;
+      return null;
     }
     String documentKey = storedDocument.documentId() + "-" + storedDocument.lastModified().toEpochMilli();
 
@@ -69,43 +107,20 @@ public class OnlyofficeCommandServiceImpl implements OnlyofficeCommandService {
           .retrieve()
           .body(Map.class);
 
-      Object errorCode = response != null ? response.get("error") : null;
-      if (errorCode != null && !Integer.valueOf(0).equals(errorCode)) {
-        if (Integer.valueOf(4).equals(errorCode)) {
-          log.debug("forcesave 返回 error=4（无待保存修改），documentId={}", documentId);
-        } else {
-          log.warn("forcesave 命令返回非零错误码：error={}, documentId={}", errorCode, documentId);
-        }
+      Integer errorCode = response != null && response.get("error") instanceof Number number
+          ? number.intValue()
+          : Integer.valueOf(0);
+      if (Integer.valueOf(4).equals(errorCode)) {
+        log.debug("forcesave 返回 error=4（无待保存修改），documentId={}", documentId);
+      } else if (!Integer.valueOf(0).equals(errorCode)) {
+        log.warn("forcesave 命令返回非零错误码：error={}, documentId={}", errorCode, documentId);
       } else {
         log.debug("forcesave 命令执行成功：documentId={}", documentId);
       }
+      return errorCode;
     } catch (Exception ex) {
       log.warn("forcesave 命令调用失败，documentId={}：{}", documentId, ex.getMessage());
-    }
-  }
-
-  @Override
-  public boolean forceSaveAndAwait(String documentId, long timeoutMillis) {
-    CompletableFuture<Void> future = new CompletableFuture<>();
-    pendingSaves.put(documentId, future);
-    try {
-      forceSave(documentId);
-      future.get(timeoutMillis, TimeUnit.MILLISECONDS);
-      log.debug("forceSaveAndAwait 成功等到 callback 回写完成：documentId={}", documentId);
-      return true;
-    } catch (Exception ex) {
-      log.warn("forceSaveAndAwait 等待超时或失败，documentId={}：{}", documentId, ex.getMessage());
-      return false;
-    } finally {
-      pendingSaves.remove(documentId);
-    }
-  }
-
-  @Override
-  public void notifySaveCompleted(String documentId) {
-    CompletableFuture<Void> future = pendingSaves.get(documentId);
-    if (future != null) {
-      future.complete(null);
+      return null;
     }
   }
 
