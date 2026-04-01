@@ -79,6 +79,10 @@ public class OnlyofficeIntegrationProperties {
   @Valid
   private RemoteResourceProperties remoteResource = new RemoteResourceProperties();
 
+  /** 编辑会话运行态配置。 */
+  @Valid
+  private EditingSessionProperties editingSession = new EditingSessionProperties();
+
   /**
    * 兼容现有 local 开发路径读取，避免在 Phase 2 的 provider 重构过程中到处直接访问旧字段。
    */
@@ -308,6 +312,14 @@ public class OnlyofficeIntegrationProperties {
 
     /** 是否允许访问私网/本地地址。 */
     private boolean allowPrivateAddressAccess = false;
+  }
+
+  @Getter
+  @Setter
+  public static class EditingSessionProperties {
+
+    /** 活跃编辑会话的心跳超时秒数；超过该窗口且未显式关闭，则不再对列表投影为 editing。 */
+    private long activeTimeoutSeconds = 30L;
   }
 }
 

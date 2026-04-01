@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.service;
 
+import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentRuntimeEventEntity;
@@ -39,6 +40,7 @@ class DocumentStatusServiceTest {
         .thenReturn(List.of(event("save_succeeded", "最新修改已成功回写到共享存储。", 2)));
 
     DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
         metadataService,
         runtimeEventRepository,
         documentEditorSessionRepository
@@ -66,6 +68,7 @@ class DocumentStatusServiceTest {
         .thenReturn(List.of(event("callback_rejected", "JWT 无效", null)));
 
     DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
         metadataService,
         runtimeEventRepository,
         documentEditorSessionRepository
@@ -92,6 +95,7 @@ class DocumentStatusServiceTest {
         .thenReturn(Optional.empty());
 
     DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
         metadataService,
         runtimeEventRepository,
         documentEditorSessionRepository
@@ -112,12 +116,13 @@ class DocumentStatusServiceTest {
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
     when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
         .thenReturn(Optional.of(editorSession()));
-    when(documentEditorSessionRepository.countActiveByDocumentId("demo")).thenReturn(0L);
+    when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(0L);
     when(metadataService.reconcileClosedEditingSession("demo")).thenReturn(status("demo", "saved"));
     when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
         .thenReturn(List.of(event("editing_session_closed", "当前用户已离开编辑器，文档已退出活跃编辑状态。", null)));
 
     DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
         metadataService,
         runtimeEventRepository,
         documentEditorSessionRepository
@@ -137,12 +142,13 @@ class DocumentStatusServiceTest {
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
     when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
         .thenReturn(Optional.of(editorSession()));
-    when(documentEditorSessionRepository.countActiveByDocumentId("demo")).thenReturn(2L);
+    when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(2L);
     when(metadataService.getStatus("demo")).thenReturn(status("demo", "editing"));
     when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
         .thenReturn(List.of(event("editing_session_closed", "当前用户已离开编辑器，仍有其他活跃编辑用户。", null)));
 
     DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
         metadataService,
         runtimeEventRepository,
         documentEditorSessionRepository
@@ -160,10 +166,11 @@ class DocumentStatusServiceTest {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
-    when(documentEditorSessionRepository.countActiveByDocumentIds(List.of("doc-1", "doc-2")))
+    when(documentEditorSessionRepository.countActiveByDocumentIds(eq(List.of("doc-1", "doc-2")), any()))
         .thenReturn(Map.of("doc-1", 2, "doc-2", 0));
 
     DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
         metadataService,
         runtimeEventRepository,
         documentEditorSessionRepository
@@ -173,7 +180,34 @@ class DocumentStatusServiceTest {
 
     assertEquals(2, counts.get("doc-1"));
     assertEquals(0, counts.get("doc-2"));
-    verify(documentEditorSessionRepository).countActiveByDocumentIds(List.of("doc-1", "doc-2"));
+    verify(documentEditorSessionRepository).countActiveByDocumentIds(eq(List.of("doc-1", "doc-2")), any());
+  }
+
+  @Test
+  void shouldRefreshEditingSessionHeartbeatForCurrentActor() {
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
+    DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
+        .thenReturn(Optional.of(editorSession()));
+
+    DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
+        metadataService,
+        runtimeEventRepository,
+        documentEditorSessionRepository
+    );
+
+    service.touchEditingSession("demo", accessContext());
+
+    verify(documentEditorSessionRepository).update(any(DocumentEditorSessionEntity.class));
+    verify(runtimeEventRepository, never()).save(any(DocumentRuntimeEventEntity.class));
+  }
+
+  private OnlyofficeIntegrationProperties properties() {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.getEditingSession().setActiveTimeoutSeconds(30L);
+    return properties;
   }
 
   private AccessContext accessContext() {

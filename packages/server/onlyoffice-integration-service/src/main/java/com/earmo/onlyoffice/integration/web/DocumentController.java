@@ -94,6 +94,18 @@ public class DocumentController {
     return documentStatusService.closeEditingSession(documentId, accessContext);
   }
 
+  @PostMapping("/{documentId}/editing-sessions/heartbeat")
+  @Operation(summary = "续期编辑会话", description = "编辑页存活期间定期刷新当前用户的编辑会话心跳，避免异常离开后旧会话长期残留。")
+  public ResponseEntity<Void> heartbeatEditingSession(
+      @Parameter(description = "文档内部主键。", example = "demo")
+      @PathVariable String documentId,
+      HttpServletRequest request
+  ) {
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    documentStatusService.touchEditingSession(documentId, accessContext);
+    return ResponseEntity.noContent().build();
+  }
+
   @GetMapping("/{documentId}/save-status")
   @Operation(summary = "查询保存状态", description = "返回文档最近一次 callback 和保存回写状态。")
   public DocumentSaveStatusResponse saveStatus(
@@ -187,5 +199,4 @@ public class DocumentController {
     return Map.of("error", 0);
   }
 }
-
 

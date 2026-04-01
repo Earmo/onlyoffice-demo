@@ -142,3 +142,6 @@ onlyoffice:
       max-image-bytes: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_MAX_IMAGE_BYTES:10485760}
       # 是否允许访问私网/本地地址；生产环境应保持 false。
       allow-private-address-access: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_ALLOW_PRIVATE_ADDRESS_ACCESS:false}
+    editing-session:
+      # 活跃编辑会话的心跳超时窗口（秒）。
+      active-timeout-seconds: ${ONLYOFFICE_INTEGRATION_EDITING_SESSION_ACTIVE_TIMEOUT_SECONDS:30}

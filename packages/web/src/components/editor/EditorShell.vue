@@ -1,8 +1,8 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, buildApiUrl, createAccessContextHeaders } from "../../lib/api";
 
 const props = defineProps({
   documentId: {
@@ -41,7 +41,9 @@ const saveStatus = ref(null);
 const editingSessionOpened = ref(false);
 const isClosingSession = ref(false);
 let saveStatusTimer = null;
+let sessionHeartbeatTimer = null;
 let closeEditingSessionPromise = null;
+let removeUnloadListeners = null;
 
 const modeLabel = computed(() => (props.readonly ? "预览模式" : "编辑模式"));
 const shouldShowConsole = computed(() => props.showConsole && !props.readonly);
@@ -70,6 +72,9 @@ async function loadEditorConfig() {
 
     editorPayload.value = await response.json();
     editingSessionOpened.value = !props.readonly;
+    if (!props.readonly) {
+      startSessionHeartbeatPolling();
+    }
     editorKey.value += 1;
 
     if (shouldShowConsole.value) {
@@ -155,6 +160,7 @@ async function insertRemoteImage() {
 }
 
 function handleDocumentReady() {
+  startSessionHeartbeatPolling();
   if (shouldShowConsole.value) {
     startSaveStatusPolling();
   }
@@ -203,6 +209,49 @@ function stopSaveStatusPolling() {
   if (saveStatusTimer !== null) {
     window.clearInterval(saveStatusTimer);
     saveStatusTimer = null;
+  }
+}
+
+async function touchEditingSession(options = {}) {
+  const {
+    keepalive = false,
+    suppressErrors = false
+  } = options;
+
+  if (props.readonly || !editingSessionOpened.value) {
+    return;
+  }
+
+  try {
+    const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/heartbeat`, {
+      method: "POST",
+      keepalive
+    });
+    if (!response.ok && !suppressErrors) {
+      throw new Error(await readErrorMessage(response, `刷新编辑会话失败，HTTP ${response.status}`));
+    }
+  } catch (error) {
+    if (!suppressErrors) {
+      throw error;
+    }
+  }
+}
+
+function startSessionHeartbeatPolling() {
+  stopSessionHeartbeatPolling();
+  if (props.readonly) {
+    return;
+  }
+
+  sessionHeartbeatTimer = window.setInterval(() => {
+    void touchEditingSession({ suppressErrors: true });
+  }, 5000);
+}
+
+function stopSessionHeartbeatPolling() {
+  if (sessionHeartbeatTimer !== null) {
+    window.clearInterval(sessionHeartbeatTimer);
+    sessionHeartbeatTimer = null;
   }
 }
 
@@ -311,6 +360,7 @@ async function closeEditingSession(options = {}) {
   }
 
   stopSaveStatusPolling();
+  stopSessionHeartbeatPolling();
 
   isClosingSession.value = true;
   closeEditingSessionPromise = (async () => {
@@ -353,6 +403,22 @@ async function closeEditingSession(options = {}) {
   }
 }
 
+function dispatchUnloadCloseRequest() {
+  if (props.readonly || !editingSessionOpened.value || closeEditingSessionPromise) {
+    return;
+  }
+
+  editingSessionOpened.value = false;
+  stopSaveStatusPolling();
+  stopSessionHeartbeatPolling();
+
+  fetch(buildApiUrl(`/api/documents/${props.documentId}/editing-sessions/close`), {
+    method: "POST",
+    keepalive: true,
+    headers: createAccessContextHeaders()
+  }).catch(() => {});
+}
+
 function formatTimestamp(value) {
   if (!value) {
     return "暂无";
@@ -377,6 +443,7 @@ watch(
   () => [props.documentId, props.readonly, props.showConsole],
   async () => {
     stopSaveStatusPolling();
+    stopSessionHeartbeatPolling();
     saveStatus.value = null;
     editingSessionOpened.value = false;
     if (!props.showConsole || props.readonly) {
@@ -387,8 +454,22 @@ watch(
   { immediate: true }
 );
 
+onMounted(() => {
+  const handlePageHide = () => {
+    dispatchUnloadCloseRequest();
+  };
+  window.addEventListener("pagehide", handlePageHide);
+  window.addEventListener("beforeunload", handlePageHide);
+  removeUnloadListeners = () => {
+    window.removeEventListener("pagehide", handlePageHide);
+    window.removeEventListener("beforeunload", handlePageHide);
+  };
+});
+
 onBeforeUnmount(async () => {
   stopSaveStatusPolling();
+  stopSessionHeartbeatPolling();
+  removeUnloadListeners?.();
   await closeEditingSession({ keepalive: true, suppressErrors: true });
 });
 

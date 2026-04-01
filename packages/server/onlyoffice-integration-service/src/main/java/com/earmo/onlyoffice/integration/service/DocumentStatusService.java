@@ -19,6 +19,8 @@ public interface DocumentStatusService {
 
   DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext);
 
+  void touchEditingSession(String documentId, AccessContext accessContext);
+
   DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus);
 
   DocumentSaveStatusResponse recordCallbackRejected(String documentId, String message);

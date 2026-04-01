@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.integration.data.repository;
 import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentEditorSessionMapper;
 import com.mybatisflex.core.query.QueryWrapper;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,21 +46,23 @@ public class DocumentEditorSessionRepository {
     documentEditorSessionMapper.update(entity);
   }
 
-  public long countActiveByDocumentId(String documentId) {
+  public long countActiveByDocumentId(String documentId, Instant activeSince) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_EDITOR_SESSION_ENTITY.DOCUMENT_ID.eq(documentId))
-        .and(DOCUMENT_EDITOR_SESSION_ENTITY.CLOSED_TIME.isNull());
+        .and(DOCUMENT_EDITOR_SESSION_ENTITY.CLOSED_TIME.isNull())
+        .and(DOCUMENT_EDITOR_SESSION_ENTITY.LAST_SEEN_TIME.ge(activeSince));
     return documentEditorSessionMapper.selectCountByQuery(queryWrapper);
   }
 
-  public Map<String, Integer> countActiveByDocumentIds(List<String> documentIds) {
+  public Map<String, Integer> countActiveByDocumentIds(List<String> documentIds, Instant activeSince) {
     if (documentIds == null || documentIds.isEmpty()) {
       return Map.of();
     }
 
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_EDITOR_SESSION_ENTITY.DOCUMENT_ID.in(documentIds))
-        .and(DOCUMENT_EDITOR_SESSION_ENTITY.CLOSED_TIME.isNull());
+        .and(DOCUMENT_EDITOR_SESSION_ENTITY.CLOSED_TIME.isNull())
+        .and(DOCUMENT_EDITOR_SESSION_ENTITY.LAST_SEEN_TIME.ge(activeSince));
 
     Map<String, Integer> counts = new LinkedHashMap<>();
     for (DocumentEditorSessionEntity entity : documentEditorSessionMapper.selectListByQuery(queryWrapper)) {

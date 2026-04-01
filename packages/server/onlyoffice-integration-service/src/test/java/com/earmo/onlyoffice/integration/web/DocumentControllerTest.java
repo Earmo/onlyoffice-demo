@@ -271,6 +271,18 @@ class DocumentControllerTest {
   }
 
   @Test
+  void shouldRefreshEditingSessionHeartbeatForCurrentActor() throws Exception {
+    when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
+    );
+
+    mockMvc.perform(post("/api/documents/sample/editing-sessions/heartbeat"))
+        .andExpect(status().isNoContent());
+
+    verify(documentStatusService).touchEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class));
+  }
+
+  @Test
   void shouldReturnExplicitErrorWhenEditorConfigFailsFastOnRuntimeUrls() throws Exception {
     when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
         new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")

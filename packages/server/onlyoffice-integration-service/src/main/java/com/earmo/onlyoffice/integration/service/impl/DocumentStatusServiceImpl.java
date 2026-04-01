@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.service.impl;
 
+import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentRuntimeEventEntity;
@@ -31,6 +32,7 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
 
   private static final int RECENT_EVENT_LIMIT = 5;
 
+  private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
   private final DocumentMetadataService documentMetadataService;
   private final DocumentRuntimeEventRepository documentRuntimeEventRepository;
   private final DocumentEditorSessionRepository documentEditorSessionRepository;
@@ -57,7 +59,7 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     }
 
     closeEditingSessionRecord(documentId, accessContext.actorUser());
-    long activeEditors = documentEditorSessionRepository.countActiveByDocumentId(documentId);
+    long activeEditors = documentEditorSessionRepository.countActiveByDocumentId(documentId, activeSessionSince());
     DocumentSaveStatusResponse summary = activeEditors > 0
         ? documentMetadataService.getStatus(documentId)
         : documentMetadataService.reconcileClosedEditingSession(documentId);
@@ -112,8 +114,24 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
   }
 
   @Override
+  public void touchEditingSession(String documentId, AccessContext accessContext) {
+    if (!StringUtils.hasText(accessContext.actorUser())) {
+      return;
+    }
+
+    documentEditorSessionRepository.findActiveByDocumentIdAndActorUser(documentId, accessContext.actorUser())
+        .ifPresent(session -> {
+          Instant now = Instant.now();
+          session.setActorName(accessContext.actorName());
+          session.setLastSeenTime(now);
+          session.setUpdatedTime(now);
+          documentEditorSessionRepository.update(session);
+        });
+  }
+
+  @Override
   public Map<String, Integer> countActiveEditingSessions(List<String> documentIds) {
-    return documentEditorSessionRepository.countActiveByDocumentIds(documentIds);
+    return documentEditorSessionRepository.countActiveByDocumentIds(documentIds, activeSessionSince());
   }
 
   /**
@@ -176,6 +194,11 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
           session.setUpdatedTime(now);
           documentEditorSessionRepository.update(session);
         });
+  }
+
+  private Instant activeSessionSince() {
+    long timeoutSeconds = Math.max(5L, onlyofficeIntegrationProperties.getEditingSession().getActiveTimeoutSeconds());
+    return Instant.now().minusSeconds(timeoutSeconds);
   }
 
   /**
