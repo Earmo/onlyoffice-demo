@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Bean;
  * 而是明确收敛为可独立运行、也可被其他系统引用的 starter 服务。
  * 启动时仍保留一份最小引导文档，目的是让独立部署后的服务开箱即可联调。
  */
-@SpringBootApplication
+@SpringBootApplication(excludeName = "com.github.xiaoymin.knife4j.spring.configuration.Knife4jAutoConfiguration")
 @ConfigurationPropertiesScan
 @MapperScan("com.earmo.onlyoffice.integration.data.mapper")
 public class OnlyofficeIntegrationStarterApplication {
