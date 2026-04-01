@@ -36,10 +36,46 @@ export function buildApiUrl(path) {
   return `${apiBaseUrl}${path}`;
 }
 
+const CUSTOM_CONTEXT_STORAGE_KEY = "MOCK_ACCESS_CONTEXT";
+
+export function getCustomAccessContext() {
+  try {
+    const stored = localStorage.getItem(CUSTOM_CONTEXT_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCustomAccessContext(context) {
+  if (!context) {
+    localStorage.removeItem(CUSTOM_CONTEXT_STORAGE_KEY);
+  } else {
+    localStorage.setItem(CUSTOM_CONTEXT_STORAGE_KEY, JSON.stringify(context));
+  }
+}
+
 export function createAccessContextHeaders(headers = {}) {
   const defaultAccessContextHeaders = resolveDefaultAccessContextHeaders();
+  const customContext = getCustomAccessContext() || {};
+
+  const mergedHeaders = { ...defaultAccessContextHeaders };
+
+  if (customContext.tenantId) {
+    mergedHeaders["X-Tenant-Id"] = normalizeHeaderValue(customContext.tenantId, mergedHeaders["X-Tenant-Id"]);
+  }
+  if (customContext.sourceSystem) {
+    mergedHeaders["X-Source-System"] = normalizeHeaderValue(customContext.sourceSystem, mergedHeaders["X-Source-System"]);
+  }
+  if (customContext.actorUser) {
+    mergedHeaders["X-External-User-Id"] = normalizeHeaderValue(customContext.actorUser, mergedHeaders["X-External-User-Id"]);
+  }
+  if (customContext.actorName) {
+    mergedHeaders["X-User-Display-Name"] = normalizeHeaderValue(customContext.actorName, mergedHeaders["X-User-Display-Name"]);
+  }
+
   return {
-    ...defaultAccessContextHeaders,
+    ...mergedHeaders,
     ...headers
   };
 }

@@ -256,6 +256,43 @@ describe("DocumentLibraryPage", () => {
     expect(wrapper.text()).toContain("已删除 待删除文档.docx。");
     expect(wrapper.text()).toContain("保留文档.docx|saved");
   });
+
+  it("应能打开上下文表单切换并保存自定义上下文进而重新加载和触发请求头更新", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse(listPayload()))
+      .mockResolvedValueOnce(jsonResponse(recentPayload()))
+      .mockResolvedValueOnce(jsonResponse(listPayload({
+        tenantId: "my-tenant",
+        actorUser: "custom-user",
+        actorName: "John Doe",
+        documents: [documentSummary({ documentId: "doc-new", title: "自定义身份查看到的文档.docx" })]
+      })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload()));
+
+    const wrapper = mount(DocumentLibraryPage);
+    await flushPromises();
+
+    wrapper.vm.openContextDialog();
+    await flushPromises();
+
+    wrapper.vm.contextForm.tenantId = "my-tenant";
+    wrapper.vm.contextForm.actorUser = "custom-user";
+    wrapper.vm.contextForm.actorName = "John Doe";
+    wrapper.vm.contextForm.sourceSystem = "admin-sys";
+
+    await wrapper.vm.saveContext();
+    await flushPromises();
+
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(requestUrl(2).pathname).toBe("/api/documents");
+    expect(fetch.mock.calls[2][1]?.headers?.["X-Tenant-Id"]).toBe("my-tenant");
+    expect(fetch.mock.calls[2][1]?.headers?.["X-External-User-Id"]).toBe("custom-user");
+    expect(fetch.mock.calls[2][1]?.headers?.["X-User-Display-Name"]).toBe("John Doe");
+    expect(fetch.mock.calls[2][1]?.headers?.["X-Source-System"]).toBe("admin-sys");
+
+    expect(wrapper.text()).toContain("自定义身份查看到的文档.docx");
+    expect(wrapper.text()).toContain("已更新访问上下文。");
+  });
 });
 
 function requestUrl(callIndex) {

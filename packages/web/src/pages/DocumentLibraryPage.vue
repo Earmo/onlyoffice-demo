@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DocumentCreateActions from "../components/library/DocumentCreateActions.vue";
 import DocumentList from "../components/library/DocumentList.vue";
-import { apiFetch } from "../lib/api";
+import { apiFetch, getCustomAccessContext, saveCustomAccessContext } from "../lib/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -22,6 +22,13 @@ const successMessage = ref("");
 const highlightedDocumentId = ref("");
 const remoteDocumentUrl = ref("");
 const showCreateDialog = ref(false);
+const showContextDialog = ref(false);
+const contextForm = ref({
+  tenantId: "",
+  actorUser: "",
+  actorName: "",
+  sourceSystem: ""
+});
 
 const isCreating = ref(false);
 const isUploading = ref(false);
@@ -359,6 +366,38 @@ async function deleteDocument(document) {
   }
 }
 
+function openContextDialog() {
+  const current = getCustomAccessContext() || {};
+  contextForm.value = {
+    tenantId: current.tenantId || "",
+    actorUser: current.actorUser || "",
+    actorName: current.actorName || "",
+    sourceSystem: current.sourceSystem || ""
+  };
+  showContextDialog.value = true;
+}
+
+async function saveContext() {
+  saveCustomAccessContext({
+    tenantId: contextForm.value.tenantId.trim(),
+    actorUser: contextForm.value.actorUser.trim(),
+    actorName: contextForm.value.actorName.trim(),
+    sourceSystem: contextForm.value.sourceSystem.trim()
+  });
+  showContextDialog.value = false;
+
+  searchQuery.value = "";
+  statusFilter.value = "all";
+  documentTypeFilter.value = "all";
+  sourceSystemFilter.value = "";
+  storageFilter.value = "all";
+  pageNumber.value = 1;
+  successMessage.value = "已更新访问上下文。";
+  highlightedDocumentId.value = "";
+  await router.replace({ path: "/", query: {} });
+  await loadLibraryWorkspace();
+}
+
 watch(
   () => route.query.highlight,
   () => {
@@ -379,9 +418,12 @@ onMounted(loadLibraryWorkspace);
           <div class="column-stack column-stack-left">
             <el-card class="context-card library-card" shadow="hover">
               <template #header>
-                <div class="card-header">
-                  <span class="eyebrow">当前上下文</span>
-                  <h2>文档工作台</h2>
+                <div class="card-header" style="display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between;">
+                  <div>
+                    <span class="eyebrow">当前上下文</span>
+                    <h2>文档工作台</h2>
+                  </div>
+                  <el-button size="small" @click="openContextDialog">切换</el-button>
                 </div>
               </template>
               <p class="muted-copy">
@@ -538,6 +580,27 @@ onMounted(loadLibraryWorkspace);
           @import-remote="importRemoteDocument"
           @update:remoteDocumentUrl="remoteDocumentUrl = $event"
         />
+      </el-dialog>
+
+      <el-dialog v-model="showContextDialog" title="切换当前上下文" width="480px" destroy-on-close>
+        <el-form label-position="top" :model="contextForm">
+          <el-form-item label="租户 ID (Tenant ID)">
+            <el-input v-model="contextForm.tenantId" placeholder="使用系统默认值" />
+          </el-form-item>
+          <el-form-item label="当前用户 ID (Actor User)">
+            <el-input v-model="contextForm.actorUser" placeholder="使用系统默认值" />
+          </el-form-item>
+          <el-form-item label="当前用户名 (Actor Name)">
+            <el-input v-model="contextForm.actorName" placeholder="使用系统默认值" />
+          </el-form-item>
+          <el-form-item label="来源系统 (Source System)">
+            <el-input v-model="contextForm.sourceSystem" placeholder="使用系统默认值" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="showContextDialog = false">取消</el-button>
+          <el-button type="primary" @click="saveContext">保存并刷新工作台</el-button>
+        </template>
       </el-dialog>
     </el-main>
   </el-container>
