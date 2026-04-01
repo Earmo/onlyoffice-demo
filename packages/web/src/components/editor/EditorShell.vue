@@ -206,6 +206,86 @@ function stopSaveStatusPolling() {
   }
 }
 
+/**
+ * 销毁 ONLYOFFICE 编辑器实例。
+ *
+ * 调用后 ONLYOFFICE Document Server 会感知到客户端断连，
+ * 当所有客户端都断开后会触发 callback status 2（保存并关闭）。
+ */
+function destroyDocEditor() {
+  try {
+    const editor = getDocEditorInstance();
+    if (editor && typeof editor.destroyEditor === "function") {
+      editor.destroyEditor();
+    }
+  } catch {
+    // 编辑器实例可能已被清理，静默忽略
+  }
+}
+
+/**
+ * 调用 ONLYOFFICE 编辑器内部 API 触发强制保存。
+ *
+ * 编辑器配置中 `customization.forcesave = true`，当内部 API 的 `asc_Save`
+ * 被调用时，编辑器通过 WebSocket 通知 Document Server 执行保存，
+ * DS 随后向后端发送 callback（status 6），后端下载并落盘。
+ *
+ * 因为 nginx 把 ONLYOFFICE 路径代理到同源，iframe 为同源访问，
+ * 可以直接读取 `iframe.contentWindow.Asc.editor` 上的方法。
+ * 这与用户手动按 Ctrl+S 触发的是完全相同的底层函数。
+ *
+ * @returns {boolean} 是否成功调用了保存 API
+ */
+function triggerForceSave() {
+  try {
+    const iframe = document.getElementById("docEditor")?.querySelector("iframe");
+    if (!iframe?.contentWindow) return false;
+
+    const win = iframe.contentWindow;
+
+    // ONLYOFFICE 内部 API 对象在不同版本中可能位于不同路径
+    const api = win.Asc?.editor || win.editor;
+    if (api && typeof api.asc_Save === "function") {
+      // asc_Save(false) = 用户主动保存（非静默），与 Ctrl+S 完全等价。
+      // 当 customization.forcesave = true 时，会通过 WS 发送保存指令到 DS。
+      api.asc_Save(false);
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 等待后端保存状态变为 "saved"（status 6 的 callback 回写完成）。
+ * 每 500ms 轮询一次，最多等待 maxWaitMs 毫秒。
+ *
+ * @param {number} maxWaitMs 最大等待毫秒数
+ * @returns {Promise<boolean>} 是否在超时前等到保存完成
+ */
+async function waitForSaveCompleted(maxWaitMs = 5000) {
+  const interval = 500;
+  const maxAttempts = Math.ceil(maxWaitMs / interval);
+
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, interval));
+    try {
+      const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
+      if (response.ok) {
+        const status = await response.json();
+        if (status.state === "saved") {
+          return true;
+        }
+      }
+    } catch {
+      // 轮询失败不中断，继续等待
+    }
+  }
+  return false;
+}
+
 async function closeEditingSession(options = {}) {
   const {
     keepalive = false,
@@ -231,8 +311,21 @@ async function closeEditingSession(options = {}) {
   }
 
   stopSaveStatusPolling();
+
   isClosingSession.value = true;
   closeEditingSessionPromise = (async () => {
+    // 1. 通过 Ctrl+S 触发 ONLYOFFICE 编辑器的强制保存（customization.forcesave = true）。
+    //    DS 收到后会向后端发送 callback（status 6），后端下载最新文件并落盘。
+    triggerForceSave();
+
+    // 2. 轮询 save-status 直到后端确认文件已保存（最多等 5 秒）。
+    //    这样后续导航回列表或重新打开文档时一定能看到最新内容。
+    await waitForSaveCompleted(5000);
+
+    // 3. 销毁编辑器实例（断开与 DS 的连接）。
+    destroyDocEditor();
+
+    // 4. 通知后端关闭编辑会话记录。
     const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/close`, {
       method: "POST",
       keepalive

@@ -19,9 +19,10 @@ describe("EditorShell", () => {
 
   it("应在编辑模式加载配置、展开控制台，并在显式关闭后卸载时不重复请求 close-session", async () => {
     fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))
-      .mockResolvedValueOnce(jsonResponse(closedStatusPayload()));
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))  // 1. editor-config
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))                 // 2. 初始 save-status
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))                 // 3. closeSession 中 waitForSaveCompleted 轮询
+      .mockResolvedValueOnce(jsonResponse(closedStatusPayload()));              // 4. close-session
 
     const wrapper = mount(EditorShell, {
       props: {
@@ -51,12 +52,25 @@ describe("EditorShell", () => {
 
   it("应在 close-session 进行中复用同一个请求而不是重复发送", async () => {
     let resolveCloseRequest;
-    fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))
-      .mockImplementationOnce(() => new Promise(resolve => {
-        resolveCloseRequest = () => resolve(jsonResponse(closedStatusPayload()));
-      }));
+    let closeCallCount = 0;
+
+    // 使用 URL 路由式 mock，让 waitForSaveCompleted 的轮询和 close 请求各走各的分支。
+    fetch.mockImplementation((url) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/editor-config")) {
+        return Promise.resolve(jsonResponse(editorConfigPayload("路线图.docx")));
+      }
+      if (urlStr.includes("/save-status")) {
+        return Promise.resolve(jsonResponse(saveStatusPayload()));
+      }
+      if (urlStr.includes("/editing-sessions/close")) {
+        closeCallCount++;
+        return new Promise(resolve => {
+          resolveCloseRequest = () => resolve(jsonResponse(closedStatusPayload()));
+        });
+      }
+      return Promise.reject(new Error("unexpected fetch: " + urlStr));
+    });
 
     const wrapper = mount(EditorShell, {
       props: {
@@ -69,8 +83,11 @@ describe("EditorShell", () => {
     const firstClose = wrapper.vm.closeEditingSession();
     const secondClose = wrapper.vm.closeEditingSession();
 
-    const closeCalls = fetch.mock.calls.filter(call => String(call[0]).includes("/editing-sessions/close"));
-    expect(closeCalls).toHaveLength(1);
+    // 等待 waitForSaveCompleted 内部的 setTimeout(500ms) 过期 + fetch 完成 + close 请求发出
+    await new Promise(r => setTimeout(r, 700));
+    await flushPromises();
+
+    expect(closeCallCount).toBe(1);
 
     resolveCloseRequest();
     const [firstPayload, secondPayload] = await Promise.all([firstClose, secondClose]);

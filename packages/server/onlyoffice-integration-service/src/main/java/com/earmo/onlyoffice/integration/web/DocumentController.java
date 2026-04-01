@@ -12,6 +12,7 @@ import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
+import com.earmo.onlyoffice.integration.service.OnlyofficeCommandService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeConfigService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeImageService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeJwtService;
@@ -58,6 +59,7 @@ public class DocumentController {
   private final AccessAuditService accessAuditService;
   private final AccessContextResolver accessContextResolver;
   private final OnlyofficeJwtService onlyofficeJwtService;
+  private final OnlyofficeCommandService onlyofficeCommandService;
 
   @GetMapping("/{documentId}/editor-config")
   @Operation(summary = "获取编辑器配置", description = "根据内部 documentId 生成 ONLYOFFICE 可直接消费的 editor config。")
@@ -82,7 +84,7 @@ public class DocumentController {
   }
 
   @PostMapping("/{documentId}/editing-sessions/close")
-  @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。")
+  @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。前端应在调用此接口前先通过 Ctrl+S 触发保存并等待回写完成。")
   public DocumentSaveStatusResponse closeEditingSession(
       @Parameter(description = "文档内部主键。", example = "demo")
       @PathVariable String documentId,
@@ -174,6 +176,8 @@ public class DocumentController {
         // 只有在 ONLYOFFICE 告知文档可持久化时，才真正拉取最新文件并覆盖存储内容。
         documentStorageService.saveCallbackDocument(documentId, request.url());
         documentStatusService.recordSaveSucceeded(documentId, status);
+        // 唤醒正在 forceSaveAndAwait 中等待的线程（如有）。
+        onlyofficeCommandService.notifySaveCompleted(documentId);
       } catch (IOException ex) {
         // 一旦保存失败，除了抛异常给调用方，还要把失败原因写回状态中心，便于前端展示和排查。
         documentStatusService.recordSaveFailed(documentId, status, ex.getMessage());

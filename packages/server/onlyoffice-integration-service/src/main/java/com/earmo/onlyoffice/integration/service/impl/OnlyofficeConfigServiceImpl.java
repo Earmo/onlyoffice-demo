@@ -158,8 +158,8 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     logo.put("url", "https://avatars.githubusercontent.com/u/42935502?v=4&size=64");
 
     Map<String, Object> customization = new LinkedHashMap<>();
-    customization.put("autosave", false);
-    customization.put("forcesave", false);
+    customization.put("autosave", true);
+    customization.put("forcesave", true);
     customization.put("comments", false);
     customization.put("compactHeader", true);
     // 编辑页希望默认展开完整工具栏，而不是仅展示压缩标签栏。

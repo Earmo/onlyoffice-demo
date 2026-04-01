@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
+import { ElMessageBox } from "element-plus";
+import "element-plus/es/components/message-box/style/css";
 import EditorShell from "../components/editor/EditorShell.vue";
 import { apiFetch } from "../lib/api";
 
@@ -70,6 +72,23 @@ async function closeCurrentEditingSession() {
 }
 
 async function goBackToLibrary() {
+  try {
+    await ElMessageBox.confirm(
+      "是否保存编辑并返回文档列表？",
+      "返回确认",
+      {
+        confirmButtonText: "保存并返回",
+        cancelButtonText: "取消",
+        type: "warning",
+        appendTo: "body",
+        "custom-class": "editor-leave-confirm"
+      }
+    );
+  } catch {
+    // 用户点击取消，继续编辑
+    return;
+  }
+
   await runLeaveFlow(
     () => router.push({ path: "/", query: { highlight: currentDocumentId.value } }),
     "结束当前编辑会话失败"
@@ -81,8 +100,20 @@ async function requestOpenDocument(document) {
     return;
   }
 
-  const confirmed = window.confirm(`即将结束当前文档会话并打开“${document.title}”，是否继续？`);
-  if (!confirmed) {
+  try {
+    await ElMessageBox.confirm(
+      `即将结束当前文档会话并打开"${document.title}"，是否继续？`,
+      "切换文档",
+      {
+        confirmButtonText: "确认切换",
+        cancelButtonText: "取消",
+        type: "warning",
+        appendTo: "body",
+        "custom-class": "editor-leave-confirm"
+      }
+    );
+  } catch {
+    // 用户点击取消，留在当前文档
     return;
   }
 

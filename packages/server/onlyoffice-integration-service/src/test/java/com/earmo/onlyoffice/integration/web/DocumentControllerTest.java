@@ -13,6 +13,7 @@ import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
+import com.earmo.onlyoffice.integration.service.OnlyofficeCommandService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeConfigService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeImageService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeJwtService;
@@ -77,6 +78,9 @@ class DocumentControllerTest {
 
   @MockBean
   private DocumentEditorSessionMapper documentEditorSessionMapper;
+
+  @MockBean
+  private OnlyofficeCommandService onlyofficeCommandService;
 
   @Test
   void shouldPersistCallbackDocumentWhenStatusIs2() throws Exception {
