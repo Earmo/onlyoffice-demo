@@ -12,6 +12,7 @@ import java.net.UnknownHostException;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.http.ContentDisposition;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -73,7 +74,11 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
 
           try (InputStream bodyStream = response.getBody()) {
             byte[] body = readBodyWithLimit(bodyStream, maxBytes, resourceLabel);
-            return new RemoteFetchResult(body, response.getHeaders().getContentType());
+            return new RemoteFetchResult(
+                body,
+                response.getHeaders().getContentType(),
+                resolveSuggestedFilename(response.getHeaders().getFirst("Content-Disposition"))
+            );
           }
         });
   }
@@ -164,5 +169,19 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
   private String formatLimit(long maxBytes) {
     long megaBytes = maxBytes / (1024 * 1024);
     return megaBytes > 0 ? megaBytes + "MB" : maxBytes + " 字节";
+  }
+
+  private String resolveSuggestedFilename(String rawContentDisposition) {
+    if (!StringUtils.hasText(rawContentDisposition)) {
+      return null;
+    }
+
+    try {
+      ContentDisposition disposition = ContentDisposition.parse(rawContentDisposition);
+      String filename = disposition.getFilename();
+      return StringUtils.hasText(filename) ? filename : null;
+    } catch (IllegalArgumentException ex) {
+      return null;
+    }
   }
 }

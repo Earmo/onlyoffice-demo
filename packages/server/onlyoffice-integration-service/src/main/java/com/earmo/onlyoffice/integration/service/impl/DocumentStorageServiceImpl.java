@@ -17,6 +17,7 @@ import com.mybatisflex.core.keygen.impl.ULIDKeyGenerator;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -28,11 +29,13 @@ import java.util.zip.ZipOutputStream;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.MediaTypeFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriUtils;
 
 /**
  * 文档文件对象编排服务默认实现。
@@ -47,6 +50,7 @@ import org.springframework.web.client.RestClient;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DocumentStorageServiceImpl implements DocumentStorageService {
 
   private static final String DEFAULT_EXTENSION = "docx";
@@ -222,15 +226,31 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
   @Override
   public StoredDocument importRemoteDocument(String sourceUrl, RequestContext requestContext) throws IOException {
     URI remoteUri = parseAndValidateRemoteUrl(sourceUrl);
-    String originalFilename = extractRemoteFilename(remoteUri);
+    log.info("开始导入远程文档：sourceUrl={}, tenantId={}, actorUser={}", sourceUrl, requestContext.tenantId(), requestContext.externalUser());
     RemoteResourceSecurityService.RemoteFetchResult remoteFetchResult = remoteResourceSecurityService.fetch(
         remoteUri,
         onlyofficeIntegrationProperties.getRemoteResource().getMaxDocumentBytes(),
         "远程文档"
     );
+    String originalFilename = resolveRemoteFilename(remoteUri, remoteFetchResult.suggestedFilename());
     validateRemoteDocumentMediaType(originalFilename, remoteFetchResult.mediaType());
+    log.info(
+        "远程文档下载完成：sourceUrl={}, resolvedFilename={}, contentType={}, size={} bytes",
+        sourceUrl,
+        originalFilename,
+        remoteFetchResult.mediaType(),
+        remoteFetchResult.body().length
+    );
 
-    return storeUploadedDocument(originalFilename, remoteFetchResult.body(), requestContext);
+    StoredDocument storedDocument = storeUploadedDocument(originalFilename, remoteFetchResult.body(), requestContext);
+    log.info(
+        "远程文档导入完成：sourceUrl={}, documentId={}, title={}, storageKey={}",
+        sourceUrl,
+        storedDocument.documentId(),
+        storedDocument.title(),
+        storedDocument.storageKey()
+    );
+    return storedDocument;
   }
 
   /**
@@ -391,7 +411,16 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
 
   private String normalizeFilename(String filename) {
     String normalized = StringUtils.getFilename(filename);
-    return StringUtils.hasText(normalized) ? normalized : filename;
+    String sanitized = StringUtils.hasText(normalized) ? normalized : filename;
+    if (!StringUtils.hasText(sanitized) || !sanitized.contains("%")) {
+      return sanitized;
+    }
+
+    try {
+      return UriUtils.decode(sanitized, StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException ex) {
+      return sanitized;
+    }
   }
 
   private URI parseAndValidateRemoteUrl(String sourceUrl) {
@@ -411,6 +440,15 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
 
     requireSupportedExtension(filename);
     return filename;
+  }
+
+  private String resolveRemoteFilename(URI remoteUri, String suggestedFilename) {
+    String normalizedSuggestedFilename = normalizeFilename(suggestedFilename);
+    if (StringUtils.hasText(normalizedSuggestedFilename)) {
+      requireSupportedExtension(normalizedSuggestedFilename);
+      return normalizedSuggestedFilename;
+    }
+    return extractRemoteFilename(remoteUri);
   }
 
   private void validateRemoteDocumentMediaType(String filename, MediaType mediaType) {

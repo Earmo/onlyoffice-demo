@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,6 +46,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/documents")
 @RequiredArgsConstructor
+@Slf4j
 public class DocumentApiController {
 
   private static final int DEFAULT_PAGE_NUMBER = 1;
@@ -194,6 +196,12 @@ public class DocumentApiController {
       HttpServletRequest httpServletRequest
   ) throws IOException {
     AccessContext accessContext = accessContextResolver.resolve(httpServletRequest);
+    log.info(
+        "收到远程文档导入请求：sourceUrl={}, tenantId={}, actorUser={}",
+        request.sourceUrl(),
+        accessContext.tenantId(),
+        accessContext.actorUser()
+    );
     StoredDocument storedDocument = documentStorageService.importRemoteDocument(
         request.sourceUrl(),
         accessContext.toRequestContext()

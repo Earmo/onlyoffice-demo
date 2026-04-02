@@ -85,7 +85,8 @@ describe("DocumentList", () => {
 
     expect(wrapper.find(".start-edit-btn").exists()).toBe(true);
     expect(wrapper.find(".intro-copy").text()).toBe("先查看，再决定是否进入编辑");
-    expect(wrapper.find(".helper-copy").text()).toContain("点击行可直接预览文档");
+    expect(wrapper.find(".helper-copy").text()).toContain("点击行可直接预览");
+    expect(wrapper.find(".helper-copy").text()).toContain("“编辑”会进入独立可编辑工作台");
     expect(wrapper.find(".intro-copy").classes()).toContain("muted-copy");
     expect(wrapper.find(".helper-copy").classes()).toContain("muted-copy");
   });
@@ -96,6 +97,9 @@ describe("DocumentList", () => {
     expect(wrapper.find(".preview-document-btn").exists()).toBe(true);
     expect(wrapper.find(".edit-document-btn").exists()).toBe(true);
     expect(wrapper.find(".delete-document-btn").exists()).toBe(true);
+    expect(wrapper.find(".preview-document-btn").text()).toBe("查看");
+    expect(wrapper.find(".edit-document-btn").text()).toBe("编辑");
+    expect(wrapper.find(".delete-document-btn").text()).toContain("删除");
     expect(wrapper.text()).toContain("最近编辑");
     expect(wrapper.text()).toContain("项目路线图.docx");
 

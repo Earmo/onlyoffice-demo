@@ -309,6 +309,212 @@ class DocumentStorageServiceTest {
     }
   }
 
+  @Test
+  @DisplayName("远程导入应优先使用响应头中的原始文件名，而不是 URL 路径中的 UUID")
+  void shouldPreferContentDispositionFilenameWhenImportingRemoteDocument() throws Exception {
+    OnlyofficeIntegrationProperties properties = properties();
+    properties.getRemoteResource().setAllowPrivateAddressAccess(true);
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
+
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    when(metadataService.createDocument(
+        anyString(),
+        anyString(),
+        anyString(),
+        anyString(),
+        anyString(),
+        any(RequestContext.class),
+        nullable(String.class)
+    )).thenAnswer(invocation -> {
+      String documentId = invocation.getArgument(0, String.class);
+      String title = invocation.getArgument(1, String.class);
+      String storageKey = invocation.getArgument(4, String.class);
+      String fileType = invocation.getArgument(2, String.class);
+      String documentType = invocation.getArgument(3, String.class);
+      return entity(documentId, title, storageKey, fileType, documentType);
+    });
+    when(metadataService.requireAccessibleDocument(anyString()))
+        .thenAnswer(invocation -> {
+          String documentId = invocation.getArgument(0, String.class);
+          return entity(
+              documentId,
+              "project-plan.docx",
+              "tenant-a/native/" + documentId + ".docx",
+              "docx",
+              "word"
+          );
+        });
+    when(metadataService.toStoredDocument(any(DocumentMetadataEntity.class), any(), any()))
+        .thenAnswer(invocation -> {
+          DocumentMetadataEntity actual = invocation.getArgument(0, DocumentMetadataEntity.class);
+          Path localPath = invocation.getArgument(1, Path.class);
+          return new StoredDocument(
+              actual.getDocumentId(),
+              actual.getTenantId(),
+              actual.getOwnerUser(),
+              actual.getSourceSystem(),
+              actual.getExternalDocumentId(),
+              actual.getTitle(),
+              actual.getStorageKey(),
+              actual.getFileType(),
+              actual.getDocumentType(),
+              actual.getStatus(),
+              localPath,
+              invocation.getArgument(2, java.time.Instant.class),
+              null,
+              null,
+              null,
+              null
+          );
+        });
+
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+    try {
+      server.createContext("/9afd7f75e6ea40b798c6d763a951e28f", exchange -> {
+        byte[] body = "docx-demo".getBytes();
+        exchange.getResponseHeaders().add(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        exchange.getResponseHeaders().add(
+            "Content-Disposition",
+            "attachment; filename=\"project-plan.docx\""
+        );
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+          outputStream.write(body);
+        }
+      });
+      server.start();
+
+      DocumentStorageService service = new DocumentStorageServiceImpl(
+          properties,
+          metadataService,
+          RestClient.builder(),
+          List.of(localStrategy),
+          resolver,
+          keyFactory,
+          new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
+      );
+
+      StoredDocument document = service.importRemoteDocument(
+          "http://localhost:" + server.getAddress().getPort() + "/9afd7f75e6ea40b798c6d763a951e28f",
+          new RequestContext("tenant-a", "native", "user-a", "Alice")
+      );
+
+      assertEquals("project-plan.docx", document.title());
+      assertEquals("docx", document.fileType());
+      assertEquals("word", document.documentType());
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
+  @DisplayName("远程导入应先解码响应头中的百分号编码文件名")
+  void shouldDecodePercentEncodedFilenameWhenImportingRemoteDocument() throws Exception {
+    OnlyofficeIntegrationProperties properties = properties();
+    properties.getRemoteResource().setAllowPrivateAddressAccess(true);
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
+
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    when(metadataService.createDocument(
+        anyString(),
+        anyString(),
+        anyString(),
+        anyString(),
+        anyString(),
+        any(RequestContext.class),
+        nullable(String.class)
+    )).thenAnswer(invocation -> {
+      String documentId = invocation.getArgument(0, String.class);
+      String title = invocation.getArgument(1, String.class);
+      String storageKey = invocation.getArgument(4, String.class);
+      String fileType = invocation.getArgument(2, String.class);
+      String documentType = invocation.getArgument(3, String.class);
+      return entity(documentId, title, storageKey, fileType, documentType);
+    });
+    when(metadataService.requireAccessibleDocument(anyString()))
+        .thenAnswer(invocation -> {
+          String documentId = invocation.getArgument(0, String.class);
+          return entity(
+              documentId,
+              "+测试文档(1).docx",
+              "tenant-a/native/" + documentId + ".docx",
+              "docx",
+              "word"
+          );
+        });
+    when(metadataService.toStoredDocument(any(DocumentMetadataEntity.class), any(), any()))
+        .thenAnswer(invocation -> {
+          DocumentMetadataEntity actual = invocation.getArgument(0, DocumentMetadataEntity.class);
+          Path localPath = invocation.getArgument(1, Path.class);
+          return new StoredDocument(
+              actual.getDocumentId(),
+              actual.getTenantId(),
+              actual.getOwnerUser(),
+              actual.getSourceSystem(),
+              actual.getExternalDocumentId(),
+              actual.getTitle(),
+              actual.getStorageKey(),
+              actual.getFileType(),
+              actual.getDocumentType(),
+              actual.getStatus(),
+              localPath,
+              invocation.getArgument(2, java.time.Instant.class),
+              null,
+              null,
+              null,
+              null
+          );
+        });
+
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+    try {
+      server.createContext("/01kn63qdhc1j64t6s4t0vj234d", exchange -> {
+        byte[] body = "docx-demo".getBytes();
+        exchange.getResponseHeaders().add(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        exchange.getResponseHeaders().add(
+            "Content-Disposition",
+            "attachment; filename=\"%2B%E6%B5%8B%E8%AF%95%E6%96%87%E6%A1%A3%281%29.docx\""
+        );
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+          outputStream.write(body);
+        }
+      });
+      server.start();
+
+      DocumentStorageService service = new DocumentStorageServiceImpl(
+          properties,
+          metadataService,
+          RestClient.builder(),
+          List.of(localStrategy),
+          resolver,
+          keyFactory,
+          new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
+      );
+
+      StoredDocument document = service.importRemoteDocument(
+          "http://localhost:" + server.getAddress().getPort() + "/01kn63qdhc1j64t6s4t0vj234d",
+          new RequestContext("tenant-a", "native", "user-a", "Alice")
+      );
+
+      assertEquals("+测试文档(1).docx", document.title());
+      assertEquals("docx", document.fileType());
+      assertEquals("word", document.documentType());
+    } finally {
+      server.stop(0);
+    }
+  }
+
   private OnlyofficeIntegrationProperties properties() {
     OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
     properties.getStorage().getLocal().setRoot(tempDir);

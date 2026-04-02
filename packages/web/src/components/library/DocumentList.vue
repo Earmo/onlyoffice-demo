@@ -91,7 +91,7 @@ function tableRowClassName({ row }) {
             <p class="muted-copy intro-copy">先查看，再决定是否进入编辑</p>
           </div>
         </div>
-        <p class="muted-copy helper-copy">点击行可直接预览文档；“编辑文档”会进入独立可编辑工作台。</p>
+        <p class="muted-copy helper-copy">点击行可直接预览；“编辑”会进入独立可编辑工作台。</p>
       </div>
     </template>
 
@@ -138,8 +138,8 @@ function tableRowClassName({ row }) {
       
       <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" class="preview-document-btn" @click.stop="previewDocument(row)">查看文件</el-button>
-          <el-button size="small" type="primary" class="edit-document-btn" @click.stop="editDocument(row)">编辑文档</el-button>
+          <el-button size="small" class="preview-document-btn" @click.stop="previewDocument(row)">查看</el-button>
+          <el-button size="small" type="primary" class="edit-document-btn" @click.stop="editDocument(row)">编辑</el-button>
           <el-button
             size="small"
             type="danger"
@@ -148,7 +148,7 @@ function tableRowClassName({ row }) {
             :loading="deletingDocumentId === row.documentId"
             @click.stop="deleteDocument(row)"
           >
-            删除文档
+            删除
           </el-button>
         </template>
       </el-table-column>

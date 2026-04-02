@@ -18,6 +18,6 @@ public interface RemoteResourceSecurityService {
 
   MediaType requireImageMediaType(MediaType mediaType);
 
-  record RemoteFetchResult(byte[] body, MediaType mediaType) {
+  record RemoteFetchResult(byte[] body, MediaType mediaType, String suggestedFilename) {
   }
 }
