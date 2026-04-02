@@ -447,12 +447,19 @@ onMounted(loadLibraryWorkspace);
                   class="recent-item"
                 >
                   <div class="recent-copy">
-                    <span class="recent-title">{{ document.title }}</span>
+                    <el-tooltip
+                      effect="dark"
+                      :content="document.title"
+                      placement="top"
+                      :show-after="500"
+                    >
+                      <span class="recent-title">{{ document.title }}</span>
+                    </el-tooltip>
                     <span class="recent-meta">最近编辑：{{ formatTimestamp(document.lastEditedTime) }}</span>
                   </div>
                   <div class="recent-actions">
-                    <el-button size="small" @click="previewDocument(document)">查看文件</el-button>
-                    <el-button size="small" type="primary" @click="editDocument(document)">编辑文档</el-button>
+                    <el-button size="small" @click="previewDocument(document)">查看</el-button>
+                    <el-button size="small" type="primary" @click="editDocument(document)">编辑</el-button>
                   </div>
                 </el-card>
               </div>
@@ -507,7 +514,7 @@ onMounted(loadLibraryWorkspace);
                   </el-select>
                 </el-form-item>
                 <el-form-item>
-                  <el-button type="primary" native-type="submit" :loading="isLoading">搜索与筛选</el-button>
+                  <el-button type="primary" native-type="submit" :loading="isLoading">搜索</el-button>
                   <el-button @click="resetFilters" :disabled="isLoading">重置</el-button>
                 </el-form-item>
               </el-form>
@@ -710,11 +717,15 @@ onMounted(loadLibraryWorkspace);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .recent-title {
   display: block;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .recent-meta {

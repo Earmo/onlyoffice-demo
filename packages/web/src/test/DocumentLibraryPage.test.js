@@ -98,6 +98,9 @@ describe("DocumentLibraryPage", () => {
     expect(wrapper.text()).toContain("Alice");
     expect(wrapper.text()).toContain("项目路线图.docx");
     expect(wrapper.text()).toContain("最近编辑文档.docx");
+    const recentTooltip = wrapper.findAllComponents({ name: "ElTooltip" })
+      .find(c => c.props("content") === "最近编辑文档.docx");
+    expect(recentTooltip).toBeDefined();
     expect(wrapper.find(".highlighted-document").text()).toBe("doc-1");
     expect(wrapper.findComponent({ name: "ElPagination" }).props("total")).toBe(42);
   });
