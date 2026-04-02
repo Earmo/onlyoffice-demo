@@ -25,6 +25,12 @@
    - 跳转官方前端 `/editor/{documentId}`
    - 或在自己的前端里消费 `editor-config`
 
+如果你走的是 `POST /api/documents/import-remote`，建议同时记住这几个行为约定：
+
+- 服务端会优先采用远端 `Content-Disposition` 里的文件名，不再默认把 URL 最后一段 UUID 当标题
+- 如果文件名本身是百分号编码，服务端会按 UTF-8 先解码再入库，例如 `%2B%E6%B5%8B%E8%AF%95.docx` 会落成 `+测试.docx`
+- 导入链路会输出请求开始、下载完成、导入完成三段 `info` 级日志，便于你把上游调用与服务端结果对齐
+
 ## 用户上下文接入
 
 当前用户上下文模型遵循 `SPI-first, built-ins included`：

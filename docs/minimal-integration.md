@@ -114,6 +114,11 @@ corepack pnpm dev
 - 编辑页始终提供“返回文档列表”入口
 - 在编辑页切换到另一份文档时，前端会先弹出确认提示
 
+编辑页返回和列表状态投影现在还有两个额外约定：
+
+- 点击“保存并返回”时，前端会先调用服务端保存接口，等待本次保存完成后再关闭编辑会话并回到列表，避免把旧 `saved` 状态误判成这次已经保存完成
+- 直接关闭浏览器、刷新页面或异常离开时，前端会通过 `pagehide/beforeunload` 尽量补发关闭请求；如果会话还是残留，后端也会按活跃超时窗口自动把脏会话从“编辑中”投影里剔除
+
 ## 5. 核心 API
 
 - `GET /doc.html`
@@ -204,3 +209,19 @@ edit=true,comment=false,download=true,print=false
 - `onlyoffice.integration.remote-resource.allow-private-address-access`
 
 其中 `allow-private-address-access` 只建议在本地测试或受控联调环境临时开启，生产环境应保持默认关闭。
+
+### 7.1 远程导入文件名与日志约定
+
+`POST /api/documents/import-remote` 现在会按下面顺序解析文档标题：
+
+1. 优先使用远端响应头 `Content-Disposition` 里的文件名
+2. 如果响应头没有可用文件名，再回退到 URL path 最后一段
+3. 文件名进入系统前会先做路径裁剪，并按 UTF-8 解码百分号编码，例如 `%E6%B5%8B%E8%AF%95.docx` 会还原成正常中文标题
+
+这意味着对象存储预签名链接、UUID 路径或被编码过的中文文件名，导入后都不会再直接显示成原始 URL 片段。
+
+为了方便排查导入问题，服务端默认会输出 3 条 `info` 级业务日志：
+
+- 收到远程文档导入请求：`sourceUrl`、`tenantId`、`actorUser`
+- 远程文档下载完成：`resolvedFilename`、`contentType`、`size`
+- 远程文档导入完成：`documentId`、`title`、`storageKey`
