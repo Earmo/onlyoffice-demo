@@ -1,0 +1,42 @@
+# 生产环境默认配置。
+# 这份 profile 偏向“显式配置优先”：没有提供关键地址、数据库或对象存储凭证时，服务应尽早失败而不是静默猜测。
+
+spring:
+  datasource:
+    # 生产环境数据库地址必须显式提供。
+    url: ${SPRING_DATASOURCE_URL}
+    # 生产环境数据库用户名必须显式提供。
+    username: ${SPRING_DATASOURCE_USERNAME}
+    # 生产环境数据库密码必须显式提供。
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    # PostgreSQL 驱动。
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.postgresql.Driver}
+
+onlyoffice:
+  integration:
+    # 生产环境公开地址必须显式提供，避免生成错误的编辑链接。
+    public-base-url: ${ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL}
+    # 生产环境内部地址必须显式提供，保证 ONLYOFFICE 下载与 callback 正确。
+    internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL}
+    # 生产环境 document server 地址必须显式提供。
+    document-server-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL}
+    access-context:
+      # 生产环境默认禁止使用默认上下文补齐用户信息。
+      allow-default-context: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ALLOW_DEFAULT_CONTEXT:false}
+    storage:
+      # 生产环境默认推荐对象存储，优先使用 MinIO；如需 COS，会在后续配置块中显式切换。
+      default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:minio}
+      cos:
+        # 生产环境使用 COS 时必须显式提供地域。
+        region: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_REGION}
+        # 生产环境使用 COS 时必须显式提供 bucket。
+        bucket: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_BUCKET}
+        # 生产环境使用 COS 时必须显式提供 SecretId。
+        secret-id: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_SECRET_ID}
+        # 生产环境使用 COS 时必须显式提供 SecretKey。
+        secret-key: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_SECRET_KEY}
+        # 如使用私有域名或特殊后缀，可在生产环境显式覆盖。
+        endpoint-suffix: ${ONLYOFFICE_INTEGRATION_STORAGE_COS_ENDPOINT_SUFFIX:cos.myqcloud.com}
+    remote-resource:
+      # 生产环境必须保持私网访问关闭，除非受控场景下显式放开。
+      allow-private-address-access: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_ALLOW_PRIVATE_ADDRESS_ACCESS:false}

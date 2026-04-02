@@ -1,0 +1,33 @@
+spring:
+  profiles:
+    # 测试资源配置显式声明 test，避免把默认 dev profile 带入 SpringBootTest。
+    active: test
+
+  datasource:
+    url: jdbc:h2:mem:onlyoffice-integration-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: true
+
+knife4j:
+  enable: true
+
+mybatis-flex:
+  configuration:
+    map-underscore-to-camel-case: true
+
+onlyoffice:
+  integration:
+    public-base-url: http://localhost:12333
+    internal-base-url: http://localhost:8080
+    document-server-url: http://localhost:12333
+    jwt-secret: onlyoffice-integration-secret-2026-03-09-123456
+    default-language: zh
+    default-region: zh-CN
+    default-tenant-id: native
+    default-source-system: native
+    default-user: starter-user
+    default-user-name: 默认用户
+    storage-root: ./target/test-storage

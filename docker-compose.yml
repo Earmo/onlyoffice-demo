@@ -1,8 +1,25 @@
+name: onlyoffice-integration-starter
+
 services:
-  # -------- OnlyOffice Document Server --------
+  postgres:
+    image: postgres:18.1-alpine
+    container_name: onlyoffice-integration-postgres
+    environment:
+      POSTGRES_DB: onlyoffice
+      POSTGRES_USER: onlyoffice
+      POSTGRES_PASSWORD: onlyoffice
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onlyoffice -d onlyoffice"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   onlyoffice:
     image: onlyoffice/documentserver:9.3
-    container_name: onlyoffice-demo-docs
+    container_name: onlyoffice-integration-docs
     environment:
       JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
     healthcheck:
@@ -13,30 +30,62 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  # -------- Spring Boot 后端 --------
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: onlyoffice-integration-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: onlyoffice
+      MINIO_ROOT_PASSWORD: onlyoffice123
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
   server:
     build:
       context: ./packages/server
-    container_name: onlyoffice-demo-server
+    container_name: onlyoffice-integration-starter
     environment:
-      # 浏览器侧的 ONLYOFFICE 地址改为按请求自动推导，不再依赖固定域名或 IP。
-      DEMO_ONLYOFFICE_DOCUMENT_SERVER_URL: ""
-      # OnlyOffice 容器下载文档、插图、回调保存时仍走同一套 nginx 反代入口。
-      DEMO_ONLYOFFICE_INTERNAL_BASE_URL: http://web:80
-      DEMO_ONLYOFFICE_JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
-      DEMO_STORAGE_ROOT: /data/storage
+      ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL: ""
+      ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL: ""
+      ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL: http://web:80
+      ONLYOFFICE_INTEGRATION_JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
+      ONLYOFFICE_INTEGRATION_DEFAULT_TENANT_ID: native
+      ONLYOFFICE_INTEGRATION_DEFAULT_SOURCE_SYSTEM: native
+      ONLYOFFICE_INTEGRATION_DEFAULT_USER: starter-user
+      ONLYOFFICE_INTEGRATION_DEFAULT_USER_NAME: 默认用户
+      ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER: minio
+      ONLYOFFICE_INTEGRATION_STORAGE_LOCAL_ROOT: /data/storage
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ENDPOINT: http://minio:9000
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_BUCKET: onlyoffice-documents
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ACCESS_KEY: onlyoffice
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECRET_KEY: onlyoffice123
+      ONLYOFFICE_INTEGRATION_STORAGE_MINIO_PATH_STYLE_ACCESS: "true"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/onlyoffice
+      SPRING_DATASOURCE_USERNAME: onlyoffice
+      SPRING_DATASOURCE_PASSWORD: onlyoffice
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
     volumes:
       - storage-data:/data/storage
     depends_on:
       onlyoffice:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
-  # -------- Vue 前端（nginx 同时反向代理 /api/ 和 ONLYOFFICE）--------
   web:
     build:
       context: ./packages/web
-    container_name: onlyoffice-demo-web
+    container_name: onlyoffice-integration-web
     ports:
       - "${WEB_PORT:-12333}:80"
     depends_on:
@@ -47,5 +96,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres-data:
+  minio-data:
   storage-data:
-

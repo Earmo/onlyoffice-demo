@@ -1,0 +1,147 @@
+# 统一共享配置入口。
+# 这份文件只放“所有环境都应该成立”的公共默认值，以及 profile 选择逻辑。
+# 真正存在明显环境差异的内容会拆到 application-dev.yml / application-test.yml / application-prod.yml。
+
+server:
+  # Spring Boot 对外监听端口。
+  port: 8080
+  # 在 Nginx / Gateway / 反向代理后正确解析 X-Forwarded-* 头。
+  forward-headers-strategy: framework
+
+spring:
+  profiles:
+    # 默认开发环境走 dev；生产或测试环境通过 SPRING_PROFILES_ACTIVE 显式切换。
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+    group:
+      # Windows 本地断点调试本质上是“在 dev 基线上的覆盖层”。
+      # 启用 windows-debug 时会自动包含 dev，这样主环境约定和本地覆盖不会互相割裂。
+      windows-debug:
+        - dev
+  flyway:
+    # 启动时自动执行数据库迁移，保证 schema 与当前代码匹配。
+    enabled: true
+  servlet:
+    multipart:
+      # 单个上传文件大小上限。
+      max-file-size: 50MB
+      # 单次 multipart 请求总大小上限。
+      max-request-size: 50MB
+
+mybatis-flex:
+  configuration:
+    # 查询结果字段为 null 时也调用 setter，避免对象状态缺字段。
+    call-setters-on-nulls: true
+    # 下划线字段名自动映射到驼峰 Java 属性。
+    map-underscore-to-camel-case: true
+
+springdoc:
+  api-docs:
+    # 开启 OpenAPI JSON 文档。
+    enabled: true
+
+knife4j:
+  # 开启 Knife4j UI。
+  enable: true
+  setting:
+    # Knife4j 界面语言。
+    language: zh_cn
+
+onlyoffice:
+  integration:
+    # 浏览器或外部系统访问本服务的公开地址。
+    # 开发环境通常给默认值，生产环境建议显式配置。
+    public-base-url: ${ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL:}
+    # ONLYOFFICE 容器访问本服务文件下载和 callback 的内部地址。
+    # 具体默认值交给各环境 profile 决定，这里只保留环境变量入口。
+    internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL:}
+    # 浏览器加载 ONLYOFFICE Docs 静态资源的地址。
+    document-server-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL:}
+    # editor-config 签名和 callback 验签共用的 JWT 密钥。
+    jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET:5d8fc72d49e070f303bb963f69902fe626eece4e}
+    callback:
+      # callback JWT 默认读取的请求头名称。
+      jwt-header-name: ${ONLYOFFICE_INTEGRATION_CALLBACK_JWT_HEADER_NAME:Authorization}
+    # 默认编辑语言。
+    default-language: ${ONLYOFFICE_INTEGRATION_DEFAULT_LANGUAGE:zh}
+    # 默认区域设置。
+    default-region: ${ONLYOFFICE_INTEGRATION_DEFAULT_REGION:zh-CN}
+    # 未显式传入租户时使用的默认租户。
+    default-tenant-id: ${ONLYOFFICE_INTEGRATION_DEFAULT_TENANT_ID:native}
+    # 未显式传入来源系统时使用的默认来源。
+    default-source-system: ${ONLYOFFICE_INTEGRATION_DEFAULT_SOURCE_SYSTEM:native}
+    # 未显式传入用户时使用的默认用户 ID。
+    default-user: ${ONLYOFFICE_INTEGRATION_DEFAULT_USER:starter-user}
+    # 未显式传入用户时使用的默认显示名。
+    default-user-name: ${ONLYOFFICE_INTEGRATION_DEFAULT_USER_NAME:默认用户}
+    access-context:
+      # 允许参与访问上下文解析的 provider 列表。
+      enabled-providers: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ENABLED_PROVIDERS:header,jwt,default}
+      # provider 实际解析顺序。
+      resolution-order: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_RESOLUTION_ORDER:header,jwt,default}
+      # 默认保持严格：完全没有用户上下文时直接返回 4xx。
+      require-explicit-context: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_REQUIRE_EXPLICIT_CONTEXT:true}
+      # 建议仅在 dev/test profile 显式开启，允许使用默认值补齐缺失字段。
+      allow-default-context: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ALLOW_DEFAULT_CONTEXT:false}
+      header:
+        # 是否启用基于请求头的访问上下文解析。
+        enabled: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_ENABLED:true}
+        # Header provider 读取的租户请求头。
+        tenant-id-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_TENANT_ID:X-Tenant-Id}
+        # Header provider 读取的来源系统请求头。
+        source-system-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_SOURCE_SYSTEM:X-Source-System}
+        # Header provider 读取的外部用户 ID 请求头。
+        external-user-id-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_EXTERNAL_USER_ID:X-External-User-Id}
+        # Header provider 读取的用户显示名请求头。
+        display-name-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_DISPLAY_NAME:X-User-Display-Name}
+        # Header provider 读取最小权限映射的请求头。
+        permissions-header: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_HEADER_PERMISSIONS:X-Access-Permissions}
+      jwt:
+        # 是否启用基于 JWT 的访问上下文解析。
+        enabled: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_ENABLED:true}
+        # JWT provider 默认读取的请求头。
+        header-name: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_HEADER_NAME:Authorization}
+        claim-mappings:
+          # JWT 中映射租户字段的 claim 名称。
+          tenant-id: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_TENANT_ID:tenantId}
+          # JWT 中映射来源系统字段的 claim 名称。
+          source-system: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_SOURCE_SYSTEM:sourceSystem}
+          # JWT 中映射外部用户 ID 的 claim 名称。
+          external-user-id: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_EXTERNAL_USER_ID:externalUserId}
+          # JWT 中映射显示名的 claim 名称。
+          display-name: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_DISPLAY_NAME:displayName}
+          # JWT 中映射权限对象的 claim 名称。
+          permissions: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_JWT_CLAIM_PERMISSIONS:permissions}
+    storage:
+      # 默认存储策略，环境 profile 会再给出更贴近场景的默认值。
+      default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:local}
+      routing:
+        # 按 tenantId 细分存储策略；键为 tenantId，值为 provider 名称。
+        tenants: {}
+        # 按 sourceSystem 细分存储策略；键为来源系统，值为 provider 名称。
+        source-systems: {}
+      local:
+        # local 存储策略根目录。
+        root: ${ONLYOFFICE_INTEGRATION_STORAGE_LOCAL_ROOT:${ONLYOFFICE_INTEGRATION_STORAGE_ROOT:./storage}}
+      minio:
+        # MinIO 服务地址。
+        endpoint: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ENDPOINT:http://localhost:9000}
+        # MinIO bucket 名称。
+        bucket: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_BUCKET:onlyoffice-documents}
+        # MinIO Access Key。
+        access-key: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_ACCESS_KEY:onlyoffice}
+        # MinIO Secret Key。
+        secret-key: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECRET_KEY:onlyoffice123}
+        # 是否使用 path-style 访问。
+        path-style-access: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_PATH_STYLE_ACCESS:true}
+        # 是否使用 HTTPS 访问 MinIO。
+        secure: ${ONLYOFFICE_INTEGRATION_STORAGE_MINIO_SECURE:false}
+    remote-resource:
+      # 远程导入文档允许的最大字节数。
+      max-document-bytes: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_MAX_DOCUMENT_BYTES:52428800}
+      # 图片代理允许的最大字节数。
+      max-image-bytes: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_MAX_IMAGE_BYTES:10485760}
+      # 是否允许访问私网/本地地址；生产环境应保持 false。
+      allow-private-address-access: ${ONLYOFFICE_INTEGRATION_REMOTE_RESOURCE_ALLOW_PRIVATE_ADDRESS_ACCESS:false}
+    editing-session:
+      # 活跃编辑会话的心跳超时窗口（秒）。
+      active-timeout-seconds: ${ONLYOFFICE_INTEGRATION_EDITING_SESSION_ACTIVE_TIMEOUT_SECONDS:30}

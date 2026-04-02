@@ -1,0 +1,12 @@
+{
+  "name": "onlyoffice-integration-starter",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "test:server": "mvn -f packages/server/pom.xml test",
+    "test:web": "corepack pnpm --dir packages/web test -- --run",
+    "build:web": "corepack pnpm --dir packages/web build",
+    "verify:compose": "docker compose config",
+    "verify": "npm run test:server && npm run test:web && npm run build:web && npm run verify:compose"
+  }
+}

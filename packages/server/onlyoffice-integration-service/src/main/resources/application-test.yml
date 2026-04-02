@@ -1,0 +1,31 @@
+# 测试环境默认配置。
+# 这份 profile 面向显式以 `test` 运行服务或做手动联调，不替代 `src/test/resources/application.yml` 的测试资源覆盖。
+
+spring:
+  datasource:
+    # 测试环境默认使用内存 H2，便于快速启动和执行轻量验证。
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:onlyoffice-integration-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1}
+    # H2 驱动。
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+    # H2 用户名。
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    # H2 密码。
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+
+onlyoffice:
+  integration:
+    # 测试环境的公开地址。
+    public-base-url: ${ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL:http://localhost:12333}
+    # 测试环境内部地址。
+    internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL:http://localhost:8080}
+    # 测试环境 document server 地址。
+    document-server-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL:http://localhost:12333}
+    access-context:
+      # 测试环境允许默认上下文，方便无外部认证前提下的自动化或手动验证。
+      allow-default-context: ${ONLYOFFICE_INTEGRATION_ACCESS_CONTEXT_ALLOW_DEFAULT_CONTEXT:true}
+    storage:
+      # 测试环境默认仍走 local，减少对外部对象存储的依赖。
+      default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:local}
+      local:
+        # 测试环境的本地存储根目录。
+        root: ${ONLYOFFICE_INTEGRATION_STORAGE_LOCAL_ROOT:./target/test-storage}
