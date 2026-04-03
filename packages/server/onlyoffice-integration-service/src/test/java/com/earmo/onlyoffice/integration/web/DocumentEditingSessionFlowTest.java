@@ -2,7 +2,9 @@ package com.earmo.onlyoffice.integration.web;
 
 import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.repository.DocumentEditorSessionRepository;
+import com.earmo.onlyoffice.integration.service.OnlyofficeJwtService;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +31,9 @@ class DocumentEditingSessionFlowTest {
 
   @Autowired
   private DocumentEditorSessionRepository documentEditorSessionRepository;
+
+  @Autowired
+  private OnlyofficeJwtService onlyofficeJwtService;
 
   @Test
   void shouldExitEditingStatusAfterClosingEditingSession() throws Exception {
@@ -113,6 +118,68 @@ class DocumentEditingSessionFlowTest {
         )
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("draft"));
+  }
+
+  @Test
+  void shouldNotProjectEditingAfterCloseWhenOnlyofficeSendsStatus4Callback() throws Exception {
+    String actorUser = "callback4-user";
+    String actorName = "Callback Four";
+    String documentId = createDocument(actorUser, actorName);
+
+    mockMvc.perform(
+            get("/api/documents/{documentId}/editor-config", documentId)
+                .header("X-Tenant-Id", "native")
+                .header("X-Source-System", "native")
+                .header("X-External-User-Id", actorUser)
+                .header("X-User-Display-Name", actorName)
+                .header("X-Access-Permissions", "edit=true,download=true,comment=true,print=true")
+        )
+        .andExpect(status().isOk());
+
+    mockMvc.perform(
+            post("/api/documents/{documentId}/editing-sessions/close", documentId)
+                .header("X-Tenant-Id", "native")
+                .header("X-Source-System", "native")
+                .header("X-External-User-Id", actorUser)
+                .header("X-User-Display-Name", actorName)
+                .header("X-Access-Permissions", "edit=true,download=true,comment=true,print=true")
+        )
+        .andExpect(status().isOk());
+
+    mockMvc.perform(
+            post("/api/documents/{documentId}/callback", documentId)
+                .header("Authorization", "Bearer " + onlyofficeJwtService.sign(Map.of("documentId", documentId, "status", 4)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "status": 4
+                    }
+                    """)
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.error").value(0));
+
+    mockMvc.perform(
+            get("/api/documents/{documentId}", documentId)
+                .header("X-Tenant-Id", "native")
+                .header("X-Source-System", "native")
+                .header("X-External-User-Id", actorUser)
+                .header("X-User-Display-Name", actorName)
+                .header("X-Access-Permissions", "edit=true,download=true,comment=true,print=true")
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("draft"));
+
+    mockMvc.perform(
+            get("/api/documents")
+                .header("X-Tenant-Id", "native")
+                .header("X-Source-System", "native")
+                .header("X-External-User-Id", actorUser)
+                .header("X-User-Display-Name", actorName)
+                .header("X-Access-Permissions", "edit=true,download=true,comment=true,print=true")
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.documents[?(@.documentId=='" + documentId + "')].status").value("draft"));
   }
 
   private String createDocument(String actorUser, String actorName) throws Exception {

@@ -59,6 +59,32 @@ class DocumentStatusServiceTest {
   }
 
   @Test
+  void shouldReconcileStableStatusWhenClosedCallbackArrivesAfterEditorsLeft() {
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
+    DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    when(metadataService.recordCallbackReceived("demo", 4)).thenReturn(status("demo", "editing"));
+    when(metadataService.reconcileClosedEditingSession("demo")).thenReturn(status("demo", "saved"));
+    when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(0L);
+    when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
+        .thenReturn(List.of(event("callback_received", "已收到 ONLYOFFICE 保存回调。", 4)));
+
+    DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
+        metadataService,
+        runtimeEventRepository,
+        documentEditorSessionRepository
+    );
+
+    DocumentSaveStatusResponse current = service.recordCallbackReceived("demo", 4);
+
+    assertEquals("saved", current.state());
+    verify(metadataService).recordCallbackReceived("demo", 4);
+    verify(metadataService).reconcileClosedEditingSession("demo");
+    verify(runtimeEventRepository).save(any(DocumentRuntimeEventEntity.class));
+  }
+
+  @Test
   void shouldRecordRejectedCallbackAsIndependentRuntimeEvent() {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);

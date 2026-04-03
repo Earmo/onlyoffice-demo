@@ -84,7 +84,8 @@ public class DocumentController {
   }
 
   @PostMapping("/{documentId}/editing-sessions/close")
-  @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。前端应在调用此接口前先通过 Ctrl+S 触发保存并等待回写完成。")
+  @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。" +
+          "前端应在调用此接口前先触发保存并等待本次显式保存完成；若随后 ONLYOFFICE 继续补发关闭类 callback，后端会按活跃编辑会话重新收口列表状态。")
   public DocumentSaveStatusResponse closeEditingSession(
       @Parameter(description = "文档内部主键。", example = "demo")
       @PathVariable String documentId,
@@ -117,7 +118,8 @@ public class DocumentController {
   }
 
   @GetMapping("/{documentId}/save-status")
-  @Operation(summary = "查询保存状态", description = "返回文档最近一次 callback 和保存回写状态。")
+  @Operation(summary = "查询保存状态", description = "返回文档最近一次 callback 和保存回写状态。该接口主要服务编辑页运行态展示，" +
+          "不作为列表页是否仍处于 editing 的唯一判据。")
   public DocumentSaveStatusResponse saveStatus(
       @Parameter(description = "文档内部主键。", example = "demo")
       @PathVariable String documentId

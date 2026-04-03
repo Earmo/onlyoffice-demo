@@ -78,6 +78,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
   @Override
   public DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus) {
     DocumentSaveStatusResponse summary = documentMetadataService.recordCallbackReceived(documentId, callbackStatus);
+    // ONLYOFFICE 在销毁最后一个编辑器连接后，可能还会补发 status=4 回调。
+    // 如果当前已经没有任何活跃编辑会话，就不能继续把主状态留在 editing，
+    // 否则列表页会在“会话已关闭”的情况下错误展示为“编辑中”。
+    if (Integer.valueOf(4).equals(callbackStatus)
+        && documentEditorSessionRepository.countActiveByDocumentId(documentId, activeSessionSince()) == 0) {
+      summary = documentMetadataService.reconcileClosedEditingSession(documentId);
+    }
     recordRuntimeEvent(documentId, "callback_received", callbackStatus, "已收到 ONLYOFFICE 保存回调。");
     return mergeRecentEvents(summary);
   }

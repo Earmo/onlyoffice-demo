@@ -28,6 +28,12 @@ const props = defineProps({
 // 2. 承载 ONLYOFFICE 编辑器实例；
 // 3. 在编辑模式下轮询 save-status；
 // 4. 在页面离开或切换文档时，向后端显式结束当前编辑会话。
+//
+// “保存并返回”当前保持轻量时序：
+// - 先调用 /save，确保本次显式保存已经落盘；
+// - 再销毁编辑器并关闭编辑会话；
+// - 不额外轮询 save-status 等待收敛，避免返回动作卡顿。
+// 关闭后如果 ONLYOFFICE 继续补发 status=4 callback，由后端负责把无活跃会话的文档状态收口回稳定态。
 // Phase 9 的这一版还恢复了“右侧悬浮按钮 -> 固定控制台面板”的交互，
 // 避免编辑器顶部再出现额外一层 shell-toolbar，减少对主工作区的挤压。
 const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
@@ -98,11 +104,10 @@ async function loadSaveStatus() {
   }
 
   try {
-    const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
-    if (!response.ok) {
-      throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
+    const payload = await fetchSaveStatusSnapshot();
+    if (payload) {
+      saveStatus.value = payload;
     }
-    saveStatus.value = await response.json();
   } catch (error) {
     console.error("加载保存状态失败", error);
   }
@@ -118,6 +123,23 @@ function closeConsole() {
 
 function getDocEditorInstance() {
   return window.DocEditor?.instances?.docEditor;
+}
+
+async function fetchSaveStatusSnapshot(options = {}) {
+  const { suppressErrors = false } = options;
+
+  try {
+    const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
+    }
+    return await response.json();
+  } catch (error) {
+    if (!suppressErrors) {
+      throw error;
+    }
+    return null;
+  }
 }
 
 async function insertRemoteImage() {
@@ -301,8 +323,8 @@ async function closeEditingSession(options = {}) {
 
   isClosingSession.value = true;
   closeEditingSessionPromise = (async () => {
-    // 显式点击“保存并返回”时，优先走后端 Command Service 的 forcesave + await，
-    // 这样不会被旧的 save-status 误判，也能等到本次 callback 真正落盘完成。
+    // 显式点击“保存并返回”时，先走后端 Command Service 的 forcesave + await，
+    // 保证这次用户主动触发的保存已经完成，再继续销毁编辑器和关闭会话。
     if (!keepalive) {
       const saveResponse = await apiFetch(`/api/documents/${props.documentId}/save`, {
         method: "POST"
@@ -317,6 +339,8 @@ async function closeEditingSession(options = {}) {
     destroyDocEditor();
 
     // 最后通知后端关闭编辑会话记录。
+    // 如果销毁编辑器后 ONLYOFFICE 还会补发关闭类 callback，
+    // 由后端按“是否还有活跃编辑会话”决定是否继续投影为 editing。
     const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/close`, {
       method: "POST",
       keepalive
