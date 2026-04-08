@@ -22,6 +22,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
@@ -133,6 +134,21 @@ public class DocumentController {
       @Parameter(description = "文档内部主键。", example = "demo")
       @PathVariable String documentId
   ) throws IOException {
+    return buildFileResponse(documentId);
+  }
+
+  @GetMapping("/{documentId}/file.{extension}")
+  @Operation(summary = "下载文档文件", description = "给 ONLYOFFICE 或浏览器返回当前文档的文件内容。")
+  public ResponseEntity<ByteArrayResource> fileWithExtension(
+      @Parameter(description = "文档内部主键。", example = "demo")
+      @PathVariable String documentId,
+      @Parameter(description = "文件扩展名，仅用于让下载 URL 自带类型语义。", example = "docx")
+      @PathVariable String extension
+  ) throws IOException {
+    return buildFileResponse(documentId);
+  }
+
+  private ResponseEntity<ByteArrayResource> buildFileResponse(String documentId) throws IOException {
     StoredDocument storedDocument = documentStorageService.getRequiredDocument(documentId);
     byte[] body = documentStorageService.readDocument(documentId);
     MediaType mediaType = MediaTypeFactory.getMediaType(storedDocument.title())
@@ -142,7 +158,7 @@ public class DocumentController {
         .contentType(mediaType)
         .header(
             HttpHeaders.CONTENT_DISPOSITION,
-            ContentDisposition.inline().filename(storedDocument.title()).build().toString()
+            ContentDisposition.inline().filename(storedDocument.title(), StandardCharsets.UTF_8).build().toString()
         )
         .body(new ByteArrayResource(body));
   }
@@ -198,7 +214,7 @@ public class DocumentController {
     if (status != null && (status == 2 || status == 6)) {
       try {
         // 只有在 ONLYOFFICE 告知文档可持久化时，才真正拉取最新文件并覆盖存储内容。
-        documentStorageService.saveCallbackDocument(documentId, request.url());
+        documentStorageService.saveCallbackDocument(documentId, request.url(), request.filetype());
         documentStatusService.recordSaveSucceeded(documentId, status);
         // 唤醒正在 forceSaveAndAwait 中等待的线程（如有）。
         onlyofficeCommandService.notifySaveCompleted(documentId);

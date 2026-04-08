@@ -35,6 +35,9 @@ public class OnlyofficeIntegrationProperties {
   /** 浏览器加载 ONLYOFFICE Docs 静态资源时使用的地址。 */
   private String documentServerUrl = "";
 
+  /** 服务端调用 ONLYOFFICE Command Service 时使用的内部地址。 */
+  private String documentServerCommandUrl = "";
+
   /** editor-config 签名与 callback 验签共用的 JWT 密钥。 */
   @NotBlank
   private String jwtSecret = "onlyoffice-integration-secret-2026-03-09-123456";

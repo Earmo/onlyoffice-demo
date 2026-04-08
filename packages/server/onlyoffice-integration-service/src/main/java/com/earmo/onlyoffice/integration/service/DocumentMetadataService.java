@@ -85,6 +85,8 @@ public interface DocumentMetadataService {
 
   DocumentSaveStatusResponse markSaved(String documentId, Integer callbackStatus);
 
+  DocumentMetadataEntity updateDocumentFormat(String documentId, String title, String fileType, String documentType);
+
   DocumentSaveStatusResponse markFailed(String documentId, Integer callbackStatus, String message);
 
   DocumentSaveStatusResponse reconcileClosedEditingSession(String documentId);

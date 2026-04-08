@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.service.impl;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
+import com.earmo.onlyoffice.integration.model.NormalizedDocumentMetadata;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
@@ -14,6 +15,7 @@ import com.earmo.onlyoffice.integration.storage.StorageProviderResolver;
 import com.earmo.onlyoffice.integration.storage.StorageWriteRequest;
 import com.earmo.onlyoffice.integration.storage.StoredObjectResource;
 import com.mybatisflex.core.keygen.impl.ULIDKeyGenerator;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import lombok.AccessLevel;
@@ -54,6 +57,9 @@ import org.springframework.web.util.UriUtils;
 public class DocumentStorageServiceImpl implements DocumentStorageService {
 
   private static final String DEFAULT_EXTENSION = "docx";
+  private static final Set<String> OOXML_EXTENSIONS = Set.of("docx", "xlsx", "pptx");
+  private static final Set<String> ODF_EXTENSIONS = Set.of("odt", "ods", "odp");
+  private static final Set<String> TEXT_EXTENSIONS = Set.of("txt", "csv");
   private static final ULIDKeyGenerator DOCUMENT_ID_GENERATOR = new ULIDKeyGenerator();
   private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
       "doc", "docx", "odt", "rtf", "txt",
@@ -129,7 +135,9 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     if (!strategy.exists(entity.getStorageKey())) {
       throw new IOException("文档内容不存在：" + entity.getStorageKey());
     }
-    return toStoredDocument(entity, strategy.read(entity.getStorageKey()));
+    StoredObjectResource objectResource = strategy.read(entity.getStorageKey());
+    DocumentMetadataEntity normalizedEntity = normalizeDocumentMetadataIfNeeded(entity, objectResource.body(), null);
+    return toStoredDocument(normalizedEntity, objectResource);
   }
 
   @Override
@@ -137,7 +145,9 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     String documentId = sanitizeDocumentId(rawDocumentId);
     DocumentMetadataEntity entity = documentMetadataService.requireAccessibleDocument(documentId);
     DocumentStorageStrategy strategy = resolveStrategy(entity);
-    return strategy.read(entity.getStorageKey()).body();
+    StoredObjectResource objectResource = strategy.read(entity.getStorageKey());
+    normalizeDocumentMetadataIfNeeded(entity, objectResource.body(), null);
+    return objectResource.body();
   }
 
   /**
@@ -147,9 +157,10 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    * 这里保持单一职责，只处理下载最新文件并覆盖对象内容。
    */
   @Override
-  public void saveCallbackDocument(String rawDocumentId, String downloadUrl) throws IOException {
+  public NormalizedDocumentMetadata saveCallbackDocument(String rawDocumentId, String downloadUrl, String callbackFileType)
+      throws IOException {
     if (!StringUtils.hasText(downloadUrl)) {
-      return;
+      throw new IOException("ONLYOFFICE callback 缺少最新文档下载地址。");
     }
 
     String documentId = sanitizeDocumentId(rawDocumentId);
@@ -164,7 +175,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
       throw new IOException("ONLYOFFICE callback did not return file bytes.");
     }
 
-    strategy.overwrite(new StorageWriteRequest(entity.getStorageKey(), contentTypeFor(entity.getTitle()), latestFile));
+    NormalizedDocumentMetadata normalizedMetadata = normalizeDocumentMetadata(entity, latestFile, callbackFileType);
+    strategy.overwrite(
+        new StorageWriteRequest(entity.getStorageKey(), contentTypeFor(normalizedMetadata.title()), latestFile)
+    );
+    normalizeDocumentMetadataIfNeeded(entity, latestFile, callbackFileType);
+    return normalizedMetadata;
   }
 
   @Override
@@ -357,6 +373,204 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return filename.substring(index + 1).toLowerCase(Locale.ROOT);
   }
 
+  private DocumentMetadataEntity normalizeDocumentMetadataIfNeeded(
+      DocumentMetadataEntity entity,
+      byte[] body,
+      String hintedFileType
+  ) {
+    NormalizedDocumentMetadata normalizedMetadata = normalizeDocumentMetadata(entity, body, hintedFileType);
+    if (!metadataChanged(entity, normalizedMetadata)) {
+      return entity;
+    }
+
+    log.info(
+        "根据实际文件内容自动修正文档元数据：documentId={}, title={} -> {}, fileType={} -> {}, documentType={} -> {}",
+        entity.getDocumentId(),
+        entity.getTitle(),
+        normalizedMetadata.title(),
+        entity.getFileType(),
+        normalizedMetadata.fileType(),
+        entity.getDocumentType(),
+        normalizedMetadata.documentType()
+    );
+    return documentMetadataService.updateDocumentFormat(
+        entity.getDocumentId(),
+        normalizedMetadata.title(),
+        normalizedMetadata.fileType(),
+        normalizedMetadata.documentType()
+    );
+  }
+
+  private boolean metadataChanged(DocumentMetadataEntity entity, NormalizedDocumentMetadata normalizedMetadata) {
+    return !normalizedMetadata.title().equals(entity.getTitle())
+        || !normalizedMetadata.fileType().equals(entity.getFileType())
+        || !normalizedMetadata.documentType().equals(entity.getDocumentType());
+  }
+
+  private NormalizedDocumentMetadata normalizeDocumentMetadata(
+      DocumentMetadataEntity entity,
+      byte[] body,
+      String hintedFileType
+  ) {
+    String normalizedFileType = detectNormalizedFileType(body, hintedFileType, entity);
+    String normalizedDocumentType = resolveDocumentType(normalizedFileType);
+    String normalizedTitle = normalizeTitle(entity.getTitle(), entity.getDocumentId(), normalizedFileType);
+    return new NormalizedDocumentMetadata(normalizedTitle, normalizedFileType, normalizedDocumentType);
+  }
+
+  private String detectNormalizedFileType(byte[] body, String hintedFileType, DocumentMetadataEntity entity) {
+    String normalizedHint = normalizeSupportedExtension(hintedFileType);
+    String normalizedCurrent = normalizeSupportedExtension(entity.getFileType());
+
+    if (hasZipSignature(body)) {
+      return detectZipBasedFileType(body, normalizedHint, normalizedCurrent, entity.getDocumentType());
+    }
+    if (hasOleSignature(body)) {
+      return detectLegacyCompoundFileType(normalizedHint, normalizedCurrent, entity.getDocumentType());
+    }
+    if (hasPdfSignature(body)) {
+      return "pdf";
+    }
+    if (isProbablyText(body)) {
+      if (StringUtils.hasText(normalizedHint) && TEXT_EXTENSIONS.contains(normalizedHint)) {
+        return normalizedHint;
+      }
+      if (StringUtils.hasText(normalizedCurrent) && TEXT_EXTENSIONS.contains(normalizedCurrent)) {
+        return normalizedCurrent;
+      }
+    }
+    if (StringUtils.hasText(normalizedHint)) {
+      return normalizedHint;
+    }
+    if (StringUtils.hasText(normalizedCurrent)) {
+      return normalizedCurrent;
+    }
+    return DEFAULT_EXTENSION;
+  }
+
+  private String detectZipBasedFileType(
+      byte[] body,
+      String hintedFileType,
+      String currentFileType,
+      String currentDocumentType
+  ) {
+    try (ZipInputStream zipInputStream = new ZipInputStream(new ByteArrayInputStream(body))) {
+      ZipEntry entry;
+      while ((entry = zipInputStream.getNextEntry()) != null) {
+        String name = entry.getName();
+        if (name.startsWith("word/")) {
+          return "docx";
+        }
+        if (name.startsWith("xl/")) {
+          return "xlsx";
+        }
+        if (name.startsWith("ppt/")) {
+          return "pptx";
+        }
+        if ("mimetype".equals(name)) {
+          String mimetype = new String(zipInputStream.readNBytes(256), StandardCharsets.UTF_8);
+          if (mimetype.contains("application/vnd.oasis.opendocument.text")) {
+            return "odt";
+          }
+          if (mimetype.contains("application/vnd.oasis.opendocument.spreadsheet")) {
+            return "ods";
+          }
+          if (mimetype.contains("application/vnd.oasis.opendocument.presentation")) {
+            return "odp";
+          }
+        }
+      }
+    } catch (IOException ex) {
+      log.debug("解析 ZIP 文档格式失败，将回退到上下文推断：{}", ex.getMessage());
+    }
+
+    if (StringUtils.hasText(hintedFileType)
+        && (OOXML_EXTENSIONS.contains(hintedFileType) || ODF_EXTENSIONS.contains(hintedFileType))) {
+      return hintedFileType;
+    }
+    if (StringUtils.hasText(currentFileType)
+        && (OOXML_EXTENSIONS.contains(currentFileType) || ODF_EXTENSIONS.contains(currentFileType))) {
+      return currentFileType;
+    }
+    return switch (currentDocumentType) {
+      case "cell" -> "xlsx";
+      case "slide" -> "pptx";
+      default -> "docx";
+    };
+  }
+
+  private String detectLegacyCompoundFileType(String hintedFileType, String currentFileType, String currentDocumentType) {
+    if (StringUtils.hasText(hintedFileType) && Set.of("doc", "xls", "ppt").contains(hintedFileType)) {
+      return hintedFileType;
+    }
+    if (StringUtils.hasText(currentFileType) && Set.of("doc", "xls", "ppt").contains(currentFileType)) {
+      return currentFileType;
+    }
+    return switch (currentDocumentType) {
+      case "cell" -> "xls";
+      case "slide" -> "ppt";
+      default -> "doc";
+    };
+  }
+
+  private String normalizeSupportedExtension(String rawFileType) {
+    if (!StringUtils.hasText(rawFileType)) {
+      return null;
+    }
+    String normalized = rawFileType.trim().toLowerCase(Locale.ROOT);
+    return SUPPORTED_EXTENSIONS.contains(normalized) ? normalized : null;
+  }
+
+  private boolean hasZipSignature(byte[] body) {
+    return body != null
+        && body.length >= 4
+        && body[0] == 'P'
+        && body[1] == 'K'
+        && (body[2] == 3 || body[2] == 5 || body[2] == 7)
+        && (body[3] == 4 || body[3] == 6 || body[3] == 8);
+  }
+
+  private boolean hasOleSignature(byte[] body) {
+    return body != null
+        && body.length >= 8
+        && (body[0] & 0xFF) == 0xD0
+        && (body[1] & 0xFF) == 0xCF
+        && (body[2] & 0xFF) == 0x11
+        && (body[3] & 0xFF) == 0xE0
+        && (body[4] & 0xFF) == 0xA1
+        && (body[5] & 0xFF) == 0xB1
+        && (body[6] & 0xFF) == 0x1A
+        && (body[7] & 0xFF) == 0xE1;
+  }
+
+  private boolean hasPdfSignature(byte[] body) {
+    return body != null
+        && body.length >= 4
+        && body[0] == '%'
+        && body[1] == 'P'
+        && body[2] == 'D'
+        && body[3] == 'F';
+  }
+
+  private boolean isProbablyText(byte[] body) {
+    if (body == null || body.length == 0) {
+      return false;
+    }
+
+    int sampleLength = Math.min(body.length, 1024);
+    int suspiciousControlBytes = 0;
+    for (int index = 0; index < sampleLength; index++) {
+      int unsigned = body[index] & 0xFF;
+      if (unsigned == 0) {
+        return false;
+      }
+      if (unsigned < 0x09 || (unsigned > 0x0D && unsigned < 0x20)) {
+        suspiciousControlBytes++;
+      }
+    }
+    return suspiciousControlBytes <= Math.max(1, sampleLength / 20);
+  }
+
   private String resolveDocumentType(String fileType) {
     return switch (fileType) {
       case "csv", "xls", "xlsx", "ods" -> "cell";
@@ -407,6 +621,14 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
       return filename;
     }
     return filename.substring(0, index);
+  }
+
+  private String normalizeTitle(String currentTitle, String documentId, String fileType) {
+    String baseName = StringUtils.hasText(currentTitle) ? stripExtension(currentTitle.trim()) : documentId;
+    if (!StringUtils.hasText(baseName)) {
+      baseName = documentId;
+    }
+    return baseName + "." + fileType;
   }
 
   private String normalizeFilename(String filename) {

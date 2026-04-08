@@ -30,6 +30,7 @@ SPRING_PROFILES_ACTIVE=dev|test|prod
 | `ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL` | 空 | 建议 | 独立部署 / 微服务 | 浏览器或外部系统访问服务的公开地址 |
 | `ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL` | `http://host.docker.internal:8080` | 是 | 分布式部署 | ONLYOFFICE 拉文件和回调使用的内部地址 |
 | `ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL` | 空 | 建议 | 分布式部署 | 浏览器加载 ONLYOFFICE 静态资源的地址 |
+| `ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_COMMAND_URL` | 空 | 否 | 分布式部署 | 服务端调用 ONLYOFFICE `CommandService.ashx` 的内部地址 |
 | `ONLYOFFICE_INTEGRATION_JWT_SECRET` | 示例值 | 是 | 全部 | editor-config 和 callback JWT 的共享密钥 |
 | `ONLYOFFICE_INTEGRATION_CALLBACK_JWT_HEADER_NAME` | `Authorization` | 否 | 全部 | callback JWT 默认请求头 |
 

@@ -12,6 +12,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -23,7 +24,7 @@ import org.springframework.web.util.UriComponentsBuilder;
  * <p>这个实现负责把“文档元数据 + 访问上下文 + 运行时地址”三类输入收口成一份稳定配置：
  * 1. 前端只需要传 documentId，不参与任何运行时 URL 拼装；
  * 2. 文档下载地址和 callback 地址统一走 internal base url，供 ONLYOFFICE 容器访问；
- * 3. 文档服务器静态资源地址优先使用 documentServerUrl，没有显式配置时再回退 publicBaseUrl；
+ * 3. 文档服务器静态资源地址优先使用当前请求入口生成，未命中时再回退显式配置；
  * 4. editor-config 生成完成后立即签名，保证浏览器与 ONLYOFFICE 只消费后端生成的可信配置。
  */
 @Service
@@ -52,7 +53,7 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     config.put("editorConfig", buildEditorSection(storedDocument, readonly, accessContext));
     config.put("token", onlyofficeJwtService.sign(config));
 
-    return new EditorConfigResponse(resolveDocumentServerUrl(), config);
+    return new EditorConfigResponse(resolveDocumentServerUrl(request), config);
   }
 
   /**
@@ -82,7 +83,10 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     document.put("title", storedDocument.title());
     document.put("fileType", storedDocument.fileType());
     document.put("key", storedDocument.documentId() + "-" + storedDocument.lastModified().toEpochMilli());
-    document.put("url", buildInternalUrl("/api/documents/%s/file".formatted(storedDocument.documentId())));
+    document.put(
+        "url",
+        buildInternalUrl("/api/documents/%s/file.%s".formatted(storedDocument.documentId(), storedDocument.fileType()))
+    );
     document.put("permissions", permissions);
     return document;
   }
@@ -205,7 +209,12 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
         .toUriString();
   }
 
-  private String resolveDocumentServerUrl() {
+  private String resolveDocumentServerUrl(HttpServletRequest request) {
+    String requestOrigin = resolveRequestOrigin(request);
+    if (StringUtils.hasText(requestOrigin)) {
+      return ensureTrailingSlash(requestOrigin + "/api/office");
+    }
+
     if (StringUtils.hasText(onlyofficeIntegrationProperties.getDocumentServerUrl())) {
       return ensureTrailingSlash(requireConfiguredBaseUrl(
           onlyofficeIntegrationProperties.getDocumentServerUrl(),
@@ -224,6 +233,80 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
         "ONLYOFFICE 运行配置缺失：请配置 onlyoffice.integration.document-server-url，"
             + "或至少提供 onlyoffice.integration.public-base-url。"
     );
+  }
+
+  private String resolveRequestOrigin(HttpServletRequest request) {
+    if (request == null) {
+      return null;
+    }
+
+    String forwardedProto = firstForwardedValue(request.getHeader("X-Forwarded-Proto"));
+    String forwardedHost = firstForwardedValue(request.getHeader("X-Forwarded-Host"));
+    String forwardedPort = firstForwardedValue(request.getHeader("X-Forwarded-Port"));
+    String hostHeader = firstForwardedValue(request.getHeader("Host"));
+    if (StringUtils.hasText(forwardedProto) && StringUtils.hasText(forwardedHost)) {
+      return requireConfiguredBaseUrl(
+          forwardedProto + "://" + appendForwardedPort(forwardedHost, forwardedProto, forwardedPort),
+          "request forwarded origin"
+      );
+    }
+    if (StringUtils.hasText(forwardedProto) && StringUtils.hasText(hostHeader)) {
+      return requireConfiguredBaseUrl(
+          forwardedProto + "://" + appendForwardedPort(hostHeader, forwardedProto, forwardedPort),
+          "request host origin"
+      );
+    }
+
+    String scheme = request.getScheme();
+    String serverName = request.getServerName();
+    int serverPort = request.getServerPort();
+    if (!StringUtils.hasText(scheme) || !StringUtils.hasText(serverName)) {
+      return null;
+    }
+
+    UriComponentsBuilder builder = UriComponentsBuilder.newInstance()
+        .scheme(scheme)
+        .host(serverName);
+    if (serverPort > 0 && !isDefaultPort(scheme, serverPort)) {
+      builder.port(serverPort);
+    }
+    return requireConfiguredBaseUrl(builder.build().toUriString(), "request origin");
+  }
+
+  private String firstForwardedValue(String headerValue) {
+    if (!StringUtils.hasText(headerValue)) {
+      return null;
+    }
+    return headerValue.split(",")[0].trim();
+  }
+
+  private boolean isDefaultPort(String scheme, int port) {
+    return ("http".equalsIgnoreCase(scheme) && port == 80)
+        || ("https".equalsIgnoreCase(scheme) && port == 443);
+  }
+
+  private String appendForwardedPort(String forwardedHost, String scheme, String forwardedPort) {
+    if (!StringUtils.hasText(forwardedPort) || hostContainsExplicitPort(forwardedHost)) {
+      return forwardedHost;
+    }
+
+    try {
+      int port = Integer.parseInt(forwardedPort);
+      if (isDefaultPort(scheme, port)) {
+        return forwardedHost;
+      }
+      return forwardedHost + ":" + port;
+    } catch (NumberFormatException ex) {
+      return forwardedHost;
+    }
+  }
+
+  private boolean hostContainsExplicitPort(String host) {
+    int colonCount = host.length() - host.replace(":", "").length();
+    if (host.startsWith("[") && host.contains("]")) {
+      return host.indexOf("]:") > 0;
+    }
+    return colonCount == 1;
   }
 
   private String ensureTrailingSlash(String url) {

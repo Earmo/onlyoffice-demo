@@ -257,6 +257,18 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
 
   @Override
   @Transactional
+  public DocumentMetadataEntity updateDocumentFormat(String documentId, String title, String fileType, String documentType) {
+    DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
+    entity.setTitle(title);
+    entity.setFileType(fileType);
+    entity.setDocumentType(documentType);
+    entity.setUpdatedTime(Instant.now());
+    updateEntity(entity);
+    return entity;
+  }
+
+  @Override
+  @Transactional
   public DocumentSaveStatusResponse markFailed(String documentId, Integer callbackStatus, String message) {
     DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     Instant now = Instant.now();

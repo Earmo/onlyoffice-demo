@@ -56,6 +56,8 @@ onlyoffice:
     internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL:}
     # 浏览器加载 ONLYOFFICE Docs 静态资源的地址。
     document-server-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL:}
+    # 服务端调用 ONLYOFFICE Command Service 时使用的内部地址。
+    document-server-command-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_COMMAND_URL:}
     # editor-config 签名和 callback 验签共用的 JWT 密钥。
     jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET:5d8fc72d49e070f303bb963f69902fe626eece4e}
     callback:

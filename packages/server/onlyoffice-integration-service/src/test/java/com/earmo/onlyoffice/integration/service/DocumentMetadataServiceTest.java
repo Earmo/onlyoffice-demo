@@ -50,6 +50,33 @@ class DocumentMetadataServiceTest {
   }
 
   @Test
+  void shouldUpdateDocumentFormatFieldsWhenActualContentWasNormalized() {
+    DocumentMetadataMapper mapper = mock(DocumentMetadataMapper.class);
+    DocumentMetadataRepository repository = mock(DocumentMetadataRepository.class);
+    DocumentMetadataEntity entity = new DocumentMetadataEntity();
+    entity.setDocumentId("sample");
+    entity.setTenantId("tenant-a");
+    entity.setOwnerUser("user-a");
+    entity.setSourceSystem("native");
+    entity.setTitle("sample.doc");
+    entity.setStorageKey("documents/sample.doc");
+    entity.setFileType("doc");
+    entity.setDocumentType("word");
+    entity.setStatus("draft");
+
+    when(mapper.selectOneById("sample")).thenReturn(entity);
+    when(mapper.update(any(DocumentMetadataEntity.class))).thenReturn(1);
+
+    DocumentMetadataService service = new DocumentMetadataServiceImpl(mapper, repository);
+    DocumentMetadataEntity updated = service.updateDocumentFormat("sample", "sample.docx", "docx", "word");
+
+    assertEquals("sample.docx", updated.getTitle());
+    assertEquals("docx", updated.getFileType());
+    assertEquals("word", updated.getDocumentType());
+    assertNotNull(updated.getUpdatedTime());
+  }
+
+  @Test
   void shouldCreateDocumentWithSharedMetadataFields() {
     DocumentMetadataMapper mapper = mock(DocumentMetadataMapper.class);
     DocumentMetadataRepository repository = mock(DocumentMetadataRepository.class);

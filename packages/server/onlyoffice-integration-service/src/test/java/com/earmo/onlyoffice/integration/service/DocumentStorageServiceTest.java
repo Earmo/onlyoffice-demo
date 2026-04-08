@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
+import com.earmo.onlyoffice.integration.model.NormalizedDocumentMetadata;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.impl.DocumentStorageServiceImpl;
@@ -16,6 +17,8 @@ import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,7 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DocumentStorageServiceTest {
@@ -181,6 +186,123 @@ class DocumentStorageServiceTest {
     assertTrue(document.storageKey().startsWith("tenant-a/native/"));
     assertTrue(document.storageKey().endsWith(".xlsx"));
     assertTrue(java.nio.file.Files.exists(document.path()));
+  }
+
+  @Test
+  @DisplayName("读取文档时应自动修复 legacy 扩展名与实际 docx 内容不一致的坏数据")
+  void shouldAutoHealLegacyMetadataWhenStoredContentIsDocx() throws IOException {
+    OnlyofficeIntegrationProperties properties = properties();
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
+
+    java.nio.file.Path storedPath = tempDir.resolve("native/native/sample.doc");
+    java.nio.file.Files.createDirectories(storedPath.getParent());
+    java.nio.file.Files.write(storedPath, minimalDocx());
+
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    DocumentMetadataEntity legacyEntity = entity("sample", "sample.doc", "native/native/sample.doc", "doc", "word");
+    DocumentMetadataEntity normalizedEntity = entity("sample", "sample.docx", "native/native/sample.doc", "docx", "word");
+    when(metadataService.requireAccessibleDocument("sample")).thenReturn(legacyEntity);
+    when(metadataService.updateDocumentFormat("sample", "sample.docx", "docx", "word")).thenReturn(normalizedEntity);
+    when(metadataService.toStoredDocument(any(DocumentMetadataEntity.class), any(), any()))
+        .thenAnswer(invocation -> {
+          DocumentMetadataEntity actual = invocation.getArgument(0, DocumentMetadataEntity.class);
+          Path localPath = invocation.getArgument(1, Path.class);
+          return new StoredDocument(
+              actual.getDocumentId(),
+              actual.getTenantId(),
+              actual.getOwnerUser(),
+              actual.getSourceSystem(),
+              actual.getExternalDocumentId(),
+              actual.getTitle(),
+              actual.getStorageKey(),
+              actual.getFileType(),
+              actual.getDocumentType(),
+              actual.getStatus(),
+              localPath,
+              invocation.getArgument(2, java.time.Instant.class),
+              null,
+              null,
+              null,
+              null
+          );
+        });
+
+    DocumentStorageService service = new DocumentStorageServiceImpl(
+        properties,
+        metadataService,
+        RestClient.builder(),
+        List.of(localStrategy),
+        resolver,
+        keyFactory,
+        new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
+    );
+
+    StoredDocument document = service.getRequiredDocument("sample");
+
+    assertEquals("sample.docx", document.title());
+    assertEquals("docx", document.fileType());
+    verify(metadataService).updateDocumentFormat("sample", "sample.docx", "docx", "word");
+  }
+
+  @Test
+  @DisplayName("callback 回写 docx 后应同步修正文档元数据")
+  void shouldNormalizeMetadataAfterCallbackWriteBack() throws Exception {
+    OnlyofficeIntegrationProperties properties = properties();
+    properties.getRemoteResource().setAllowPrivateAddressAccess(true);
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
+
+    java.nio.file.Path storedPath = tempDir.resolve("native/native/sample.doc");
+    java.nio.file.Files.createDirectories(storedPath.getParent());
+    java.nio.file.Files.write(storedPath, "legacy".getBytes());
+
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    DocumentMetadataEntity legacyEntity = entity("sample", "sample.doc", "native/native/sample.doc", "doc", "word");
+    DocumentMetadataEntity normalizedEntity = entity("sample", "sample.docx", "native/native/sample.doc", "docx", "word");
+    when(metadataService.requireAccessibleDocument("sample")).thenReturn(legacyEntity);
+    when(metadataService.updateDocumentFormat("sample", "sample.docx", "docx", "word")).thenReturn(normalizedEntity);
+
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+    byte[] latestDocx = minimalDocx();
+    try {
+      server.createContext("/latest.docx", exchange -> {
+        exchange.getResponseHeaders().add(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        exchange.sendResponseHeaders(200, latestDocx.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+          outputStream.write(latestDocx);
+        }
+      });
+      server.start();
+
+      DocumentStorageService service = new DocumentStorageServiceImpl(
+          properties,
+          metadataService,
+          RestClient.builder(),
+          List.of(localStrategy),
+          resolver,
+          keyFactory,
+          new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
+      );
+
+      NormalizedDocumentMetadata metadata = service.saveCallbackDocument(
+          "sample",
+          "http://localhost:" + server.getAddress().getPort() + "/latest.docx",
+          "docx"
+      );
+
+      assertEquals("sample.docx", metadata.title());
+      assertEquals("docx", metadata.fileType());
+      verify(metadataService).updateDocumentFormat("sample", "sample.docx", "docx", "word");
+      assertTrue(hasZipPrefix(java.nio.file.Files.readAllBytes(storedPath)));
+    } finally {
+      server.stop(0);
+    }
   }
 
   @Test
@@ -519,6 +641,36 @@ class DocumentStorageServiceTest {
     OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
     properties.getStorage().getLocal().setRoot(tempDir);
     return properties;
+  }
+
+  private byte[] minimalDocx() throws IOException {
+    try (java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+         ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream)) {
+      zipOutputStream.putNextEntry(new ZipEntry("[Content_Types].xml"));
+      zipOutputStream.write("""
+          <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+            <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+            <Default Extension="xml" ContentType="application/xml"/>
+            <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+          </Types>
+          """.getBytes());
+      zipOutputStream.closeEntry();
+      zipOutputStream.putNextEntry(new ZipEntry("word/document.xml"));
+      zipOutputStream.write("""
+          <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:body><w:p><w:r><w:t>demo</w:t></w:r></w:p></w:body>
+          </w:document>
+          """.getBytes());
+      zipOutputStream.closeEntry();
+      zipOutputStream.finish();
+      return outputStream.toByteArray();
+    }
+  }
+
+  private boolean hasZipPrefix(byte[] body) {
+    return body.length >= 4 && body[0] == 'P' && body[1] == 'K' && body[2] == 3 && body[3] == 4;
   }
 
   private DocumentMetadataEntity entity(

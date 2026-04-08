@@ -125,6 +125,11 @@ public class OnlyofficeCommandServiceImpl implements OnlyofficeCommandService {
   }
 
   private String resolveCommandServiceUrl() {
+    String commandBaseUrl = properties.getDocumentServerCommandUrl();
+    if (commandBaseUrl != null && !commandBaseUrl.isBlank()) {
+      String trimmed = commandBaseUrl.endsWith("/") ? commandBaseUrl.substring(0, commandBaseUrl.length() - 1) : commandBaseUrl;
+      return trimmed + "/coauthoring/CommandService.ashx";
+    }
     // 优先使用 document-server-url（浏览器/宿主机 → DS 的地址，本地开发时后端也在宿主机上，可直接复用）。
     String dsUrl = properties.getDocumentServerUrl();
     if (dsUrl != null && !dsUrl.isBlank()) {

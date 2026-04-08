@@ -9,6 +9,7 @@ import com.earmo.onlyoffice.integration.data.mapper.DocumentRuntimeEventMapper;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
+import com.earmo.onlyoffice.integration.model.NormalizedDocumentMetadata;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
@@ -24,13 +25,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -38,6 +39,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(DocumentController.class)
@@ -85,7 +87,8 @@ class DocumentControllerTest {
   @Test
   void shouldPersistCallbackDocumentWhenStatusIs2() throws Exception {
     when(onlyofficeJwtService.verifyCallbackRequest(any())).thenReturn(mock(io.jsonwebtoken.Claims.class));
-    doNothing().when(documentStorageService).saveCallbackDocument("sample", "https://files.example.test/latest.docx");
+    when(documentStorageService.saveCallbackDocument("sample", "https://files.example.test/latest.docx", "docx"))
+        .thenReturn(new NormalizedDocumentMetadata("sample.docx", "docx", "word"));
 
     mockMvc.perform(post("/api/documents/sample/callback")
             .header("Authorization", "Bearer signed-callback-token")
@@ -93,7 +96,8 @@ class DocumentControllerTest {
             .content("""
                 {
                   "status": 2,
-                  "url": "https://files.example.test/latest.docx"
+                  "url": "https://files.example.test/latest.docx",
+                  "filetype": "docx"
                 }
                 """))
         .andExpect(status().isOk())
@@ -101,7 +105,7 @@ class DocumentControllerTest {
 
     verify(onlyofficeJwtService).verifyCallbackRequest(org.mockito.ArgumentMatchers.any());
     verify(documentStatusService).recordCallbackReceived("sample", 2);
-    verify(documentStorageService).saveCallbackDocument("sample", "https://files.example.test/latest.docx");
+    verify(documentStorageService).saveCallbackDocument("sample", "https://files.example.test/latest.docx", "docx");
     verify(documentStatusService).recordSaveSucceeded("sample", 2);
   }
 
@@ -181,9 +185,8 @@ class DocumentControllerTest {
   @Test
   void shouldMarkDocumentFailedWhenCallbackWriteBackFails() throws Exception {
     when(onlyofficeJwtService.verifyCallbackRequest(any())).thenReturn(mock(io.jsonwebtoken.Claims.class));
-    doThrow(new IOException("storage failed"))
-        .when(documentStorageService)
-        .saveCallbackDocument("sample", "https://files.example.test/latest.docx");
+    when(documentStorageService.saveCallbackDocument("sample", "https://files.example.test/latest.docx", "docx"))
+        .thenThrow(new IOException("storage failed"));
 
     mockMvc.perform(post("/api/documents/sample/callback")
             .header("Authorization", "Bearer signed-callback-token")
@@ -191,7 +194,8 @@ class DocumentControllerTest {
             .content("""
                 {
                   "status": 2,
-                  "url": "https://files.example.test/latest.docx"
+                  "url": "https://files.example.test/latest.docx",
+                  "filetype": "docx"
                 }
                 """))
         .andExpect(status().is5xxServerError());
@@ -352,5 +356,33 @@ class DocumentControllerTest {
     mockMvc.perform(get("/api/documents/archived/save-status"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.message").value("文档不存在：archived"));
+  }
+
+  @Test
+  void shouldDownloadDocumentViaExtendedFileRoute() throws Exception {
+    when(documentStorageService.getRequiredDocument("sample")).thenReturn(new com.earmo.onlyoffice.integration.model.StoredDocument(
+        "sample",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "report.docx",
+        "documents/report.docx",
+        "docx",
+        "word",
+        "draft",
+        java.nio.file.Path.of("report.docx"),
+        Instant.parse("2026-03-25T10:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    ));
+    when(documentStorageService.readDocument("sample")).thenReturn("demo".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+    mockMvc.perform(get("/api/documents/sample/file.docx"))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+        .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("filename*=UTF-8''report.docx")));
   }
 }

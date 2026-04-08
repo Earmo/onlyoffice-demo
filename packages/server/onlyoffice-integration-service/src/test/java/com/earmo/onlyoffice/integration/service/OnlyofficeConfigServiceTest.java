@@ -87,8 +87,8 @@ class OnlyofficeConfigServiceTest {
     Map<String, Object> layout = cast(customization.get("layout"));
     Map<String, Object> leftMenu = cast(layout.get("leftMenu"));
 
-    assertEquals("https://docs.example.test/", response.documentServerUrl());
-    assertTrue(document.get("url").toString().contains("http://internal.example.test/api/documents/demo/file"));
+    assertEquals("https://app.example.test/api/office/", response.documentServerUrl());
+    assertTrue(document.get("url").toString().contains("http://internal.example.test/api/documents/demo/file.docx"));
     assertTrue(editorConfig.get("callbackUrl").toString().contains("http://internal.example.test/api/documents/demo/callback"));
     assertEquals("user-a", cast(editorConfig.get("user")).get("id"));
     assertEquals("Alice", cast(editorConfig.get("user")).get("name"));
@@ -145,7 +145,7 @@ class OnlyofficeConfigServiceTest {
         "demo",
         true,
         new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
-        new MockHttpServletRequest()
+        null
     );
 
     assertEquals("https://gateway.example.test/", response.documentServerUrl());
@@ -215,7 +215,110 @@ class OnlyofficeConfigServiceTest {
   }
 
   @Test
-  void shouldFailFastWhenRuntimeUrlsAreMissing() throws IOException {
+  void shouldUseForwardedRequestOriginWhenBrowserAccessesGatewayHost() throws IOException {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.setPublicBaseUrl("");
+    properties.setDocumentServerUrl("");
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
+
+    Path path = tempDir.resolve("demo.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "demo.docx",
+        "documents/demo.docx",
+        "docx",
+        "word",
+        "draft",
+        path,
+        Instant.parse("2026-03-19T08:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    );
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
+        properties,
+        storageService,
+        new OnlyofficeJwtServiceImpl(properties)
+    );
+
+    MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/documents/demo/editor-config");
+    request.addHeader("X-Forwarded-Proto", "https");
+    request.addHeader("X-Forwarded-Host", "docs.example.test");
+    request.addHeader("X-Forwarded-Port", "8443");
+
+    EditorConfigResponse response = configService.buildEditorConfig(
+        "demo",
+        false,
+        new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
+        request
+    );
+
+    assertEquals("https://docs.example.test:8443/api/office/", response.documentServerUrl());
+  }
+
+  @Test
+  void shouldPreferRequestHostHeaderWithExplicitPort() throws IOException {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.setPublicBaseUrl("");
+    properties.setDocumentServerUrl("");
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
+
+    Path path = tempDir.resolve("demo.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "demo.docx",
+        "documents/demo.docx",
+        "docx",
+        "word",
+        "draft",
+        path,
+        Instant.parse("2026-03-19T08:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    );
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
+        properties,
+        storageService,
+        new OnlyofficeJwtServiceImpl(properties)
+    );
+
+    MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/documents/demo/editor-config");
+    request.addHeader("Host", "127.0.0.1:12333");
+    request.addHeader("X-Forwarded-Proto", "http");
+
+    EditorConfigResponse response = configService.buildEditorConfig(
+        "demo",
+        false,
+        new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
+        request
+    );
+
+    assertEquals("http://127.0.0.1:12333/api/office/", response.documentServerUrl());
+  }
+
+  @Test
+  void shouldFailFastWhenRuntimeUrlsAreMissingAndRequestOriginIsUnavailable() throws IOException {
     OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
     properties.setPublicBaseUrl("");
     properties.setDocumentServerUrl("");
@@ -257,11 +360,58 @@ class OnlyofficeConfigServiceTest {
             "demo",
             false,
             new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
-            new MockHttpServletRequest()
+            null
         )
     );
 
     assertTrue(exception.getMessage().contains("document-server-url"));
+  }
+
+  @Test
+  void shouldExposeDocumentDownloadUrlWithFileExtension() throws IOException {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.setPublicBaseUrl("https://gateway.example.test");
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
+
+    Path path = tempDir.resolve("report.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "report.docx",
+        "documents/report.docx",
+        "docx",
+        "word",
+        "draft",
+        path,
+        Instant.parse("2026-03-19T08:00:00Z"),
+        null,
+        null,
+        null,
+        null
+    );
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
+        properties,
+        storageService,
+        new OnlyofficeJwtServiceImpl(properties)
+    );
+
+    EditorConfigResponse response = configService.buildEditorConfig(
+        "demo",
+        false,
+        new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
+        new MockHttpServletRequest()
+    );
+
+    Map<String, Object> document = cast(response.config().get("document"));
+    assertEquals("http://internal.example.test/api/documents/demo/file.docx", document.get("url"));
   }
 
   @Test
@@ -320,5 +470,3 @@ class OnlyofficeConfigServiceTest {
     return (Map<String, Object>) value;
   }
 }
-
-

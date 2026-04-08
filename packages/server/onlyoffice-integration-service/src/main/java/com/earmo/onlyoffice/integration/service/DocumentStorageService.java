@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
+import com.earmo.onlyoffice.integration.model.NormalizedDocumentMetadata;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.storage.StorageProvider;
@@ -20,7 +21,8 @@ public interface DocumentStorageService {
 
   byte[] readDocument(String rawDocumentId) throws IOException;
 
-  void saveCallbackDocument(String rawDocumentId, String downloadUrl) throws IOException;
+  NormalizedDocumentMetadata saveCallbackDocument(String rawDocumentId, String downloadUrl, String callbackFileType)
+      throws IOException;
 
   StoredDocument storeUploadedDocument(String originalFilename, byte[] body) throws IOException;
 
