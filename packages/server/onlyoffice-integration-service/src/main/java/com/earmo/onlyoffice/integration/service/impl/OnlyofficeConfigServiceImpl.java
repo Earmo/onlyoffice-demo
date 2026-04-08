@@ -12,7 +12,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -24,12 +23,15 @@ import org.springframework.web.util.UriComponentsBuilder;
  * <p>这个实现负责把“文档元数据 + 访问上下文 + 运行时地址”三类输入收口成一份稳定配置：
  * 1. 前端只需要传 documentId，不参与任何运行时 URL 拼装；
  * 2. 文档下载地址和 callback 地址统一走 internal base url，供 ONLYOFFICE 容器访问；
- * 3. 文档服务器静态资源地址优先使用当前请求入口生成，未命中时再回退显式配置；
+ * 3. 文档服务器静态资源地址优先使用 documentServerUrl，没有显式配置时再回退 publicBaseUrl；
  * 4. editor-config 生成完成后立即签名，保证浏览器与 ONLYOFFICE 只消费后端生成的可信配置。
  */
 @Service
 @RequiredArgsConstructor
 public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
+
+  private static final String AI_BRIDGE_PLUGIN_GUID = "asc.{A4B0E7D2-6A7B-4E21-9C1A-7F4F31C6B201}";
+  private static final String AI_BRIDGE_PLUGIN_CONFIG_PATH = "/onlyoffice-plugins/ai-bridge/config.json";
 
   private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
   private final DocumentStorageService documentStorageService;
@@ -50,10 +52,10 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     config.put("width", "100%");
     config.put("height", "100%");
     config.put("document", buildDocumentSection(storedDocument, readonly, accessContext));
-    config.put("editorConfig", buildEditorSection(storedDocument, readonly, accessContext));
+    config.put("editorConfig", buildEditorSection(storedDocument, readonly, accessContext, request));
     config.put("token", onlyofficeJwtService.sign(config));
 
-    return new EditorConfigResponse(resolveDocumentServerUrl(request), config);
+    return new EditorConfigResponse(resolveDocumentServerUrl(), config);
   }
 
   /**
@@ -102,8 +104,10 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
   private Map<String, Object> buildEditorSection(
       StoredDocument storedDocument,
       boolean readonly,
-      AccessContext accessContext
+      AccessContext accessContext,
+      jakarta.servlet.http.HttpServletRequest request
   ) {
+    boolean editMode = !readonly && accessContext.permission("edit", true);
     Map<String, Object> user = new LinkedHashMap<>();
     user.put("id", accessContext.externalUserId());
     user.put("name", accessContext.displayName());
@@ -184,11 +188,21 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     Map<String, Object> editorConfig = new LinkedHashMap<>();
     editorConfig.put("lang", onlyofficeIntegrationProperties.getDefaultLanguage());
     editorConfig.put("region", onlyofficeIntegrationProperties.getDefaultRegion());
-    editorConfig.put("mode", readonly || !accessContext.permission("edit", true) ? "view" : "edit");
+    editorConfig.put("mode", editMode ? "edit" : "view");
     editorConfig.put("callbackUrl", buildInternalUrl("/api/documents/%s/callback".formatted(storedDocument.documentId())));
     editorConfig.put("user", user);
     editorConfig.put("customization", customization);
+    if (editMode) {
+      editorConfig.put("plugins", buildBridgePluginSection(request));
+    }
     return editorConfig;
+  }
+
+  private Map<String, Object> buildBridgePluginSection(jakarta.servlet.http.HttpServletRequest request) {
+    Map<String, Object> plugins = new LinkedHashMap<>();
+    plugins.put("autostart", java.util.List.of(AI_BRIDGE_PLUGIN_GUID));
+    plugins.put("pluginsData", java.util.List.of(resolveBridgePluginConfigUrl(request)));
+    return plugins;
   }
 
   /**
@@ -209,12 +223,7 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
         .toUriString();
   }
 
-  private String resolveDocumentServerUrl(HttpServletRequest request) {
-    String requestOrigin = resolveRequestOrigin(request);
-    if (StringUtils.hasText(requestOrigin)) {
-      return ensureTrailingSlash(requestOrigin + "/api/office");
-    }
-
+  private String resolveDocumentServerUrl() {
     if (StringUtils.hasText(onlyofficeIntegrationProperties.getDocumentServerUrl())) {
       return ensureTrailingSlash(requireConfiguredBaseUrl(
           onlyofficeIntegrationProperties.getDocumentServerUrl(),
@@ -235,78 +244,34 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     );
   }
 
-  private String resolveRequestOrigin(HttpServletRequest request) {
-    if (request == null) {
-      return null;
-    }
-
-    String forwardedProto = firstForwardedValue(request.getHeader("X-Forwarded-Proto"));
-    String forwardedHost = firstForwardedValue(request.getHeader("X-Forwarded-Host"));
-    String forwardedPort = firstForwardedValue(request.getHeader("X-Forwarded-Port"));
-    String hostHeader = firstForwardedValue(request.getHeader("Host"));
-    if (StringUtils.hasText(forwardedProto) && StringUtils.hasText(forwardedHost)) {
-      return requireConfiguredBaseUrl(
-          forwardedProto + "://" + appendForwardedPort(forwardedHost, forwardedProto, forwardedPort),
-          "request forwarded origin"
-      );
-    }
-    if (StringUtils.hasText(forwardedProto) && StringUtils.hasText(hostHeader)) {
-      return requireConfiguredBaseUrl(
-          forwardedProto + "://" + appendForwardedPort(hostHeader, forwardedProto, forwardedPort),
-          "request host origin"
+  private String resolveBridgePluginConfigUrl(jakarta.servlet.http.HttpServletRequest request) {
+    if (StringUtils.hasText(onlyofficeIntegrationProperties.getPublicBaseUrl())) {
+      return appendPath(
+          requireConfiguredBaseUrl(
+              onlyofficeIntegrationProperties.getPublicBaseUrl(),
+              "onlyoffice.integration.public-base-url"
+          ),
+          AI_BRIDGE_PLUGIN_CONFIG_PATH
       );
     }
 
-    String scheme = request.getScheme();
-    String serverName = request.getServerName();
-    int serverPort = request.getServerPort();
-    if (!StringUtils.hasText(scheme) || !StringUtils.hasText(serverName)) {
-      return null;
-    }
-
-    UriComponentsBuilder builder = UriComponentsBuilder.newInstance()
-        .scheme(scheme)
-        .host(serverName);
-    if (serverPort > 0 && !isDefaultPort(scheme, serverPort)) {
-      builder.port(serverPort);
-    }
-    return requireConfiguredBaseUrl(builder.build().toUriString(), "request origin");
-  }
-
-  private String firstForwardedValue(String headerValue) {
-    if (!StringUtils.hasText(headerValue)) {
-      return null;
-    }
-    return headerValue.split(",")[0].trim();
-  }
-
-  private boolean isDefaultPort(String scheme, int port) {
-    return ("http".equalsIgnoreCase(scheme) && port == 80)
-        || ("https".equalsIgnoreCase(scheme) && port == 443);
-  }
-
-  private String appendForwardedPort(String forwardedHost, String scheme, String forwardedPort) {
-    if (!StringUtils.hasText(forwardedPort) || hostContainsExplicitPort(forwardedHost)) {
-      return forwardedHost;
-    }
-
-    try {
-      int port = Integer.parseInt(forwardedPort);
-      if (isDefaultPort(scheme, port)) {
-        return forwardedHost;
+    if (request != null && StringUtils.hasText(request.getScheme()) && StringUtils.hasText(request.getServerName())) {
+      UriComponentsBuilder builder = UriComponentsBuilder.newInstance()
+          .scheme(request.getScheme())
+          .host(request.getServerName());
+      if (request.getServerPort() > 0 && request.getServerPort() != 80 && request.getServerPort() != 443) {
+        builder.port(request.getServerPort());
       }
-      return forwardedHost + ":" + port;
-    } catch (NumberFormatException ex) {
-      return forwardedHost;
+      return builder.path(AI_BRIDGE_PLUGIN_CONFIG_PATH).build().toUriString();
     }
+
+    throw new IllegalStateException(
+        "ONLYOFFICE AI 桥接插件地址缺失：请配置 onlyoffice.integration.public-base-url。"
+    );
   }
 
-  private boolean hostContainsExplicitPort(String host) {
-    int colonCount = host.length() - host.replace(":", "").length();
-    if (host.startsWith("[") && host.contains("]")) {
-      return host.indexOf("]:") > 0;
-    }
-    return colonCount == 1;
+  private String appendPath(String baseUrl, String path) {
+    return UriComponentsBuilder.fromHttpUrl(baseUrl).path(path).build().toUriString();
   }
 
   private String ensureTrailingSlash(String url) {

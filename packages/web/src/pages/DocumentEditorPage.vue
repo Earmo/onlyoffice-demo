@@ -201,7 +201,7 @@ onMounted(loadEditorPageData);
             </el-button>
           </div>
           <p class="muted-copy sidebar-notice" style="margin-bottom: 12px;">
-            Phase 9 起固定为可编辑工作台。离开页面前会显式结束编辑会话。
+            当前工作台已为 AI 对话侧栏预留选区与章节导航能力。离开页面前会显式结束编辑会话。
           </p>
           <div class="toolbar-actions">
             <el-button size="small" :loading="isLeaving" :disabled="isLeaving" @click="goBackToLibrary">

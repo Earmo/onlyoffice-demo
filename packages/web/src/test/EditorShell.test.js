@@ -2,12 +2,28 @@ import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, jsonResponse } from "./helpers";
 
+const bridgeMocks = vi.hoisted(() => ({
+  createOnlyofficeBridge: vi.fn(),
+  waitForReady: vi.fn(),
+  captureSelectedText: vi.fn(),
+  refreshOutline: vi.fn(),
+  jumpToHeading: vi.fn(),
+  dispose: vi.fn()
+}));
+
 vi.mock("@onlyoffice/document-editor-vue", () => ({
   DocumentEditor: {
     name: "OnlyofficeDocumentEditorStub",
-    props: ["documentServerUrl", "config"],
-    template: "<div class='onlyoffice-stub'>{{ config?.document?.title }}</div>"
+    props: ["documentServerUrl", "config", "events_onDocumentReady"],
+    template: "<div class='onlyoffice-stub'>{{ config?.document?.title }}</div>",
+    mounted() {
+      this.events_onDocumentReady?.();
+    }
   }
+}));
+
+vi.mock("../components/editor/onlyofficeBridge.js", () => ({
+  createOnlyofficeBridge: bridgeMocks.createOnlyofficeBridge
 }));
 
 import EditorShell from "../components/editor/EditorShell.vue";
@@ -15,14 +31,39 @@ import EditorShell from "../components/editor/EditorShell.vue";
 describe("EditorShell", () => {
   beforeEach(() => {
     fetch.mockReset();
+    bridgeMocks.waitForReady.mockReset();
+    bridgeMocks.captureSelectedText.mockReset();
+    bridgeMocks.refreshOutline.mockReset();
+    bridgeMocks.jumpToHeading.mockReset();
+    bridgeMocks.dispose.mockReset();
+    bridgeMocks.createOnlyofficeBridge.mockReset();
+
+    bridgeMocks.waitForReady.mockResolvedValue({ capability: "plugin" });
+    bridgeMocks.captureSelectedText.mockResolvedValue({ text: "第一段选中文本", emptySelection: false });
+    bridgeMocks.refreshOutline.mockResolvedValue({
+      headings: [
+        { id: "heading-1", text: "一、项目背景", level: 1, styleName: "Heading 1", paragraphIndex: 3 },
+        { id: "heading-2", text: "1.1 范围", level: 2, styleName: "Heading 2", paragraphIndex: 8 }
+      ],
+      emptyOutline: false
+    });
+    bridgeMocks.jumpToHeading.mockResolvedValue({ id: "heading-1", paragraphIndex: 3 });
+    bridgeMocks.createOnlyofficeBridge.mockImplementation(() => ({
+      capability: "plugin",
+      waitForReady: bridgeMocks.waitForReady,
+      captureSelectedText: bridgeMocks.captureSelectedText,
+      refreshOutline: bridgeMocks.refreshOutline,
+      jumpToHeading: bridgeMocks.jumpToHeading,
+      dispose: bridgeMocks.dispose
+    }));
   });
 
   it("应在编辑模式加载配置、展开控制台，并在显式关闭后卸载时不重复请求 close-session", async () => {
     fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))  // 1. editor-config
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))                 // 2. 初始 save-status
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))                 // 3. 显式保存
-      .mockResolvedValueOnce(jsonResponse(closedStatusPayload()));              // 4. close-session
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))
+      .mockResolvedValueOnce(jsonResponse(closedStatusPayload()));
 
     const wrapper = mount(EditorShell, {
       props: {
@@ -38,8 +79,11 @@ describe("EditorShell", () => {
 
     await wrapper.find(".stage-edge-toggle").trigger("click");
     await flushPromises();
+
     expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
-    expect(wrapper.text()).toContain("编辑模式");
+    expect(wrapper.text()).toContain("当前选区");
+    expect(wrapper.text()).toContain("章节标题");
+    expect(wrapper.text()).toContain("运行态 / 现有动作");
 
     await wrapper.vm.closeEditingSession();
     await flushPromises();
@@ -54,7 +98,6 @@ describe("EditorShell", () => {
     let resolveSaveRequest;
     let saveCallCount = 0;
 
-    // 使用 URL 路由式 mock，让保存请求和 close 请求各走各的分支。
     fetch.mockImplementation((url) => {
       const urlStr = String(url);
       if (urlStr.includes("/editor-config")) {
@@ -169,6 +212,120 @@ describe("EditorShell", () => {
     expect(wrapper.text()).toContain("预览稿.docx");
     expect(wrapper.find(".floating-console").isVisible()).toBe(false);
     expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
+  });
+
+  it("应能抓取当前选区并展示文本预览", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await flushPromises();
+
+    const captureButton = wrapper.findAll("button").find(button => button.text().includes("抓取当前选区"));
+    await captureButton.trigger("click");
+    await flushPromises();
+
+    expect(bridgeMocks.captureSelectedText).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("第一段选中文本");
+  });
+
+  it("应在没有选中文本时展示明确空态", async () => {
+    bridgeMocks.captureSelectedText.mockResolvedValueOnce({ text: "", emptySelection: true });
+    fetch
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await flushPromises();
+
+    const captureButton = wrapper.findAll("button").find(button => button.text().includes("抓取当前选区"));
+    await captureButton.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("当前没有选中文本");
+  });
+
+  it("应能刷新目录并展示标题列表", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await flushPromises();
+
+    expect(bridgeMocks.refreshOutline).toHaveBeenCalled();
+    expect(wrapper.text()).toContain("一、项目背景");
+    expect(wrapper.text()).toContain("1.1 范围");
+  });
+
+  it("应在没有标题时展示目录空态", async () => {
+    bridgeMocks.refreshOutline.mockResolvedValueOnce({ headings: [], emptyOutline: true });
+    fetch
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("当前文档还没有检测到标题段落");
+  });
+
+  it("应在点击标题后调用 jumpToHeading", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await flushPromises();
+
+    const outlineButton = wrapper.findAll(".outline-item").find(button => button.text().includes("一、项目背景"));
+    await outlineButton.trigger("click");
+    await flushPromises();
+
+    expect(bridgeMocks.jumpToHeading).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "heading-1", paragraphIndex: 3 })
+    );
   });
 });
 

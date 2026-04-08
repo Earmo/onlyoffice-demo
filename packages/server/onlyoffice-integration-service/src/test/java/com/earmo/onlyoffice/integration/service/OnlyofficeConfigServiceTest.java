@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -86,8 +87,9 @@ class OnlyofficeConfigServiceTest {
     Map<String, Object> customization = cast(editorConfig.get("customization"));
     Map<String, Object> layout = cast(customization.get("layout"));
     Map<String, Object> leftMenu = cast(layout.get("leftMenu"));
+    Map<String, Object> plugins = cast(editorConfig.get("plugins"));
 
-    assertEquals("https://app.example.test/api/office/", response.documentServerUrl());
+    assertEquals("https://docs.example.test/", response.documentServerUrl());
     assertTrue(document.get("url").toString().contains("http://internal.example.test/api/documents/demo/file.docx"));
     assertTrue(editorConfig.get("callbackUrl").toString().contains("http://internal.example.test/api/documents/demo/callback"));
     assertEquals("user-a", cast(editorConfig.get("user")).get("id"));
@@ -99,8 +101,13 @@ class OnlyofficeConfigServiceTest {
     assertEquals(Boolean.FALSE, permissions.get("print"));
     assertEquals(Boolean.FALSE, customization.get("compactToolbar"));
     assertEquals(Boolean.FALSE, customization.get("toolbarNoTabs"));
-        assertEquals(Boolean.TRUE, leftMenu.get("mode"));
+    assertEquals(Boolean.TRUE, leftMenu.get("mode"));
     assertEquals(Boolean.TRUE, leftMenu.get("navigation"));
+    assertEquals(List.of("asc.{A4B0E7D2-6A7B-4E21-9C1A-7F4F31C6B201}"), plugins.get("autostart"));
+    assertEquals(
+        List.of("https://api.example.test/onlyoffice-plugins/ai-bridge/config.json"),
+        plugins.get("pluginsData")
+    );
     assertNotNull(config.get("token"));
   }
 
@@ -150,6 +157,7 @@ class OnlyofficeConfigServiceTest {
 
     assertEquals("https://gateway.example.test/", response.documentServerUrl());
     assertEquals("view", cast(response.config().get("editorConfig")).get("mode"));
+    assertEquals(null, cast(response.config().get("editorConfig")).get("plugins"));
   }
 
   @Test
@@ -212,13 +220,14 @@ class OnlyofficeConfigServiceTest {
     assertEquals(Boolean.FALSE, permissions.get("download"));
     assertEquals(Boolean.FALSE, permissions.get("comment"));
     assertEquals(Boolean.TRUE, permissions.get("print"));
+    assertEquals(null, editorConfig.get("plugins"));
   }
 
   @Test
-  void shouldUseForwardedRequestOriginWhenBrowserAccessesGatewayHost() throws IOException {
+  void shouldUseConfiguredDocumentServerUrlEvenWhenRequestContainsForwardedHeaders() throws IOException {
     OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
-    properties.setPublicBaseUrl("");
-    properties.setDocumentServerUrl("");
+    properties.setPublicBaseUrl("https://gateway.example.test");
+    properties.setDocumentServerUrl("https://docs.example.test/api/office");
     properties.setInternalBaseUrl("http://internal.example.test");
     properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
 
@@ -263,58 +272,12 @@ class OnlyofficeConfigServiceTest {
         request
     );
 
-    assertEquals("https://docs.example.test:8443/api/office/", response.documentServerUrl());
-  }
-
-  @Test
-  void shouldPreferRequestHostHeaderWithExplicitPort() throws IOException {
-    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
-    properties.setPublicBaseUrl("");
-    properties.setDocumentServerUrl("");
-    properties.setInternalBaseUrl("http://internal.example.test");
-    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
-
-    Path path = tempDir.resolve("demo.docx");
-    Files.writeString(path, "demo");
-    StoredDocument storedDocument = new StoredDocument(
-        "demo",
-        "tenant-a",
-        "user-a",
-        "native",
-        null,
-        "demo.docx",
-        "documents/demo.docx",
-        "docx",
-        "word",
-        "draft",
-        path,
-        Instant.parse("2026-03-19T08:00:00Z"),
-        null,
-        null,
-        null,
-        null
+    assertEquals("https://docs.example.test/api/office/", response.documentServerUrl());
+    Map<String, Object> plugins = cast(cast(response.config().get("editorConfig")).get("plugins"));
+    assertEquals(
+        List.of("https://gateway.example.test/onlyoffice-plugins/ai-bridge/config.json"),
+        plugins.get("pluginsData")
     );
-    DocumentStorageService storageService = mock(DocumentStorageService.class);
-    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
-
-    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
-        properties,
-        storageService,
-        new OnlyofficeJwtServiceImpl(properties)
-    );
-
-    MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/documents/demo/editor-config");
-    request.addHeader("Host", "127.0.0.1:12333");
-    request.addHeader("X-Forwarded-Proto", "http");
-
-    EditorConfigResponse response = configService.buildEditorConfig(
-        "demo",
-        false,
-        new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
-        request
-    );
-
-    assertEquals("http://127.0.0.1:12333/api/office/", response.documentServerUrl());
   }
 
   @Test
@@ -364,7 +327,7 @@ class OnlyofficeConfigServiceTest {
         )
     );
 
-    assertTrue(exception.getMessage().contains("document-server-url"));
+    assertTrue(exception.getMessage().contains("public-base-url"));
   }
 
   @Test

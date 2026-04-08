@@ -65,6 +65,8 @@ describe("DocumentEditorPage", () => {
     const wrapper = mount(DocumentEditorPage);
     await flushPromises();
 
+    expect(wrapper.text()).toContain("路线图.docx::doc-1");
+
     const returnButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
     await returnButton.trigger("click");
     await flushPromises();

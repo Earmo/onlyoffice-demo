@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 import { apiFetch, buildApiUrl, createAccessContextHeaders } from "../../lib/api";
+import { createOnlyofficeBridge } from "./onlyofficeBridge";
 
 const props = defineProps({
   documentId: {
@@ -23,19 +24,6 @@ const props = defineProps({
   }
 });
 
-// 组件只管理“当前文档在当前页面中的运行态”：
-// 1. 请求 editor-config；
-// 2. 承载 ONLYOFFICE 编辑器实例；
-// 3. 在编辑模式下轮询 save-status；
-// 4. 在页面离开或切换文档时，向后端显式结束当前编辑会话。
-//
-// “保存并返回”当前保持轻量时序：
-// - 先调用 /save，确保本次显式保存已经落盘；
-// - 再销毁编辑器并关闭编辑会话；
-// - 不额外轮询 save-status 等待收敛，避免返回动作卡顿。
-// 关闭后如果 ONLYOFFICE 继续补发 status=4 callback，由后端负责把无活跃会话的文档状态收口回稳定态。
-// Phase 9 的这一版还恢复了“右侧悬浮按钮 -> 固定控制台面板”的交互，
-// 避免编辑器顶部再出现额外一层 shell-toolbar，减少对主工作区的挤压。
 const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
 const isConsoleOpen = ref(false);
 const isLoading = ref(true);
@@ -46,13 +34,38 @@ const editorKey = ref(0);
 const saveStatus = ref(null);
 const editingSessionOpened = ref(false);
 const isClosingSession = ref(false);
+const selectedText = ref("");
+const isCapturingSelection = ref(false);
+const hasEmptySelection = ref(false);
+const outlineItems = ref([]);
+const isRefreshingOutline = ref(false);
+const hasEmptyOutline = ref(false);
+const bridgeErrorMessage = ref("");
+const bridgeStatusMessage = ref("等待文档运行态桥接就绪。");
+const bridgeReady = ref(false);
+const bridgeCapability = ref("plugin");
+const activeHeadingId = ref("");
 let saveStatusTimer = null;
 let sessionHeartbeatTimer = null;
 let closeEditingSessionPromise = null;
 let removeUnloadListeners = null;
+let onlyofficeBridge = null;
 
 const modeLabel = computed(() => (props.readonly ? "预览模式" : "编辑模式"));
 const shouldShowConsole = computed(() => props.showConsole && !props.readonly);
+const bridgeStatusType = computed(() => {
+  if (bridgeErrorMessage.value) {
+    return "danger";
+  }
+  return bridgeReady.value ? "success" : "info";
+});
+const bridgeStatusLabel = computed(() => {
+  if (bridgeErrorMessage.value) {
+    return "桥接异常";
+  }
+  return bridgeReady.value ? "桥接已就绪" : "桥接连接中";
+});
+const bridgeCapabilityLabel = computed(() => (bridgeCapability.value === "connector" ? "connector + plugin" : "plugin"));
 
 async function readErrorMessage(response, fallbackMessage) {
   try {
@@ -63,9 +76,160 @@ async function readErrorMessage(response, fallbackMessage) {
   }
 }
 
+function getDocEditorInstance() {
+  return window.DocEditor?.instances?.docEditor;
+}
+
+function getDocEditorIframe() {
+  return document.getElementById("docEditor")?.querySelector("iframe") ?? null;
+}
+
+function resetBridgeState() {
+  selectedText.value = "";
+  hasEmptySelection.value = false;
+  outlineItems.value = [];
+  hasEmptyOutline.value = false;
+  bridgeErrorMessage.value = "";
+  bridgeStatusMessage.value = "等待文档运行态桥接就绪。";
+  bridgeReady.value = false;
+  bridgeCapability.value = "plugin";
+  activeHeadingId.value = "";
+}
+
+function disposeBridge() {
+  onlyofficeBridge?.dispose();
+  onlyofficeBridge = null;
+  resetBridgeState();
+}
+
+function ensureBridge() {
+  if (props.readonly || !editorPayload.value) {
+    return null;
+  }
+  if (!onlyofficeBridge) {
+    onlyofficeBridge = createOnlyofficeBridge({
+      getEditor: getDocEditorInstance,
+      getIframe: getDocEditorIframe
+    });
+    bridgeCapability.value = onlyofficeBridge.capability;
+  }
+  return onlyofficeBridge;
+}
+
+function toBridgeErrorMessage(error, fallbackMessage) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallbackMessage;
+}
+
+async function waitForBridgeReady(options = {}) {
+  const { suppressErrors = false } = options;
+  const bridge = ensureBridge();
+  if (!bridge) {
+    return false;
+  }
+  if (bridgeReady.value) {
+    return true;
+  }
+
+  bridgeStatusMessage.value = "正在连接文档运行态桥接...";
+  bridgeErrorMessage.value = "";
+
+  try {
+    const payload = await bridge.waitForReady();
+    bridgeReady.value = true;
+    bridgeCapability.value = payload?.capability || bridge.capability;
+    bridgeStatusMessage.value = "文档桥接已就绪，可读取选区并刷新章节目录。";
+    return true;
+  } catch (error) {
+    bridgeReady.value = false;
+    bridgeErrorMessage.value = toBridgeErrorMessage(error, "文档桥接暂不可用，请稍后重试。");
+    bridgeStatusMessage.value = "文档桥接未能成功建立。";
+    if (!suppressErrors) {
+      console.error("文档桥接初始化失败", error);
+    }
+    return false;
+  }
+}
+
+async function captureSelectedText() {
+  if (!(await waitForBridgeReady())) {
+    return null;
+  }
+
+  isCapturingSelection.value = true;
+  bridgeErrorMessage.value = "";
+
+  try {
+    const payload = await onlyofficeBridge.captureSelectedText();
+    selectedText.value = payload.text ?? "";
+    hasEmptySelection.value = Boolean(payload.emptySelection || selectedText.value.trim().length === 0);
+    bridgeStatusMessage.value = hasEmptySelection.value
+      ? "当前没有选中文本，可先在文档中框选一段内容。"
+      : "已抓取当前选区，可作为下一阶段 AI 对话的上下文输入。";
+    return payload;
+  } catch (error) {
+    bridgeErrorMessage.value = toBridgeErrorMessage(error, "抓取当前选区失败，请稍后重试。");
+    return null;
+  } finally {
+    isCapturingSelection.value = false;
+  }
+}
+
+async function refreshOutline(options = {}) {
+  const { silent = false } = options;
+  if (!(await waitForBridgeReady({ suppressErrors: silent }))) {
+    return null;
+  }
+
+  isRefreshingOutline.value = true;
+  if (!silent) {
+    bridgeErrorMessage.value = "";
+  }
+
+  try {
+    const payload = await onlyofficeBridge.refreshOutline();
+    outlineItems.value = Array.isArray(payload.headings) ? payload.headings : [];
+    hasEmptyOutline.value = Boolean(payload.emptyOutline || outlineItems.value.length === 0);
+    bridgeStatusMessage.value = hasEmptyOutline.value
+      ? "当前文档没有检测到标题段落。"
+      : "章节目录已刷新，可点击标题快速定位。";
+    return payload;
+  } catch (error) {
+    bridgeErrorMessage.value = toBridgeErrorMessage(error, "刷新章节目录失败，请稍后重试。");
+    if (!silent) {
+      outlineItems.value = [];
+      hasEmptyOutline.value = false;
+    }
+    return null;
+  } finally {
+    isRefreshingOutline.value = false;
+  }
+}
+
+async function jumpToHeading(heading) {
+  if (!heading || !(await waitForBridgeReady())) {
+    return null;
+  }
+
+  bridgeErrorMessage.value = "";
+
+  try {
+    const payload = await onlyofficeBridge.jumpToHeading(heading);
+    activeHeadingId.value = heading.id;
+    bridgeStatusMessage.value = `已定位到章节：${heading.text || heading.id}`;
+    return payload;
+  } catch (error) {
+    bridgeErrorMessage.value = toBridgeErrorMessage(error, "章节定位失败，请刷新目录后重试。");
+    return null;
+  }
+}
+
 async function loadEditorConfig() {
   isLoading.value = true;
   errorMessage.value = "";
+  disposeBridge();
 
   try {
     const params = new URLSearchParams({
@@ -82,6 +246,7 @@ async function loadEditorConfig() {
       startSessionHeartbeatPolling();
     }
     editorKey.value += 1;
+    ensureBridge();
 
     if (shouldShowConsole.value) {
       await loadSaveStatus();
@@ -95,6 +260,23 @@ async function loadEditorConfig() {
     }
   } finally {
     isLoading.value = false;
+  }
+}
+
+async function fetchSaveStatusSnapshot(options = {}) {
+  const { suppressErrors = false } = options;
+
+  try {
+    const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
+    }
+    return await response.json();
+  } catch (error) {
+    if (!suppressErrors) {
+      throw error;
+    }
+    return null;
   }
 }
 
@@ -119,27 +301,6 @@ function toggleConsole() {
 
 function closeConsole() {
   isConsoleOpen.value = false;
-}
-
-function getDocEditorInstance() {
-  return window.DocEditor?.instances?.docEditor;
-}
-
-async function fetchSaveStatusSnapshot(options = {}) {
-  const { suppressErrors = false } = options;
-
-  try {
-    const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
-    if (!response.ok) {
-      throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
-    }
-    return await response.json();
-  } catch (error) {
-    if (!suppressErrors) {
-      throw error;
-    }
-    return null;
-  }
 }
 
 async function insertRemoteImage() {
@@ -185,38 +346,42 @@ function handleDocumentReady() {
   startSessionHeartbeatPolling();
   if (shouldShowConsole.value) {
     startSaveStatusPolling();
+    void nextTick(async () => {
+      ensureBridge();
+      const ready = await waitForBridgeReady({ suppressErrors: true });
+      if (ready) {
+        await refreshOutline({ silent: true });
+      }
+    });
   }
-  // OnlyOffice 社区版的 layout.leftMenu.mode 配置不生效（需要 White Label 许可证），
-  // 也无公开 JS API 可控制导航面板的初始展开状态。
-  // 由于 nginx 将 OnlyOffice 路径全部代理到同源，iframe 为同源，
-  // 可在文档加载完成后直接操作 iframe DOM，模拟用户点击导航按钮展开标题面板。
   openNavigationPanelAfterReady();
 }
 
 function openNavigationPanelAfterReady() {
-  // 等待 OnlyOffice iframe 完成内部 UI 初始化（通常需要 500ms 以上）
   setTimeout(() => {
     try {
-      const iframe = document.getElementById("docEditor")?.querySelector("iframe");
-      if (!iframe) return;
+      const iframe = getDocEditorIframe();
+      if (!iframe) {
+        return;
+      }
 
       const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!iframeDoc) return;
+      if (!iframeDoc) {
+        return;
+      }
 
-      // 按钮 ID 来自 OnlyOffice 源码 LeftMenu.js：
-      //   this.btnNavigation = new Common.UI.Button({ el: $markup.elementById('#left-btn-navigation') })
-      // 按钮未被按下时点击可展开导航面板；已激活则不重复点击
       const navBtn = iframeDoc.getElementById("left-btn-navigation");
       if (navBtn && !navBtn.classList.contains("active") && !navBtn.classList.contains("pressed")) {
         navBtn.click();
       }
-    } catch (e) {
+    } catch {
       // 同源判断失败或按钮不存在时静默降级，不影响编辑器正常使用
     }
   }, 800);
 }
 
 function handleLoadComponentError(errorCode, errorDescription) {
+  disposeBridge();
   errorMessage.value = `ONLYOFFICE 组件加载失败（${errorCode}）：${errorDescription}`;
 }
 
@@ -277,12 +442,6 @@ function stopSessionHeartbeatPolling() {
   }
 }
 
-/**
- * 销毁 ONLYOFFICE 编辑器实例。
- *
- * 调用后 ONLYOFFICE Document Server 会感知到客户端断连，
- * 当所有客户端都断开后会触发 callback status 2（保存并关闭）。
- */
 function destroyDocEditor() {
   try {
     const editor = getDocEditorInstance();
@@ -323,8 +482,6 @@ async function closeEditingSession(options = {}) {
 
   isClosingSession.value = true;
   closeEditingSessionPromise = (async () => {
-    // 显式点击“保存并返回”时，先走后端 Command Service 的 forcesave + await，
-    // 保证这次用户主动触发的保存已经完成，再继续销毁编辑器和关闭会话。
     if (!keepalive) {
       const saveResponse = await apiFetch(`/api/documents/${props.documentId}/save`, {
         method: "POST"
@@ -335,12 +492,8 @@ async function closeEditingSession(options = {}) {
       saveStatus.value = await saveResponse.json();
     }
 
-    // 页面继续留在编辑页时，再主动销毁编辑器实例（断开与 DS 的连接）。
     destroyDocEditor();
 
-    // 最后通知后端关闭编辑会话记录。
-    // 如果销毁编辑器后 ONLYOFFICE 还会补发关闭类 callback，
-    // 由后端按“是否还有活跃编辑会话”决定是否继续投影为 editing。
     const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/close`, {
       method: "POST",
       keepalive
@@ -407,6 +560,7 @@ function saveStatusTone(state) {
 watch(
   () => [props.documentId, props.readonly, props.showConsole],
   async () => {
+    disposeBridge();
     stopSaveStatusPolling();
     stopSessionHeartbeatPolling();
     saveStatus.value = null;
@@ -432,6 +586,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(async () => {
+  disposeBridge();
   stopSaveStatusPolling();
   stopSessionHeartbeatPolling();
   removeUnloadListeners?.();
@@ -439,7 +594,9 @@ onBeforeUnmount(async () => {
 });
 
 defineExpose({
-  closeEditingSession
+  closeEditingSession,
+  captureSelectedText,
+  refreshOutline
 });
 </script>
 
@@ -467,27 +624,23 @@ defineExpose({
         />
       </div>
 
-      <!-- Arrow toggle -->
-      <div 
-        v-if="shouldShowConsole && !isConsoleOpen" 
-        class="stage-edge-toggle" 
-        title="打开控制台"
+      <div
+        v-if="shouldShowConsole && !isConsoleOpen"
+        class="stage-edge-toggle"
+        title="打开 AI 对话工作台"
         @click="toggleConsole"
       >
         <el-icon><ArrowLeft /></el-icon>
       </div>
     </el-main>
 
-    <div
-      v-show="shouldShowConsole && isConsoleOpen"
-      class="floating-console"
-    >
+    <div v-show="shouldShowConsole && isConsoleOpen" class="floating-console">
       <div class="console-panel-header">
         <div style="flex: 1;">
-          <p class="eyebrow">编辑运行态</p>
+          <p class="eyebrow">AI 对话准备态</p>
           <h2 class="title">{{ props.documentTitle || props.documentId }}</h2>
           <p class="summary">
-            {{ props.readonly ? "当前页面以只读预览方式打开文档，不建立活跃编辑会话。" : "当前页面已进入可编辑工作台，离开页面前会显式结束当前编辑会话。" }}
+            当前页面已进入 AI-ready 编辑工作台，可先抓取选区、刷新章节目录并快速定位内容。
           </p>
         </div>
         <el-button class="panel-close" circle @click="closeConsole">
@@ -497,66 +650,149 @@ defineExpose({
 
       <div class="console-body">
         <el-card shadow="never" class="panel-section">
-          <template #header>当前文档</template>
-          <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
-          <p class="panel-document-meta">documentId: <code>{{ props.documentId }}</code></p>
-          <p class="panel-document-meta">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
-        </el-card>
+          <template #header>
+            <div class="panel-section-header">
+              <span>当前选区</span>
+              <el-button
+                size="small"
+                :loading="isCapturingSelection"
+                :disabled="isLoading || isClosingSession"
+                @click="captureSelectedText"
+              >
+                {{ isCapturingSelection ? "抓取中..." : "抓取当前选区" }}
+              </el-button>
+            </div>
+          </template>
 
-        <el-card v-if="saveStatus" shadow="never" class="panel-section">
-          <template #header>最近保存状态</template>
-          <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
-            <p class="save-status-headline" style="font-weight: bold; margin-bottom: 8px;">{{ saveStatus.message }}</p>
-            <p class="save-status-meta">
-              最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
-            </p>
-            <p class="save-status-meta">
-              最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackTime) }}</code>
-            </p>
-            <p class="save-status-meta">
-              最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedTime) }}</code>
-            </p>
+          <div class="bridge-status-row">
+            <el-tag size="small" :type="bridgeStatusType">{{ bridgeStatusLabel }}</el-tag>
+            <span class="bridge-capability">{{ bridgeCapabilityLabel }}</span>
           </div>
-          <ul v-if="saveStatus.recentEvents?.length" class="save-status-events">
-            <li v-for="event in saveStatus.recentEvents" :key="`${event.eventType}-${event.eventTime}`">
-              <strong>{{ event.eventType }}</strong>
-              <span>{{ event.message }}</span>
-              <time>{{ formatTimestamp(event.eventTime) }}</time>
-            </li>
-          </ul>
-          <el-button style="margin-top: 12px;" @click="loadSaveStatus">
-            刷新保存状态
-          </el-button>
+          <p class="panel-hint">{{ bridgeStatusMessage }}</p>
+          <el-alert
+            v-if="bridgeErrorMessage"
+            :title="bridgeErrorMessage"
+            type="error"
+            show-icon
+            :closable="false"
+            class="panel-inline-alert"
+          />
+
+          <div v-if="selectedText" class="selection-preview">
+            <pre>{{ selectedText }}</pre>
+          </div>
+          <el-empty
+            v-else-if="hasEmptySelection"
+            description="当前没有选中文本，可先在文档中框选一段内容后再抓取。"
+            :image-size="72"
+          />
+          <p v-else class="panel-hint">
+            点击“抓取当前选区”后，这里会展示可直接进入 AI 对话窗口的文本上下文。
+          </p>
         </el-card>
 
         <el-card shadow="never" class="panel-section">
-          <template #header>编辑动作</template>
-          <div class="console-inline-actions" style="margin-bottom: 16px;">
-            <el-tag type="info" style="margin-right: 8px;">{{ modeLabel }}</el-tag>
+          <template #header>
+            <div class="panel-section-header">
+              <span>章节标题</span>
+              <el-button
+                size="small"
+                :loading="isRefreshingOutline"
+                :disabled="isLoading || isClosingSession"
+                @click="refreshOutline"
+              >
+                {{ isRefreshingOutline ? "刷新中..." : "刷新目录" }}
+              </el-button>
+            </div>
+          </template>
+
+          <div v-if="outlineItems.length" class="outline-list">
+            <button
+              v-for="heading in outlineItems"
+              :key="heading.id"
+              type="button"
+              class="outline-item"
+              :class="{ active: activeHeadingId === heading.id }"
+              @click="jumpToHeading(heading)"
+            >
+              <span class="outline-level">H{{ heading.level }}</span>
+              <span class="outline-copy">
+                <strong>{{ heading.text || "未命名标题" }}</strong>
+                <small>{{ heading.styleName || `段落 ${heading.paragraphIndex}` }}</small>
+              </span>
+            </button>
+          </div>
+          <el-empty
+            v-else-if="hasEmptyOutline"
+            description="当前文档还没有检测到标题段落。"
+            :image-size="72"
+          />
+          <p v-else class="panel-hint">
+            点击“刷新目录”后，这里会显示文档中的章节标题，并支持快速定位。
+          </p>
+        </el-card>
+
+        <el-card shadow="never" class="panel-section">
+          <template #header>运行态 / 现有动作</template>
+          <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
+          <p class="panel-document-meta">documentId: <code>{{ props.documentId }}</code></p>
+          <p class="panel-document-meta">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
+
+          <div class="console-inline-actions">
+            <el-tag type="info">{{ modeLabel }}</el-tag>
             <el-button size="small" :disabled="isLoading" @click="loadEditorConfig">
               重新加载配置
             </el-button>
           </div>
-          
-          <el-form label-position="top">
-            <el-form-item label="网络图片地址">
-              <el-input
-                v-model="imageUrl"
-                type="url"
-                placeholder="https://example.com/demo.png"
-                :disabled="isLoading || isInsertingImage"
-              />
-            </el-form-item>
-            <el-form-item>
-              <el-button
-                type="primary"
-                :disabled="isLoading || isInsertingImage || isClosingSession"
-                @click="insertRemoteImage"
-              >
-                {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
-              </el-button>
-            </el-form-item>
-          </el-form>
+
+          <div v-if="saveStatus" class="runtime-block">
+            <p class="runtime-title">最近保存状态</p>
+            <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
+              <p class="save-status-headline" style="font-weight: bold; margin-bottom: 8px;">{{ saveStatus.message }}</p>
+              <p class="save-status-meta">
+                最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
+              </p>
+              <p class="save-status-meta">
+                最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackTime) }}</code>
+              </p>
+              <p class="save-status-meta">
+                最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedTime) }}</code>
+              </p>
+            </div>
+            <ul v-if="saveStatus.recentEvents?.length" class="save-status-events">
+              <li v-for="event in saveStatus.recentEvents" :key="`${event.eventType}-${event.eventTime}`">
+                <strong>{{ event.eventType }}</strong>
+                <span>{{ event.message }}</span>
+                <time>{{ formatTimestamp(event.eventTime) }}</time>
+              </li>
+            </ul>
+            <el-button style="margin-top: 12px;" @click="loadSaveStatus">
+              刷新保存状态
+            </el-button>
+          </div>
+
+          <div class="runtime-block">
+            <p class="runtime-title">在光标处插入网络图片</p>
+            <el-form label-position="top">
+              <el-form-item label="网络图片地址">
+                <el-input
+                  v-model="imageUrl"
+                  type="url"
+                  placeholder="https://example.com/demo.png"
+                  :disabled="isLoading || isInsertingImage"
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button
+                  type="primary"
+                  :disabled="isLoading || isInsertingImage || isClosingSession"
+                  @click="insertRemoteImage"
+                >
+                  {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
+                </el-button>
+              </el-form-item>
+            </el-form>
+          </div>
         </el-card>
       </div>
     </div>
@@ -579,7 +815,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   position: relative;
-  padding: 0; /* Override el-main padding for full editor */
+  padding: 0;
 }
 
 .editor-shell {
@@ -659,14 +895,127 @@ defineExpose({
   --el-card-padding: 16px;
 }
 
+.panel-section-header,
+.console-inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.console-inline-actions {
+  margin: 16px 0;
+}
+
 .panel-document-title,
 .panel-document-meta {
   margin: 0 0 8px 0;
   font-size: 14px;
   color: var(--el-text-color-primary);
 }
+
 .panel-document-title {
   font-weight: bold;
+}
+
+.panel-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+
+.panel-inline-alert {
+  margin-top: 12px;
+}
+
+.bridge-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bridge-capability {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.selection-preview {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  max-height: 220px;
+  overflow: auto;
+}
+
+.selection-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  line-height: 1.6;
+}
+
+.outline-list {
+  display: grid;
+  gap: 8px;
+}
+
+.outline-item {
+  width: 100%;
+  border: 1px solid var(--el-border-color);
+  border-radius: 10px;
+  background: var(--el-fill-color-blank);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.outline-item:hover,
+.outline-item.active {
+  border-color: var(--el-color-primary-light-5);
+  background: var(--el-color-primary-light-9);
+}
+
+.outline-level {
+  display: inline-flex;
+  min-width: 28px;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--el-fill-color);
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.outline-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.outline-copy strong {
+  color: var(--el-text-color-primary);
+  line-height: 1.5;
+}
+
+.outline-copy small {
+  color: var(--el-text-color-secondary);
+}
+
+.runtime-block + .runtime-block {
+  margin-top: 20px;
+}
+
+.runtime-title {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  font-weight: 600;
 }
 
 .save-status-card {
@@ -675,6 +1024,7 @@ defineExpose({
   background: var(--el-fill-color-light);
   margin-bottom: 12px;
 }
+
 .save-status-meta {
   margin: 4px 0;
   font-size: 13px;
@@ -688,6 +1038,7 @@ defineExpose({
   display: grid;
   gap: 8px;
 }
+
 .save-status-events li {
   padding: 8px 12px;
   background: var(--el-fill-color);
@@ -697,9 +1048,11 @@ defineExpose({
   flex-direction: column;
   gap: 4px;
 }
+
 .save-status-events strong {
   color: var(--el-color-primary);
 }
+
 .save-status-events time {
   color: var(--el-text-color-secondary);
 }
