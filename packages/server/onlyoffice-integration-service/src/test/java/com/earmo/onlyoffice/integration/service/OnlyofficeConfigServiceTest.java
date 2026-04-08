@@ -99,7 +99,7 @@ class OnlyofficeConfigServiceTest {
     assertEquals(Boolean.FALSE, permissions.get("print"));
     assertEquals(Boolean.FALSE, customization.get("compactToolbar"));
     assertEquals(Boolean.FALSE, customization.get("toolbarNoTabs"));
-    assertEquals(Boolean.FALSE, leftMenu.get("mode"));
+        assertEquals(Boolean.TRUE, leftMenu.get("mode"));
     assertEquals(Boolean.TRUE, leftMenu.get("navigation"));
     assertNotNull(config.get("token"));
   }
