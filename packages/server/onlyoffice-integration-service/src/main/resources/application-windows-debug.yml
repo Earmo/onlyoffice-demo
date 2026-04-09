@@ -20,8 +20,9 @@ spring:
 
 onlyoffice:
   integration:
-    # 浏览器访问本机后端时使用的公开地址。
-    public-base-url: http://localhost:8080
+    # 浏览器访问前端工作台时使用的公开地址。
+    # 本地断点调试下，ONLYOFFICE 插件静态资源由 Vite dev server 提供。
+    public-base-url: http://localhost:5173
     # ONLYOFFICE 容器回调 Windows 本机后端时使用的内部地址。
     internal-base-url: http://host.docker.internal:8080
     # 浏览器加载 Docker 内 ONLYOFFICE Docs 静态资源时使用的宿主机地址。
