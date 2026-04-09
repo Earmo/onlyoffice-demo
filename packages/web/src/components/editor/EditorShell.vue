@@ -45,6 +45,9 @@ const bridgeStatusMessage = ref("等待文档运行态桥接就绪。");
 const bridgeReady = ref(false);
 const bridgeCapability = ref("plugin");
 const activeHeadingId = ref("");
+const activeHeadingNode = ref(null);
+const isSelectionSectionExpanded = ref(true);
+const isOutlineSectionExpanded = ref(true);
 const isRuntimeSectionExpanded = ref(true);
 let saveStatusTimer = null;
 let sessionHeartbeatTimer = null;
@@ -59,6 +62,24 @@ const bridgeStatusType = computed(() => {
     return "danger";
   }
   return bridgeReady.value ? "success" : "info";
+});
+
+const outlineTreeData = computed(() => {
+  const tree = [];
+  const stack = [];
+  for (const item of outlineItems.value) {
+    const node = { ...item, id: item.id, label: item.text || "未命名标题", level: item.level, children: [] };
+    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) {
+      stack.pop();
+    }
+    if (stack.length > 0) {
+      stack[stack.length - 1].children.push(node);
+    } else {
+      tree.push(node);
+    }
+    stack.push(node);
+  }
+  return tree;
 });
 const bridgeStatusLabel = computed(() => {
   if (bridgeErrorMessage.value) {
@@ -95,6 +116,7 @@ function resetBridgeState() {
   bridgeReady.value = false;
   bridgeCapability.value = "plugin";
   activeHeadingId.value = "";
+  activeHeadingNode.value = null;
 }
 
 function disposeBridge() {
@@ -219,6 +241,7 @@ async function jumpToHeading(heading) {
   try {
     const payload = await onlyofficeBridge.jumpToHeading(heading);
     activeHeadingId.value = heading.id;
+    activeHeadingNode.value = heading;
     bridgeStatusMessage.value = `已定位到章节：${heading.text || heading.id}`;
     return payload;
   } catch (error) {
@@ -302,6 +325,14 @@ function toggleConsole() {
 
 function closeConsole() {
   isConsoleOpen.value = false;
+}
+
+function toggleSelectionSection() {
+  isSelectionSectionExpanded.value = !isSelectionSectionExpanded.value;
+}
+
+function toggleOutlineSection() {
+  isOutlineSectionExpanded.value = !isOutlineSectionExpanded.value;
 }
 
 function toggleRuntimeSection() {
@@ -654,87 +685,122 @@ defineExpose({
       </div>
 
       <div class="console-body">
+        <!-- 页面顶部展示活跃标题和段落 -->
+        <el-alert
+          v-if="activeHeadingNode"
+          type="info"
+          :closable="true"
+          style="margin-bottom: 0;"
+          @close="activeHeadingNode = null"
+        >
+          <template #title>
+            <div style="font-size: 14px; font-weight: bold; color: var(--el-text-color-primary);">
+              {{ activeHeadingNode.text || "未命名标题" }}
+            </div>
+          </template>
+          <div style="font-size: 13px; color: var(--el-text-color-regular); margin-top: 4px;">
+            <span class="outline-level-tag" style="margin-right: 6px;">H{{ activeHeadingNode.level }}</span>
+            <span>{{ activeHeadingNode.styleName || `段落 ${activeHeadingNode.paragraphIndex}` }}</span>
+          </div>
+        </el-alert>
+
         <el-card shadow="never" class="panel-section">
           <template #header>
             <div class="panel-section-header">
               <span>当前选区</span>
-              <el-button
-                size="small"
-                :loading="isCapturingSelection"
-                :disabled="isLoading || isClosingSession"
-                @click="captureSelectedText"
-              >
-                {{ isCapturingSelection ? "抓取中..." : "抓取当前选区" }}
-              </el-button>
+              <div style="display: flex; gap: 8px;">
+                <el-button
+                  size="small"
+                  :loading="isCapturingSelection"
+                  :disabled="isLoading || isClosingSession"
+                  @click="captureSelectedText"
+                >
+                  {{ isCapturingSelection ? "抓取中..." : "抓取当前选区" }}
+                </el-button>
+                <el-button size="small" text @click="toggleSelectionSection">
+                  {{ isSelectionSectionExpanded ? "收起" : "展开" }}
+                </el-button>
+              </div>
             </div>
           </template>
 
-          <div class="bridge-status-row">
-            <el-tag size="small" :type="bridgeStatusType">{{ bridgeStatusLabel }}</el-tag>
-            <span class="bridge-capability">{{ bridgeCapabilityLabel }}</span>
-          </div>
-          <p class="panel-hint">{{ bridgeStatusMessage }}</p>
-          <el-alert
-            v-if="bridgeErrorMessage"
-            :title="bridgeErrorMessage"
-            type="error"
-            show-icon
-            :closable="false"
-            class="panel-inline-alert"
-          />
+          <div v-show="isSelectionSectionExpanded">
+            <div class="bridge-status-row">
+              <el-tag size="small" :type="bridgeStatusType">{{ bridgeStatusLabel }}</el-tag>
+              <span class="bridge-capability">{{ bridgeCapabilityLabel }}</span>
+            </div>
+            <p class="panel-hint">{{ bridgeStatusMessage }}</p>
+            <el-alert
+              v-if="bridgeErrorMessage"
+              :title="bridgeErrorMessage"
+              type="error"
+              show-icon
+              :closable="false"
+              class="panel-inline-alert"
+            />
 
-          <div v-if="selectedText" class="selection-preview">
-            <pre>{{ selectedText }}</pre>
+            <div v-if="selectedText" class="selection-preview">
+              <pre>{{ selectedText }}</pre>
+            </div>
+            <el-empty
+              v-else-if="hasEmptySelection"
+              description="当前没有选中文本，可先在文档中框选一段内容后再抓取。"
+              :image-size="72"
+            />
+            <p v-else class="panel-hint">
+              点击“抓取当前选区”后，这里会展示可直接进入 AI 对话窗口的文本上下文。
+            </p>
           </div>
-          <el-empty
-            v-else-if="hasEmptySelection"
-            description="当前没有选中文本，可先在文档中框选一段内容后再抓取。"
-            :image-size="72"
-          />
-          <p v-else class="panel-hint">
-            点击“抓取当前选区”后，这里会展示可直接进入 AI 对话窗口的文本上下文。
-          </p>
         </el-card>
 
         <el-card shadow="never" class="panel-section">
           <template #header>
             <div class="panel-section-header">
               <span>章节标题</span>
-              <el-button
-                size="small"
-                :loading="isRefreshingOutline"
-                :disabled="isLoading || isClosingSession"
-                @click="refreshOutline"
-              >
-                {{ isRefreshingOutline ? "刷新中..." : "刷新目录" }}
-              </el-button>
+              <div style="display: flex; gap: 8px;">
+                <el-button
+                  size="small"
+                  :loading="isRefreshingOutline"
+                  :disabled="isLoading || isClosingSession"
+                  @click="refreshOutline"
+                >
+                  {{ isRefreshingOutline ? "刷新中..." : "刷新目录" }}
+                </el-button>
+                <el-button size="small" text @click="toggleOutlineSection">
+                  {{ isOutlineSectionExpanded ? "收起" : "展开" }}
+                </el-button>
+              </div>
             </div>
           </template>
 
-          <div v-if="outlineItems.length" class="outline-list">
-            <button
-              v-for="heading in outlineItems"
-              :key="heading.id"
-              type="button"
-              class="outline-item"
-              :class="{ active: activeHeadingId === heading.id }"
-              @click="jumpToHeading(heading)"
-            >
-              <span class="outline-level">H{{ heading.level }}</span>
-              <span class="outline-copy">
-                <strong>{{ heading.text || "未命名标题" }}</strong>
-                <small>{{ heading.styleName || `段落 ${heading.paragraphIndex}` }}</small>
-              </span>
-            </button>
+          <div v-show="isOutlineSectionExpanded">
+            <div v-if="outlineTreeData.length" class="outline-list">
+              <el-tree
+                :data="outlineTreeData"
+                node-key="id"
+                :current-node-key="activeHeadingId"
+                highlight-current
+                default-expand-all
+                :expand-on-click-node="false"
+                @node-click="jumpToHeading"
+              >
+                <template #default="{ node, data }">
+                  <span class="custom-tree-node">
+                    <span class="outline-level-tag">H{{ data.level }}</span>
+                    <span class="outline-text-tag">{{ data.label }}</span>
+                  </span>
+                </template>
+              </el-tree>
+            </div>
+            <el-empty
+              v-else-if="hasEmptyOutline"
+              description="当前文档还没有检测到标题段落。"
+              :image-size="72"
+            />
+            <p v-else class="panel-hint">
+              点击“刷新目录”后，这里会显示文档中的章节标题，并支持快速定位。
+            </p>
           </div>
-          <el-empty
-            v-else-if="hasEmptyOutline"
-            description="当前文档还没有检测到标题段落。"
-            :image-size="72"
-          />
-          <p v-else class="panel-hint">
-            点击“刷新目录”后，这里会显示文档中的章节标题，并支持快速定位。
-          </p>
         </el-card>
 
         <el-card shadow="never" class="panel-section">
@@ -977,49 +1043,34 @@ defineExpose({
   gap: 8px;
 }
 
-.outline-item {
-  width: 100%;
-  border: 1px solid var(--el-border-color);
-  border-radius: 10px;
-  background: var(--el-fill-color-blank);
-  padding: 10px 12px;
-  text-align: left;
-  cursor: pointer;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.outline-item:hover,
-.outline-item.active {
-  border-color: var(--el-color-primary-light-5);
-  background: var(--el-color-primary-light-9);
-}
-
-.outline-level {
+.outline-level-tag {
   display: inline-flex;
-  min-width: 28px;
+  min-width: 24px;
   justify-content: center;
   border-radius: 999px;
   background: var(--el-fill-color);
   padding: 2px 6px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--el-text-color-secondary);
 }
 
-.outline-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.outline-copy strong {
+.outline-text-tag {
+  font-size: 13px;
   color: var(--el-text-color-primary);
-  line-height: 1.5;
 }
 
-.outline-copy small {
-  color: var(--el-text-color-secondary);
+.custom-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.custom-tree-node .outline-text-tag {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .runtime-block + .runtime-block {

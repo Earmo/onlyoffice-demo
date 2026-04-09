@@ -218,6 +218,15 @@
         };
       }
 
+      // Hack to scroll the target paragraph to the top of the viewport:
+      // First select the last paragraph (scrolls viewport down), then the target paragraph (scrolls viewport up).
+      if (allParagraphs.length > 0) {
+        const lastParagraph = allParagraphs[allParagraphs.length - 1];
+        if (lastParagraph && typeof lastParagraph.Select === "function") {
+          lastParagraph.Select();
+        }
+      }
+
       const paragraph = allParagraphs[targetIndex];
       const selected = paragraph && typeof paragraph.Select === "function" ? paragraph.Select() : false;
       return {
