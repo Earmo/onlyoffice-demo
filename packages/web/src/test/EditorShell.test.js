@@ -2,6 +2,8 @@ import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, jsonResponse } from "./helpers";
 
+// 这组 mock 把桥接层从组件测试中剥离出来，
+// 让测试可以聚焦 EditorShell 的页面行为，而不是实际 ONLYOFFICE 运行时。
 const bridgeMocks = vi.hoisted(() => ({
   createOnlyofficeBridge: vi.fn(),
   waitForReady: vi.fn(),
@@ -95,6 +97,7 @@ describe("EditorShell", () => {
   });
 
   it("应在 close-session 进行中复用同一个请求而不是重复发送", async () => {
+    // 这个用例保护“重复点击离开 / 返回 / 切换”时不会发多次保存请求。
     let resolveSaveRequest;
     let saveCallCount = 0;
 
@@ -146,6 +149,7 @@ describe("EditorShell", () => {
   });
 
   it("应先等待后端保存完成，再发送 close-session", async () => {
+    // close-session 顺序很关键：先 save，再 close，避免后端把最后一次修改落空。
     let resolveSaveRequest;
     let closeCallCount = 0;
     fetch.mockImplementation((url) => {
@@ -215,6 +219,7 @@ describe("EditorShell", () => {
   });
 
   it("应能抓取当前选区并展示文本预览", async () => {
+    // 这里验证的是宿主页按钮 -> 桥接调用 -> 面板渲染这一整条链路。
     fetch
       .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
       .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
@@ -319,7 +324,8 @@ describe("EditorShell", () => {
     await wrapper.find(".stage-edge-toggle").trigger("click");
     await flushPromises();
 
-    const outlineButton = wrapper.findAll(".outline-item").find(button => button.text().includes("一、项目背景"));
+    // 直接点击渲染出的目录节点，更贴近真实用户操作，也能避开组件事件校验噪音。
+    const outlineButton = wrapper.findAll(".custom-tree-node").find(button => button.text().includes("一、项目背景"));
     await outlineButton.trigger("click");
     await flushPromises();
 
@@ -346,7 +352,8 @@ describe("EditorShell", () => {
 
     expect(wrapper.text()).toContain("最近保存状态");
 
-    const toggleButton = wrapper.findAll("button").find(button => button.text().includes("收起"));
+    // 当前页面里有多个“收起”按钮，最后一个才对应“运行态 / 现有动作”区块。
+    const toggleButton = wrapper.findAll("button").filter(button => button.text().includes("收起")).at(-1);
     await toggleButton.trigger("click");
     await flushPromises();
 
@@ -356,6 +363,7 @@ describe("EditorShell", () => {
 });
 
 function editorConfigPayload(title, mode = "edit") {
+  // 测试里只保留 EditorShell 真正依赖的最小 editor-config 形状。
   return {
     documentServerUrl: "https://docs.example.test/",
     config: {

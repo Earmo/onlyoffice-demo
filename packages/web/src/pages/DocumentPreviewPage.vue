@@ -11,6 +11,8 @@ const isLoading = ref(true);
 const errorMessage = ref("");
 const currentDocument = ref(null);
 
+// 预览页沿用和编辑页相同的 documentId 路由语义，
+// 但整个页面明确保持只读，不建立编辑心跳和右侧运行台。
 const currentDocumentId = computed(() => String(route.params.documentId ?? ""));
 
 async function readErrorMessage(response, fallbackMessage) {
@@ -23,6 +25,7 @@ async function readErrorMessage(response, fallbackMessage) {
 }
 
 async function loadPreviewPageData() {
+  // 预览页只需要文档摘要信息，不需要像编辑页那样同时拉最近文档列表。
   isLoading.value = true;
   errorMessage.value = "";
 
@@ -44,6 +47,7 @@ function goBackToLibrary() {
 }
 
 function goToEditor() {
+  // 预览和编辑是显式切换，不在当前页内部热切模式，便于保持会话边界清晰。
   router.push({ name: "editor", params: { documentId: currentDocumentId.value } });
 }
 

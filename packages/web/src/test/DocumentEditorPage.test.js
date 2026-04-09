@@ -60,6 +60,7 @@ describe("DocumentEditorPage", () => {
   });
 
   it("应在返回列表前先弹出确认并结束当前编辑会话", async () => {
+    // 返回列表是最常见的离场路径，必须验证“先关会话，后跳转”。
     mockEditorPageRequests();
 
     const wrapper = mount(DocumentEditorPage);
@@ -157,6 +158,7 @@ describe("DocumentEditorPage", () => {
 });
 
 function mockEditorPageRequests() {
+  // 编辑页初始化需要两份数据：当前文档详情 + 左侧最近文档列表。
   fetch
     .mockResolvedValueOnce(jsonResponse({
       documentId: "doc-1",

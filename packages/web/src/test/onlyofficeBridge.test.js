@@ -3,6 +3,8 @@ import { createOnlyofficeBridge, ONLYOFFICE_AI_BRIDGE_EVENTS } from "../componen
 
 describe("onlyofficeBridge", () => {
   it("应记录 ready 事件来源并向真实插件窗口发送后续请求", async () => {
+    // 这是修复过的关键回归点：
+    // ready 事件来自插件真正所在窗口，后续命令必须发回这个 source，而不是中间 iframe。
     const pluginWindow = {
       postMessage: vi.fn()
     };

@@ -24,6 +24,10 @@ const props = defineProps({
   }
 });
 
+// 编辑器壳层集中维护三类状态：
+// 1. 编辑器加载与会话生命周期；
+// 2. ONLYOFFICE 桥接能力状态；
+// 3. 右侧 AI-ready 抽屉面板的展示状态。
 const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
 const isConsoleOpen = ref(false);
 const isLoading = ref(true);
@@ -55,6 +59,8 @@ let closeEditingSessionPromise = null;
 let removeUnloadListeners = null;
 let onlyofficeBridge = null;
 
+// modeLabel / shouldShowConsole / bridgeStatusType 都是给模板直接消费的视图衍生态，
+// 保证模板层不再额外拼判断，便于后面继续往“AI 对话正式版”演进。
 const modeLabel = computed(() => (props.readonly ? "预览模式" : "编辑模式"));
 const shouldShowConsole = computed(() => props.showConsole && !props.readonly);
 const bridgeStatusType = computed(() => {
@@ -65,6 +71,8 @@ const bridgeStatusType = computed(() => {
 });
 
 const outlineTreeData = computed(() => {
+  // 后端和插件返回的是扁平 heading 数组，这里按 level 还原成树结构，
+  // 交给 Element Plus Tree 后就能直接得到“章节目录”交互。
   const tree = [];
   const stack = [];
   for (const item of outlineItems.value) {
@@ -99,14 +107,21 @@ async function readErrorMessage(response, fallbackMessage) {
 }
 
 function getDocEditorInstance() {
+  // ONLYOFFICE Vue 组件会把实例挂到 window.DocEditor.instances.docEditor。
+  // 这里统一封装，避免模板和业务函数到处直接读全局变量。
   return window.DocEditor?.instances?.docEditor;
 }
 
 function getDocEditorIframe() {
+  // 宿主页需要拿 iframe 的原因主要有两个：
+  // 1. 桥接初始化时兜底定位编辑器窗口；
+  // 2. 编辑器 ready 后尝试自动打开左侧导航面板。
   return document.getElementById("docEditor")?.querySelector("iframe") ?? null;
 }
 
 function resetBridgeState() {
+  // 每次文档切换、编辑器重载或桥接销毁时，都回到同一套“未连接”初始态，
+  // 避免上一份文档的选区/目录残留在当前抽屉里。
   selectedText.value = "";
   hasEmptySelection.value = false;
   outlineItems.value = [];
@@ -130,6 +145,8 @@ function ensureBridge() {
     return null;
   }
   if (!onlyofficeBridge) {
+    // 桥接对象按需创建，并绑定当前编辑器实例与 iframe 获取器。
+    // 这样在编辑器重新 mount 后，不需要页面层手动维护窗口引用。
     onlyofficeBridge = createOnlyofficeBridge({
       getEditor: getDocEditorInstance,
       getIframe: getDocEditorIframe
@@ -160,6 +177,7 @@ async function waitForBridgeReady(options = {}) {
   bridgeErrorMessage.value = "";
 
   try {
+    // ready 阶段本质上是在等隐藏插件向宿主页发送握手消息。
     const payload = await bridge.waitForReady();
     bridgeReady.value = true;
     bridgeCapability.value = payload?.capability || bridge.capability;
@@ -181,6 +199,8 @@ async function captureSelectedText() {
     return null;
   }
 
+  // 选区抓取是未来 AI 对话“带上下文提问”的前置能力，
+  // 所以这里除了拿文本本身，还要明确告诉用户当前是否为空选区。
   isCapturingSelection.value = true;
   bridgeErrorMessage.value = "";
 
@@ -212,6 +232,8 @@ async function refreshOutline(options = {}) {
   }
 
   try {
+    // 章节目录来自插件内部遍历文档段落的结果。
+    // 宿主页只负责把结果渲染成树，并提供点击跳转。
     const payload = await onlyofficeBridge.refreshOutline();
     outlineItems.value = Array.isArray(payload.headings) ? payload.headings : [];
     hasEmptyOutline.value = Boolean(payload.emptyOutline || outlineItems.value.length === 0);
@@ -239,6 +261,8 @@ async function jumpToHeading(heading) {
   bridgeErrorMessage.value = "";
 
   try {
+    // 跳转成功后同时更新抽屉顶部的“当前活跃标题”提示，
+    // 让用户知道自己已经被定位到哪一章。
     const payload = await onlyofficeBridge.jumpToHeading(heading);
     activeHeadingId.value = heading.id;
     activeHeadingNode.value = heading;
@@ -256,6 +280,10 @@ async function loadEditorConfig() {
   disposeBridge();
 
   try {
+    // editor-config 由后端统一签发：
+    // - 同源的 ONLYOFFICE 文档服务地址
+    // - 文档 key/token/config
+    // - 编辑态下自动挂载的隐藏桥接插件配置
     const params = new URLSearchParams({
       readonly: String(props.readonly)
     });
@@ -267,6 +295,7 @@ async function loadEditorConfig() {
     editorPayload.value = await response.json();
     editingSessionOpened.value = !props.readonly;
     if (!props.readonly) {
+      // 只有编辑态才需要维护 editing session 心跳。
       startSessionHeartbeatPolling();
     }
     editorKey.value += 1;
@@ -291,6 +320,7 @@ async function fetchSaveStatusSnapshot(options = {}) {
   const { suppressErrors = false } = options;
 
   try {
+    // 保存状态来自我们自己的后端，不依赖 ONLYOFFICE iframe DOM。
     const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
     if (!response.ok) {
       throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
@@ -320,6 +350,7 @@ async function loadSaveStatus() {
 }
 
 function toggleConsole() {
+  // 右侧工作台默认收起，避免首次进入编辑页时压缩编辑区域。
   isConsoleOpen.value = !isConsoleOpen.value;
 }
 
@@ -355,6 +386,8 @@ async function insertRemoteImage() {
   errorMessage.value = "";
 
   try {
+    // 图片插入仍沿用现有后端接口：
+    // 后端生成 ONLYOFFICE insertImage 所需配置，前端只负责调用 editor 实例写入。
     const response = await apiFetch(`/api/documents/${props.documentId}/images/insert`, {
       method: "POST",
       headers: {
@@ -379,6 +412,8 @@ async function insertRemoteImage() {
 }
 
 function handleDocumentReady() {
+  // onDocumentReady 说明编辑器 iframe 已完成主加载。
+  // 之后才能安全启动保存轮询、桥接握手和导航面板展开。
   startSessionHeartbeatPolling();
   if (shouldShowConsole.value) {
     startSaveStatusPolling();
@@ -396,6 +431,8 @@ function handleDocumentReady() {
 function openNavigationPanelAfterReady() {
   setTimeout(() => {
     try {
+      // 这里是一个“同源时增强”的小优化：
+      // 如果 iframe 同源，就尝试自动点开左侧导航，帮助用户更快看到文档目录。
       const iframe = getDocEditorIframe();
       if (!iframe) {
         return;
@@ -417,6 +454,7 @@ function openNavigationPanelAfterReady() {
 }
 
 function handleLoadComponentError(errorCode, errorDescription) {
+  // 组件级错误通常是 DocsAPI、反向代理或文档服务地址不可达。
   disposeBridge();
   errorMessage.value = `ONLYOFFICE 组件加载失败（${errorCode}）：${errorDescription}`;
 }
@@ -446,6 +484,7 @@ async function touchEditingSession(options = {}) {
   }
 
   try {
+    // 编辑态下定期 heartbeat，避免后端把当前用户视为离线。
     const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/heartbeat`, {
       method: "POST",
       keepalive
@@ -503,6 +542,7 @@ async function closeEditingSession(options = {}) {
     return null;
   }
   if (closeEditingSessionPromise) {
+    // 同一轮离开流程里复用已有 promise，确保 save/close 只发一次。
     try {
       return await closeEditingSessionPromise;
     } catch (error) {
@@ -519,6 +559,8 @@ async function closeEditingSession(options = {}) {
   isClosingSession.value = true;
   closeEditingSessionPromise = (async () => {
     if (!keepalive) {
+      // 显式离开编辑页时先主动触发一次保存，再关闭 editing session，
+      // 这样能把“离开即保存”的体验收口到一个稳定流程里。
       const saveResponse = await apiFetch(`/api/documents/${props.documentId}/save`, {
         method: "POST"
       });
@@ -530,6 +572,7 @@ async function closeEditingSession(options = {}) {
 
     destroyDocEditor();
 
+    // 编辑器销毁后再通知后端关闭会话，避免前端残留实例继续发送 callback/heartbeat。
     const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/close`, {
       method: "POST",
       keepalive
@@ -562,6 +605,8 @@ function dispatchUnloadCloseRequest() {
     return;
   }
 
+  // beforeunload/pagehide 场景下不能依赖复杂异步流程，
+  // 这里只保留一个最小 keepalive close 请求，尽量把后端会话收尾掉。
   editingSessionOpened.value = false;
   stopSaveStatusPolling();
   stopSessionHeartbeatPolling();
@@ -596,6 +641,8 @@ function saveStatusTone(state) {
 watch(
   () => [props.documentId, props.readonly, props.showConsole],
   async () => {
+    // 文档切换时必须按顺序重置桥接、轮询和保存状态，
+    // 否则上一份文档的运行态很容易污染新文档页面。
     disposeBridge();
     stopSaveStatusPolling();
     stopSessionHeartbeatPolling();
@@ -613,6 +660,7 @@ onMounted(() => {
   const handlePageHide = () => {
     dispatchUnloadCloseRequest();
   };
+  // pagehide + beforeunload 两个事件都挂上，兼顾浏览器标签关闭和常规页面跳转。
   window.addEventListener("pagehide", handlePageHide);
   window.addEventListener("beforeunload", handlePageHide);
   removeUnloadListeners = () => {
@@ -630,6 +678,7 @@ onBeforeUnmount(async () => {
 });
 
 defineExpose({
+  // 页面层只暴露“离开前收尾”和“桥接能力入口”，避免父组件越过壳层直接摸内部状态。
   closeEditingSession,
   captureSelectedText,
   refreshOutline
@@ -685,7 +734,7 @@ defineExpose({
       </div>
 
       <div class="console-body">
-        <!-- 页面顶部展示活跃标题和段落 -->
+        <!-- 页面顶部展示当前跳转到的活跃标题，帮助用户确认章节定位结果 -->
         <el-alert
           v-if="activeHeadingNode"
           type="info"
@@ -881,6 +930,7 @@ defineExpose({
 </template>
 
 <style scoped>
+/* 编辑区和右侧 AI-ready 面板拆成双栏布局，左侧优先保证文档编辑空间。 */
 .editor-workspace {
   display: flex;
   flex-direction: row;
@@ -909,6 +959,7 @@ defineExpose({
 }
 
 .stage-edge-toggle {
+  /* 抽屉收起时保留一条窄触发条，方便快速唤起右侧工作台。 */
   position: absolute;
   right: 0;
   top: 50%;
@@ -928,6 +979,7 @@ defineExpose({
 }
 
 .floating-console {
+  /* 右侧工作台本阶段还是“AI 准备态”，后续会继续演进成正式对话窗口。 */
   width: 400px;
   max-width: 100vw;
   background: var(--el-bg-color);
@@ -1022,6 +1074,7 @@ defineExpose({
 }
 
 .selection-preview {
+  /* 选区预览可能包含多段文本和换行，这里保留原始结构方便直接送给 AI。 */
   margin-top: 12px;
   padding: 12px;
   border-radius: 8px;
@@ -1068,6 +1121,7 @@ defineExpose({
 }
 
 .custom-tree-node .outline-text-tag {
+  /* 目录里标题较长时省略显示，避免右侧面板因为超长标题被撑坏。 */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -81,6 +81,7 @@ async function readErrorMessage(response, fallbackMessage) {
 }
 
 function buildListParams() {
+  // 列表查询参数集中在这里组装，保证“搜索 / 翻页 / 重置 / 回流高亮”用的是同一套规则。
   const params = new URLSearchParams();
   params.set("pageNumber", String(pageNumber.value));
   params.set("pageSize", String(pageSize.value));
@@ -122,6 +123,7 @@ async function loadDocuments() {
 }
 
 async function loadRecentDocuments() {
+  // 最近文档是首页左栏的“继续上次工作”数据源，与主列表拆开请求，互不阻塞。
   const response = await apiFetch("/api/documents/recent?limit=3");
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `最近文档加载失败，HTTP ${response.status}`));
@@ -175,6 +177,7 @@ function syncHighlightFromRoute() {
 }
 
 async function revealDocument(documentSummary, message) {
+  // 创建、上传、远程导入成功后都走同一条“回流到列表并高亮新文档”的流程。
   showCreateDialog.value = false;
   searchQuery.value = "";
   statusFilter.value = "all";
@@ -189,6 +192,7 @@ async function revealDocument(documentSummary, message) {
 }
 
 async function createDocument() {
+  // 这里沿用最轻量的 prompt 交互，后续如果产品形态变复杂，再升级成表单弹窗。
   const title = window.prompt("请输入文档标题（可留空使用默认标题）", "未命名文档.docx");
   if (title === null) {
     return;
@@ -231,6 +235,7 @@ async function handleFileSelected(file) {
   errorMessage.value = "";
 
   try {
+    // 上传入口直接把 File 交给后端，前端不额外做文档类型解析。
     const formData = new FormData();
     formData.append("file", file);
 
@@ -257,6 +262,7 @@ async function importRemoteDocument() {
   errorMessage.value = "";
 
   try {
+    // 远程导入由后端负责拉取并入库，前端只提交源地址。
     const response = await apiFetch("/api/documents/import-remote", {
       method: "POST",
       headers: {
@@ -281,6 +287,7 @@ async function importRemoteDocument() {
 }
 
 function previewDocument(document) {
+  // “查看”和“编辑”拆成不同路由，避免只读预览误建立编辑会话。
   router.push({ name: "preview", params: { documentId: document.documentId } });
 }
 
@@ -300,6 +307,7 @@ function formatTimestamp(value) {
 }
 
 async function applyFilters() {
+  // 每次重新搜索都把页码重置到第一页，避免保留旧页码造成空页错觉。
   successMessage.value = "";
   pageNumber.value = 1;
   await reloadDocumentList();
@@ -345,6 +353,7 @@ async function deleteDocument(document) {
   errorMessage.value = "";
 
   try {
+    // 删除后不只刷新主列表，也要把最近文档一起刷新掉，保持首页两列一致。
     const response = await apiFetch(`/api/documents/${document.documentId}`, {
       method: "DELETE"
     });
@@ -367,6 +376,8 @@ async function deleteDocument(document) {
 }
 
 function openContextDialog() {
+  // 顶部“当前上下文”来自 localStorage 中缓存的 mock access context，
+  // 方便本地调试不同租户/用户头信息。
   const current = getCustomAccessContext() || {};
   contextForm.value = {
     tenantId: current.tenantId || "",
@@ -378,6 +389,7 @@ function openContextDialog() {
 }
 
 async function saveContext() {
+  // 保存上下文后主动重置筛选与高亮，避免把旧租户条件残留到新身份下。
   saveCustomAccessContext({
     tenantId: contextForm.value.tenantId.trim(),
     actorUser: contextForm.value.actorUser.trim(),
@@ -413,7 +425,7 @@ onMounted(loadLibraryWorkspace);
   <el-container class="library-shell">
     <el-main class="library-main">
       <el-row :gutter="24" class="library-grid">
-        <!-- 左侧栏：当前上下文与最近文档 -->
+        <!-- 左侧栏：当前上下文与最近文档，强调“我是谁、最近在干什么” -->
         <el-col :xs="24" :lg="5" class="library-column">
           <div class="column-stack column-stack-left">
             <el-card class="context-card library-card" shadow="hover">
@@ -468,7 +480,7 @@ onMounted(loadLibraryWorkspace);
           </div>
         </el-col>
 
-        <!-- 右侧栏：搜索条件与文档列表 -->
+        <!-- 右侧栏：筛选条件 + 分页列表，是首页的主操作区 -->
         <el-col :xs="24" :lg="19" class="library-column">
           <div class="column-stack column-stack-right">
             <el-card class="toolbar-panel library-card" shadow="never">

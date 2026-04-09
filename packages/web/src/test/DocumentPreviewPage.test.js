@@ -43,6 +43,7 @@ describe("DocumentPreviewPage", () => {
   });
 
   it("应以只读方式加载预览页并支持返回列表与进入编辑", async () => {
+    // 预览页的关键约束是：只读打开 EditorShell，同时不展示右侧控制台。
     fetch.mockResolvedValueOnce(jsonResponse({
       documentId: "doc-1",
       title: "预览稿.docx",

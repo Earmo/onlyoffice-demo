@@ -33,6 +33,7 @@ function resolveDefaultAccessContextHeaders() {
 }
 
 export function buildApiUrl(path) {
+  // 支持在 nginx 同源代理和独立调试 baseUrl 两种场景之间切换。
   return `${apiBaseUrl}${path}`;
 }
 
@@ -48,6 +49,7 @@ export function getCustomAccessContext() {
 }
 
 export function saveCustomAccessContext(context) {
+  // 允许传 null 作为“清空上下文”的语义，方便后续扩展重置动作。
   if (!context) {
     localStorage.removeItem(CUSTOM_CONTEXT_STORAGE_KEY);
   } else {
@@ -59,6 +61,8 @@ export function createAccessContextHeaders(headers = {}) {
   const defaultAccessContextHeaders = resolveDefaultAccessContextHeaders();
   const customContext = getCustomAccessContext() || {};
 
+  // 默认值 + 本地自定义上下文 + 调用方传入 headers 三层合并：
+  // 调用方 headers 放在最后，保留针对单个请求显式覆盖的能力。
   const mergedHeaders = { ...defaultAccessContextHeaders };
 
   if (customContext.tenantId) {
@@ -81,6 +85,7 @@ export function createAccessContextHeaders(headers = {}) {
 }
 
 export function apiFetch(path, options = {}) {
+  // 项目内统一通过 apiFetch 发请求，避免有人漏带访问上下文头。
   return fetch(buildApiUrl(path), {
     ...options,
     headers: createAccessContextHeaders(options.headers)

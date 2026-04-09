@@ -1,4 +1,8 @@
 <script setup>
+// 纯展示型列表组件：
+// - 接收文档摘要数据；
+// - 把操作意图以事件形式抛给父层；
+// - 不自行发请求，不持有业务状态。
 const props = defineProps({
   documents: {
     type: Array,
@@ -32,6 +36,8 @@ function formatTimestamp(value) {
 }
 
 function statusLabel(document) {
+  // storageAvailable 为 false 时优先显示“存储异常”，
+  // 因为这类问题比普通业务状态更需要用户立即注意。
   if (!document.storageAvailable) {
     return "存储异常";
   }
@@ -61,6 +67,7 @@ function statusTone(document) {
 }
 
 function previewDocument(document) {
+  // 行点击和“查看”按钮最终都走同一条 preview 事件。
   emit("preview", document);
 }
 
@@ -73,6 +80,7 @@ function deleteDocument(document) {
 }
 
 function tableRowClassName({ row }) {
+  // 首页从创建/编辑流返回时，会通过 highlightedDocumentId 高亮目标文档。
   if (row.documentId === props.highlightedDocumentId) {
     return "highlighted-row";
   }
@@ -102,6 +110,7 @@ function tableRowClassName({ row }) {
       :row-class-name="tableRowClassName"
       @row-click="previewDocument"
     >
+      <!-- 标题列承担主阅读入口，同时补充 documentId 方便排查和复制。 -->
       <el-table-column prop="title" label="文档标题" min-width="200">
         <template #default="{ row }">
           <div style="font-weight: 600; cursor: pointer;">{{ row.title }}</div>
@@ -109,6 +118,7 @@ function tableRowClassName({ row }) {
         </template>
       </el-table-column>
       
+      <!-- 状态列把业务状态、文档类型、来源系统压在一个单元格里，减少横向占位。 -->
       <el-table-column label="状态" width="220">
         <template #default="{ row }">
           <el-tag :type="statusTone(row).type" :effect="statusTone(row).effect" size="small" style="margin-right: 4px; margin-bottom: 4px;">
@@ -123,12 +133,14 @@ function tableRowClassName({ row }) {
         </template>
       </el-table-column>
       
+      <!-- 最近编辑时间是列表排序和回流判断的重要参考信息。 -->
       <el-table-column label="最近编辑" width="180">
         <template #default="{ row }">
           <span style="font-size: 13px;">{{ formatTimestamp(row.lastEditedTime) }}</span>
         </template>
       </el-table-column>
       
+      <!-- 所有者 / 访问者并列展示，方便定位“谁创建、谁当前在操作”。 -->
       <el-table-column label="所有者 / 访问者" width="180">
         <template #default="{ row }">
           <div style="font-size: 13px;">Owner: {{ row.ownerUser || '暂无' }}</div>
@@ -136,6 +148,7 @@ function tableRowClassName({ row }) {
         </template>
       </el-table-column>
       
+      <!-- 右侧操作列保留显式按钮，避免只靠整行点击造成误触。 -->
       <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
           <el-button size="small" class="preview-document-btn" @click.stop="previewDocument(row)">查看</el-button>

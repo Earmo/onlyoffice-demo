@@ -72,6 +72,7 @@ describe("DocumentLibraryPage", () => {
   });
 
   it("应按后端分页参数加载文档工作台，并展示当前上下文与高亮文档", async () => {
+    // 首页初始化时会并行拉“主列表 + 最近文档”，这个行为在分页改造后很容易被改坏。
     routeState.query = { highlight: "doc-1" };
     fetch
       .mockResolvedValueOnce(jsonResponse(listPayload({
@@ -157,14 +158,13 @@ describe("DocumentLibraryPage", () => {
     }
     await flushPromises();
 
-    // Since ElDialog might transport content using Teleport to document.body,
-    // we should emit 'create' directly from the DocumentCreateActionsStub component instance
-    // or simulate the event on the stub if it can be found.
+    // ElDialog 可能通过 Teleport 把内容挂到 document.body，
+    // 所以这里优先直接从 stub 组件实例发 create 事件，必要时再退回 DOM 点击。
     const createActions = wrapper.findComponent({ name: "DocumentCreateActionsStub" });
     if (createActions.exists()) {
       createActions.vm.$emit("create");
     } else {
-      // Fallback for document.body portaled nodes in some test setups
+      // 某些测试环境下找不到 stub 实例时，兜底点一下 teleport 后的按钮。
       document.querySelector(".create-doc").click();
     }
     await flushPromises();
@@ -299,6 +299,7 @@ describe("DocumentLibraryPage", () => {
 });
 
 function requestUrl(callIndex) {
+  // 统一把 fetch 调用还原成 URL 对象，便于断言 query 参数。
   return new URL(fetch.mock.calls[callIndex][0], "http://example.test");
 }
 

@@ -2,6 +2,8 @@
 import { ref } from "vue";
 import { Plus, UploadFilled, Link as LinkIcon } from "@element-plus/icons-vue";
 
+// 这个弹窗组件只负责“入口动作采集”，不自己触碰任何接口。
+// 页面层收到事件后，再统一做 loading、错误处理和成功回流。
 const props = defineProps({
   isCreating: {
     type: Boolean,
@@ -33,6 +35,7 @@ const emit = defineEmits([
 const fileInputRef = ref(null);
 
 function openFilePicker() {
+  // 通过按钮驱动隐藏 input，保留更一致的 UI 风格。
   fileInputRef.value?.click();
 }
 

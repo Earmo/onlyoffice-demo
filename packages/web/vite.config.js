@@ -7,6 +7,7 @@ import Components from 'unplugin-vue-components/vite';
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 
 const isVitest = process.env.VITEST === "true";
+// 测试环境里不自动注入 Element Plus 的 CSS，避免 jsdom 因样式副作用变慢或报错。
 const elementPlusResolver = ElementPlusResolver({
   importStyle: isVitest ? false : "css"
 });
@@ -18,6 +19,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       vue(),
+      // 自动按需引入 Element Plus 组件与 API，减少页面里重复 import。
       AutoImport({
         resolvers: [elementPlusResolver],
       }),
@@ -29,6 +31,7 @@ export default defineConfig(({ mode }) => {
       host: "0.0.0.0",
       port: 5173,
       headers: {
+        // ONLYOFFICE iframe 在本地调试时会跨端口加载隐藏插件资源，需要放开 CORS。
         "Access-Control-Allow-Origin": "*"
       },
       proxy: {

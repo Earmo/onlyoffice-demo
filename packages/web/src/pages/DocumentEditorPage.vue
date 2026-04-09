@@ -10,6 +10,8 @@ import { apiFetch } from "../lib/api";
 const route = useRoute();
 const router = useRouter();
 
+// 这里管理的是“编辑页级别”的页面状态，
+// 和 EditorShell 内部的编辑器运行态分层开来，避免页面层直接承载桥接细节。
 const isLoading = ref(true);
 const errorMessage = ref("");
 const currentDocument = ref(null);
@@ -64,6 +66,8 @@ async function loadEditorPageData() {
 }
 
 async function closeCurrentEditingSession() {
+  // 页面层通过 ref 调用 EditorShell 暴露的方法，
+  // 自己不直接拼 save/close API，避免离场逻辑分散在多个地方。
   if (!editorShellRef.value?.closeEditingSession) {
     return;
   }
@@ -143,6 +147,8 @@ async function runLeaveFlow(navigate, fallbackMessage) {
     return;
   }
 
+  // 离开当前编辑页时的统一出口：
+  // 先结束当前编辑会话，再执行页面跳转。
   isLeaving.value = true;
   errorMessage.value = "";
 
@@ -158,6 +164,7 @@ async function runLeaveFlow(navigate, fallbackMessage) {
 watch(
   () => currentDocumentId.value,
   () => {
+    // 路由 documentId 变化时重新拉一整页上下文，让左栏和编辑区保持一致。
     loadEditorPageData();
   }
 );

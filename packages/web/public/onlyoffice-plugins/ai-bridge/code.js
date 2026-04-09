@@ -1,4 +1,6 @@
 (function () {
+  // 这个文件运行在 ONLYOFFICE 隐藏插件 iframe 内部。
+  // 它的职责是把编辑器内部能力转换成宿主页可调用的 postMessage 协议。
   const BRIDGE_CHANNEL = "onlyoffice-ai-bridge";
   const EVENTS = {
     ready: "onlyoffice-ai-bridge:ready",
@@ -12,6 +14,7 @@
   };
 
   function getHostWindow() {
+    // 插件实际可能嵌在多层 iframe 里，统一发给最外层页面最稳妥。
     return window.top || window.parent;
   }
 
@@ -41,6 +44,8 @@
   }
 
   function readSelectedText(requestId) {
+    // 通过 ONLYOFFICE 插件方法读取当前选区文本。
+    // 这里显式约定换行和表格分隔符，保证宿主页拿到的文本更适合直接送入 AI。
     window.Asc.plugin.executeMethod(
       "GetSelectedText",
       [{
@@ -68,6 +73,8 @@
 
   function refreshOutline(requestId) {
     window.Asc.plugin.callCommand(function () {
+      // ONLYOFFICE 段落 JSON 在不同版本下结构不完全一致，
+      // 所以这里用递归方式尽量从 text/value/content/children 等字段中抽取纯文本。
       function readTextFromNode(node) {
         if (node === null || node === undefined) {
           return "";
@@ -108,6 +115,7 @@
       }
 
       function getParagraphText(paragraph) {
+        // 优先走 ToJSON，拿不到时再降级遍历段落元素，兼容不同编辑器版本。
         if (paragraph && typeof paragraph.ToJSON === "function") {
           const paragraphJson = paragraph.ToJSON();
           const paragraphText = readTextFromNode(paragraphJson).replace(/\s+/g, " ").trim();
@@ -136,12 +144,14 @@
       }
 
       function getStyleName(paragraph) {
+        // 标题级别优先从段落样式中解析，例如 Heading 1 / Heading 2。
         const paraPr = paragraph && typeof paragraph.GetParaPr === "function" ? paragraph.GetParaPr() : null;
         const style = paraPr && typeof paraPr.GetStyle === "function" ? paraPr.GetStyle() : null;
         return style && typeof style.GetName === "function" ? style.GetName() : "";
       }
 
       function getLevel(styleName, outlineLevel) {
+        // Heading N 优先级最高，其次才回退到 outline level。
         const matched = /^Heading\s+(\d+)/i.exec(styleName || "");
         if (matched) {
           return Number(matched[1]);
@@ -152,6 +162,7 @@
         return 1;
       }
 
+      // 先收集官方认定的 heading internalId，再遍历全文兜底补齐 Heading 样式段落。
       const doc = Api.GetDocument();
       const allParagraphs = typeof doc.GetAllParagraphs === "function" ? doc.GetAllParagraphs() : [];
       const headingParagraphs = typeof doc.GetAllHeadingParagraphs === "function" ? doc.GetAllHeadingParagraphs() : [];
@@ -180,6 +191,7 @@
         }
 
         headings.push({
+          // 宿主页用 paragraphIndex 作为当前阶段最稳定的跳转锚点。
           id: "heading-" + index,
           text: getParagraphText(paragraph),
           level: getLevel(styleName, outlineLevel),
@@ -203,6 +215,7 @@
   }
 
   function jumpToHeading(requestId, payload) {
+    // Asc.scope 用来把宿主页传入的数据带到 callCommand 执行环境内部。
     window.Asc.scope.targetParagraphIndex = Number(payload && payload.paragraphIndex);
     window.Asc.scope.targetHeadingId = payload && payload.id ? String(payload.id) : "";
 
@@ -259,6 +272,8 @@
     }
 
     try {
+      // 插件只暴露非常克制的三类命令：抓选区、刷目录、跳标题。
+      // 真正的 AI 调用仍放在宿主页或后端，不放进插件里。
       switch (message.type) {
         case EVENTS.captureSelection:
           readSelectedText(message.requestId);
@@ -280,6 +295,7 @@
   let hostMessageBound = false;
 
   function notifyReady() {
+    // ready 是宿主页 waitForReady 的唯一完成信号。
     postMessage(EVENTS.ready, {});
   }
 
@@ -290,6 +306,7 @@
 
     window.Asc.plugin.init = function () {
       if (!hostMessageBound) {
+        // 只绑定一次 message 监听，避免插件重复 init 时积累多个监听器。
         window.addEventListener("message", handleHostMessage);
         hostMessageBound = true;
       }
@@ -301,6 +318,7 @@
   }
 
   function waitForPluginRuntime() {
+    // ONLYOFFICE 注入插件运行时存在异步延迟，轮询直到 Asc.plugin 可用再注册。
     if (registerPluginRuntime()) {
       return;
     }
