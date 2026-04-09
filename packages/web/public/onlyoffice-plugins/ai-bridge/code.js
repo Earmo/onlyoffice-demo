@@ -256,14 +256,36 @@
     }
   }
 
+  let hostMessageBound = false;
+
   function notifyReady() {
     postMessage(EVENTS.ready, {});
   }
 
-  window.Asc.plugin.init = function () {
-    window.addEventListener("message", handleHostMessage);
-    notifyReady();
-  };
+  function registerPluginRuntime() {
+    if (!window.Asc || !window.Asc.plugin) {
+      return false;
+    }
 
-  window.Asc.plugin.button = function () {};
+    window.Asc.plugin.init = function () {
+      if (!hostMessageBound) {
+        window.addEventListener("message", handleHostMessage);
+        hostMessageBound = true;
+      }
+      notifyReady();
+    };
+
+    window.Asc.plugin.button = function () {};
+    return true;
+  }
+
+  function waitForPluginRuntime() {
+    if (registerPluginRuntime()) {
+      return;
+    }
+
+    window.setTimeout(waitForPluginRuntime, 50);
+  }
+
+  waitForPluginRuntime();
 })();
