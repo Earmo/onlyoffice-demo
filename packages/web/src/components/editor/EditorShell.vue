@@ -45,6 +45,7 @@ const bridgeStatusMessage = ref("等待文档运行态桥接就绪。");
 const bridgeReady = ref(false);
 const bridgeCapability = ref("plugin");
 const activeHeadingId = ref("");
+const isRuntimeSectionExpanded = ref(true);
 let saveStatusTimer = null;
 let sessionHeartbeatTimer = null;
 let closeEditingSessionPromise = null;
@@ -301,6 +302,10 @@ function toggleConsole() {
 
 function closeConsole() {
   isConsoleOpen.value = false;
+}
+
+function toggleRuntimeSection() {
+  isRuntimeSectionExpanded.value = !isRuntimeSectionExpanded.value;
 }
 
 async function insertRemoteImage() {
@@ -733,65 +738,75 @@ defineExpose({
         </el-card>
 
         <el-card shadow="never" class="panel-section">
-          <template #header>运行态 / 现有动作</template>
-          <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
-          <p class="panel-document-meta">documentId: <code>{{ props.documentId }}</code></p>
-          <p class="panel-document-meta">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
-
-          <div class="console-inline-actions">
-            <el-tag type="info">{{ modeLabel }}</el-tag>
-            <el-button size="small" :disabled="isLoading" @click="loadEditorConfig">
-              重新加载配置
-            </el-button>
-          </div>
-
-          <div v-if="saveStatus" class="runtime-block">
-            <p class="runtime-title">最近保存状态</p>
-            <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
-              <p class="save-status-headline" style="font-weight: bold; margin-bottom: 8px;">{{ saveStatus.message }}</p>
-              <p class="save-status-meta">
-                最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
-              </p>
-              <p class="save-status-meta">
-                最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackTime) }}</code>
-              </p>
-              <p class="save-status-meta">
-                最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedTime) }}</code>
-              </p>
+          <template #header>
+            <div class="panel-section-header">
+              <span>运行态 / 现有动作</span>
+              <el-button size="small" text @click="toggleRuntimeSection">
+                {{ isRuntimeSectionExpanded ? "收起" : "展开" }}
+              </el-button>
             </div>
-            <ul v-if="saveStatus.recentEvents?.length" class="save-status-events">
-              <li v-for="event in saveStatus.recentEvents" :key="`${event.eventType}-${event.eventTime}`">
-                <strong>{{ event.eventType }}</strong>
-                <span>{{ event.message }}</span>
-                <time>{{ formatTimestamp(event.eventTime) }}</time>
-              </li>
-            </ul>
-            <el-button style="margin-top: 12px;" @click="loadSaveStatus">
-              刷新保存状态
-            </el-button>
-          </div>
+          </template>
 
-          <div class="runtime-block">
-            <p class="runtime-title">在光标处插入网络图片</p>
-            <el-form label-position="top">
-              <el-form-item label="网络图片地址">
-                <el-input
-                  v-model="imageUrl"
-                  type="url"
-                  placeholder="https://example.com/demo.png"
-                  :disabled="isLoading || isInsertingImage"
-                />
-              </el-form-item>
-              <el-form-item>
-                <el-button
-                  type="primary"
-                  :disabled="isLoading || isInsertingImage || isClosingSession"
-                  @click="insertRemoteImage"
-                >
-                  {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
-                </el-button>
-              </el-form-item>
-            </el-form>
+          <div v-if="isRuntimeSectionExpanded">
+            <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
+            <p class="panel-document-meta">documentId: <code>{{ props.documentId }}</code></p>
+            <p class="panel-document-meta">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
+
+            <div class="console-inline-actions">
+              <el-tag type="info">{{ modeLabel }}</el-tag>
+              <el-button size="small" :disabled="isLoading" @click="loadEditorConfig">
+                重新加载配置
+              </el-button>
+            </div>
+
+            <div v-if="saveStatus" class="runtime-block">
+              <p class="runtime-title">最近保存状态</p>
+              <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
+                <p class="save-status-headline" style="font-weight: bold; margin-bottom: 8px;">{{ saveStatus.message }}</p>
+                <p class="save-status-meta">
+                  最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
+                </p>
+                <p class="save-status-meta">
+                  最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackTime) }}</code>
+                </p>
+                <p class="save-status-meta">
+                  最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedTime) }}</code>
+                </p>
+              </div>
+              <ul v-if="saveStatus.recentEvents?.length" class="save-status-events">
+                <li v-for="event in saveStatus.recentEvents" :key="`${event.eventType}-${event.eventTime}`">
+                  <strong>{{ event.eventType }}</strong>
+                  <span>{{ event.message }}</span>
+                  <time>{{ formatTimestamp(event.eventTime) }}</time>
+                </li>
+              </ul>
+              <el-button style="margin-top: 12px;" @click="loadSaveStatus">
+                刷新保存状态
+              </el-button>
+            </div>
+
+            <div class="runtime-block">
+              <p class="runtime-title">在光标处插入网络图片</p>
+              <el-form label-position="top">
+                <el-form-item label="网络图片地址">
+                  <el-input
+                    v-model="imageUrl"
+                    type="url"
+                    placeholder="https://example.com/demo.png"
+                    :disabled="isLoading || isInsertingImage"
+                  />
+                </el-form-item>
+                <el-form-item>
+                  <el-button
+                    type="primary"
+                    :disabled="isLoading || isInsertingImage || isClosingSession"
+                    @click="insertRemoteImage"
+                  >
+                    {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
+                  </el-button>
+                </el-form-item>
+              </el-form>
+            </div>
           </div>
         </el-card>
       </div>

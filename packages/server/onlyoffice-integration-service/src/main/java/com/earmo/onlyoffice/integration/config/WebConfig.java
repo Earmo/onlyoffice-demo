@@ -20,6 +20,13 @@ public class WebConfig implements WebMvcConfigurer {
         .allowedOriginPatterns("*")
         .allowedMethods("*")
         .allowedHeaders("*");
+
+    // ONLYOFFICE Docs 会从自己的 iframe 域名加载桥接插件资源。
+    // 本地调试下即使 pluginsData 指向 8080，也允许它跨域拉取 config.json / index.html / code.js。
+    registry.addMapping("/onlyoffice-plugins/**")
+        .allowedOriginPatterns("*")
+        .allowedMethods("GET", "OPTIONS")
+        .allowedHeaders("*");
   }
 }
 

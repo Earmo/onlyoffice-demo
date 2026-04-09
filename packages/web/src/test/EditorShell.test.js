@@ -327,6 +327,32 @@ describe("EditorShell", () => {
       expect.objectContaining({ id: "heading-1", paragraphIndex: 3 })
     );
   });
+
+  it("应支持折叠运行态与现有动作区域", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("最近保存状态");
+
+    const toggleButton = wrapper.findAll("button").find(button => button.text().includes("收起"));
+    await toggleButton.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("运行态 / 现有动作");
+    expect(wrapper.text()).not.toContain("最近保存状态");
+  });
 });
 
 function editorConfigPayload(title, mode = "edit") {
