@@ -123,6 +123,28 @@ function toBridgeErrorMessage(error, fallbackMessage) {
   return fallbackMessage;
 }
 
+function normalizeBridgePluginUrls(payload) {
+  const pluginConfigPath = new URL("/onlyoffice-plugins/ai-bridge/config.json", window.location.origin).toString();
+  const plugins = payload?.config?.editorConfig?.plugins;
+  if (!plugins || !Array.isArray(plugins.pluginsData) || plugins.pluginsData.length === 0) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    config: {
+      ...payload.config,
+      editorConfig: {
+        ...payload.config.editorConfig,
+        plugins: {
+          ...plugins,
+          pluginsData: plugins.pluginsData.map(() => pluginConfigPath)
+        }
+      }
+    }
+  };
+}
+
 async function waitForBridgeReady(options = {}) {
   const { suppressErrors = false } = options;
   const bridge = ensureBridge();
@@ -240,7 +262,7 @@ async function loadEditorConfig() {
       throw new Error(await readErrorMessage(response, `配置请求失败，HTTP ${response.status}`));
     }
 
-    editorPayload.value = await response.json();
+    editorPayload.value = normalizeBridgePluginUrls(await response.json());
     editingSessionOpened.value = !props.readonly;
     if (!props.readonly) {
       startSessionHeartbeatPolling();
