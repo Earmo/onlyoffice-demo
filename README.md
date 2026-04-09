@@ -67,36 +67,33 @@ SPRING_PROFILES_ACTIVE=dev
 docker compose up -d
 ```
 
-默认 compose 会把 `web` 监听在 `0.0.0.0:${WEB_PORT:-12333}`。  
-从当前版本开始，`editor-config` 会优先按“浏览器这次实际访问的 Host/Proto”动态生成 `documentServerUrl`，所以你用 `localhost`、局域网 IP 或公网域名访问时，会自动回到同一个入口。
-
-如果你的部署入口不是浏览器直接访问到的那个 Host，而是需要显式指定公网域名或上层反向代理地址，再覆盖下面两个变量：
+默认 compose 会把 `web` 监听在 `0.0.0.0:${WEB_PORT:-12333}`，并默认把公开入口固定为 `http://172.18.109.7:12333`。如果你需要换成自己的局域网 IP、公网域名或反向代理地址，再覆盖下面两个变量：
 
 ```bash
-$env:ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL="https://你的公网域名或IP"
-$env:ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL="https://你的公网域名或IP/api/office"
+$env:ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL="https://你的公网域名或IP:端口"
+$env:ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL="https://你的公网域名或IP:端口/api/office"
 $env:WEB_BIND_IP="0.0.0.0"
 docker compose up -d
 ```
 
-如果只是想临时固定成某个局域网 IP，也可以这样：
+例如临时切回本机：
 
 ```bash
-$env:ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL="http://172.18.109.7:12333"
-$env:ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL="http://172.18.109.7:12333/api/office"
+$env:ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL="http://localhost:12333"
+$env:ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL="http://localhost:12333/api/office"
 docker compose up -d
 ```
 
-当前默认还会把 ONLYOFFICE 浏览器侧资源挂在同源前缀：
+当前默认会把 ONLYOFFICE 浏览器侧资源挂在同源前缀：
 
 ```text
-<当前访问入口>/api/office/
+http://172.18.109.7:12333/api/office/
 ```
 
 也就是说，编辑器里的版本化地址会类似：
 
 ```text
-<当前访问入口>/api/office/9.3.1-xxxx/doc/<documentKey>/c/...
+http://172.18.109.7:12333/api/office/9.3.1-xxxx/doc/<documentKey>/c/...
 ```
 
 ### Windows 本地断点调试
