@@ -22,6 +22,7 @@ export function createOnlyofficeBridge({
 }) {
   let disposed = false;
   let readyPayload = null;
+  let pluginWindow = null;
   let readyPromise = null;
   let readyResolver = null;
   let readyRejecter = null;
@@ -58,6 +59,10 @@ export function createOnlyofficeBridge({
     const message = event.data;
     if (!message || message.channel !== BRIDGE_CHANNEL || typeof message.type !== "string") {
       return;
+    }
+
+    if (event.source) {
+      pluginWindow = event.source;
     }
 
     if (message.type === ONLYOFFICE_AI_BRIDGE_EVENTS.ready) {
@@ -121,7 +126,7 @@ export function createOnlyofficeBridge({
       return Promise.reject(createBridgeError("文档桥接已销毁，请重新加载编辑器。"));
     }
 
-    const iframeWindow = getIframe?.()?.contentWindow;
+    const iframeWindow = pluginWindow || getIframe?.()?.contentWindow;
     if (!iframeWindow) {
       return Promise.reject(createBridgeError("编辑器 iframe 尚未准备完成，请稍后再试。"));
     }
@@ -190,6 +195,7 @@ export function createOnlyofficeBridge({
       readyResolver = null;
       readyRejecter = null;
       readyPayload = null;
+      pluginWindow = null;
     }
   };
 }

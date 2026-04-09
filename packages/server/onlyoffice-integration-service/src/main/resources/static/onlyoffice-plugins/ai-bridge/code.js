@@ -11,8 +11,12 @@
     headingJumped: "onlyoffice-ai-bridge:heading-jumped"
   };
 
+  function getHostWindow() {
+    return window.top || window.parent;
+  }
+
   function postMessage(type, payload, requestId) {
-    window.parent.postMessage(
+    getHostWindow().postMessage(
       {
         channel: BRIDGE_CHANNEL,
         type,
@@ -25,7 +29,7 @@
   }
 
   function postError(message, requestId) {
-    window.parent.postMessage(
+    getHostWindow().postMessage(
       {
         channel: BRIDGE_CHANNEL,
         type: EVENTS.error,
@@ -69,6 +73,14 @@
           return "";
         }
         if (typeof node === "string") {
+          const trimmed = node.trim();
+          if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && trimmed.length > 1) {
+            try {
+              return readTextFromNode(JSON.parse(trimmed));
+            } catch {
+              return node;
+            }
+          }
           return node;
         }
         if (Array.isArray(node)) {
