@@ -205,7 +205,9 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
   public DocumentSaveStatusResponse markOpened(String documentId) {
     DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     Instant now = Instant.now();
-    entity.setLastOpenedTime(now);
+    if (!STATUS_EDITING.equals(entity.getStatus()) || entity.getLastOpenedTime() == null) {
+      entity.setLastOpenedTime(now);
+    }
     if (!StringUtils.hasText(entity.getStatus())) {
       entity.setStatus(STATUS_DRAFT);
     }
@@ -219,8 +221,12 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
   public DocumentSaveStatusResponse markEditingStarted(String documentId) {
     DocumentMetadataEntity entity = requireAccessibleDocument(documentId);
     Instant now = Instant.now();
+    if (!STATUS_EDITING.equals(entity.getStatus()) || entity.getLastOpenedTime() == null) {
+      // 只有在“从非编辑态进入编辑态”时，才开启新一轮编辑会话批次时间。
+      // 同一轮协同编辑里重复请求 editor-config 不应刷新它，否则会把当前 key 切掉。
+      entity.setLastOpenedTime(now);
+    }
     entity.setStatus(STATUS_EDITING);
-    entity.setLastOpenedTime(now);
     entity.setUpdatedTime(now);
     updateEntity(entity);
     return toSaveStatus(entity);

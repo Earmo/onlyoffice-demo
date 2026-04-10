@@ -91,6 +91,7 @@ class OnlyofficeConfigServiceTest {
 
     assertEquals("https://docs.example.test/", response.documentServerUrl());
     assertTrue(document.get("url").toString().contains("http://internal.example.test/api/documents/demo/file.docx"));
+    assertEquals("demo-1773907200000", document.get("key"));
     assertTrue(editorConfig.get("callbackUrl").toString().contains("http://internal.example.test/api/documents/demo/callback"));
     assertEquals("user-a", cast(editorConfig.get("user")).get("id"));
     assertEquals("Alice", cast(editorConfig.get("user")).get("name"));
@@ -278,6 +279,55 @@ class OnlyofficeConfigServiceTest {
         List.of("https://gateway.example.test/onlyoffice-plugins/ai-bridge/config.json"),
         plugins.get("pluginsData")
     );
+  }
+
+  @Test
+  void shouldKeepEditingDocumentKeyStableAcrossCallbackSaves() throws IOException {
+    OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+    properties.setPublicBaseUrl("https://gateway.example.test");
+    properties.setInternalBaseUrl("http://internal.example.test");
+    properties.setDocumentServerUrl("https://docs.example.test");
+    properties.setJwtSecret("onlyoffice-integration-secret-2026-03-09-123456");
+
+    Path path = tempDir.resolve("demo.docx");
+    Files.writeString(path, "demo");
+    StoredDocument storedDocument = new StoredDocument(
+        "demo",
+        "tenant-a",
+        "user-a",
+        "native",
+        null,
+        "demo.docx",
+        "documents/demo.docx",
+        "docx",
+        "word",
+        "editing",
+        path,
+        Instant.parse("2026-03-25T10:00:05Z"),
+        Instant.parse("2026-03-25T09:59:00Z"),
+        Instant.parse("2026-03-25T10:00:04Z"),
+        6,
+        null
+    );
+
+    DocumentStorageService storageService = mock(DocumentStorageService.class);
+    when(storageService.getRequiredDocument("demo")).thenReturn(storedDocument);
+
+    OnlyofficeConfigService configService = new OnlyofficeConfigServiceImpl(
+        properties,
+        storageService,
+        new OnlyofficeJwtServiceImpl(properties)
+    );
+
+    EditorConfigResponse response = configService.buildEditorConfig(
+        "demo",
+        false,
+        new AccessContext("tenant-a", "native", "user-a", "Alice", Map.of("edit", true), "header"),
+        new MockHttpServletRequest()
+    );
+
+    Map<String, Object> document = cast(response.config().get("document"));
+    assertEquals("demo-1774432740000", document.get("key"));
   }
 
   @Test

@@ -84,7 +84,7 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     Map<String, Object> document = new LinkedHashMap<>();
     document.put("title", storedDocument.title());
     document.put("fileType", storedDocument.fileType());
-    document.put("key", storedDocument.documentId() + "-" + storedDocument.lastModified().toEpochMilli());
+    document.put("key", OnlyofficeDocumentKeyResolver.resolveDocumentKey(storedDocument));
     document.put(
         "url",
         buildInternalUrl("/api/documents/%s/file.%s".formatted(storedDocument.documentId(), storedDocument.fileType()))

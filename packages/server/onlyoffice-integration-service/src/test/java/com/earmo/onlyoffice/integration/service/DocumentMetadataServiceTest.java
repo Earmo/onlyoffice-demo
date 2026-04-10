@@ -148,4 +148,24 @@ class DocumentMetadataServiceTest {
     assertEquals("doc-new", entity.getDocumentId());
     assertEquals("draft", entity.getStatus());
   }
+
+  @Test
+  void shouldKeepEditingBatchOpenTimeStableWhenDocumentAlreadyEditing() {
+    DocumentMetadataMapper mapper = mock(DocumentMetadataMapper.class);
+    DocumentMetadataRepository repository = mock(DocumentMetadataRepository.class);
+    DocumentMetadataEntity entity = new DocumentMetadataEntity();
+    entity.setDocumentId("sample");
+    entity.setStatus("editing");
+    entity.setLastOpenedTime(java.time.Instant.parse("2026-03-25T09:59:00Z"));
+
+    when(mapper.selectOneById("sample")).thenReturn(entity);
+    when(mapper.update(any(DocumentMetadataEntity.class))).thenReturn(1);
+
+    DocumentMetadataService service = new DocumentMetadataServiceImpl(mapper, repository);
+    DocumentSaveStatusResponse status = service.markEditingStarted("sample");
+
+    assertEquals("editing", status.state());
+    assertEquals(java.time.Instant.parse("2026-03-25T09:59:00Z"), entity.getLastOpenedTime());
+    assertNotNull(entity.getUpdatedTime());
+  }
 }

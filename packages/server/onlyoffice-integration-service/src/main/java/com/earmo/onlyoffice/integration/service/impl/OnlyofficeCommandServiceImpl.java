@@ -87,7 +87,7 @@ public class OnlyofficeCommandServiceImpl implements OnlyofficeCommandService {
       log.warn("获取文档信息失败，跳过 forcesave，documentId={}：{}", documentId, ex.getMessage());
       return null;
     }
-    String documentKey = storedDocument.documentId() + "-" + storedDocument.lastModified().toEpochMilli();
+    String documentKey = OnlyofficeDocumentKeyResolver.resolveDocumentKey(storedDocument);
 
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("c", "forcesave");
