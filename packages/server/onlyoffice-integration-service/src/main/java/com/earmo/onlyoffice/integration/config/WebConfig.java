@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -12,6 +13,16 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
+
+  @Override
+  public void addResourceHandlers(ResourceHandlerRegistry registry) {
+    // 插件源码统一放在 packages/web/public 下。
+    // 开发时优先直接读取前端目录，打包后再回退到 classpath 里的构建产物。
+    registry.addResourceHandler("/onlyoffice-plugins/**")
+        .addResourceLocations(
+            "file:../web/public/onlyoffice-plugins/",
+            "classpath:/static/onlyoffice-plugins/");
+  }
 
   @Override
   public void addCorsMappings(CorsRegistry registry) {
