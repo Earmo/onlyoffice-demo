@@ -141,26 +141,42 @@
         return style && typeof style.GetName === "function" ? style.GetName() : "";
       }
 
-      function getLevel(styleName, outlineLevel) {
-        const matched = /^Heading\s+(\d+)/i.exec(styleName || "");
-        if (matched) {
-          return Number(matched[1]);
-        }
+      function getOutlineLevel(paragraph) {
+        const outlineLevel = paragraph && typeof paragraph.GetOutlineLvl === "function"
+          ? paragraph.GetOutlineLvl()
+          : undefined;
         if (typeof outlineLevel === "number" && outlineLevel >= 0) {
           return outlineLevel + 1;
         }
-        return 1;
+        return null;
+      }
+
+      function getStyleLevel(styleName) {
+        const normalizedStyleName = String(styleName || "").replace(/\u00a0/g, " ").trim();
+        const matched = /^(?:Heading|标题)\s*(\d+)\b/i.exec(normalizedStyleName);
+        if (matched) {
+          return Number(matched[1]);
+        }
+        return null;
+      }
+
+      function getLevel(paragraph, styleName, fallbackLevel) {
+        return getStyleLevel(styleName) || getOutlineLevel(paragraph) || fallbackLevel || 1;
       }
 
       const doc = Api.GetDocument();
       const allParagraphs = typeof doc.GetAllParagraphs === "function" ? doc.GetAllParagraphs() : [];
       const headingParagraphs = typeof doc.GetAllHeadingParagraphs === "function" ? doc.GetAllHeadingParagraphs() : [];
-      const headingIds = {};
+      const headingMetaById = {};
 
       for (let index = 0; index < headingParagraphs.length; index += 1) {
         const paragraph = headingParagraphs[index];
         if (paragraph && typeof paragraph.GetInternalId === "function") {
-          headingIds[paragraph.GetInternalId()] = true;
+          const styleName = getStyleName(paragraph);
+          headingMetaById[paragraph.GetInternalId()] = {
+            level: getLevel(paragraph, styleName, null),
+            styleName
+          };
         }
       }
 
@@ -172,9 +188,11 @@
         }
 
         const styleName = getStyleName(paragraph);
-        const outlineLevel = typeof paragraph.GetOutlineLvl === "function" ? paragraph.GetOutlineLvl() : undefined;
         const internalId = typeof paragraph.GetInternalId === "function" ? paragraph.GetInternalId() : "";
-        const isHeading = headingIds[internalId] || /^Heading\s+/i.test(styleName) || typeof outlineLevel === "number";
+        const headingMeta = internalId ? headingMetaById[internalId] : null;
+        const styleLevel = getStyleLevel(styleName);
+        const outlineLevel = getOutlineLevel(paragraph);
+        const isHeading = Boolean(headingMeta) || styleLevel !== null || outlineLevel !== null;
         if (!isHeading) {
           continue;
         }
@@ -182,8 +200,8 @@
         headings.push({
           id: "heading-" + index,
           text: getParagraphText(paragraph),
-          level: getLevel(styleName, outlineLevel),
-          styleName,
+          level: getLevel(paragraph, styleName, headingMeta?.level ?? null),
+          styleName: styleName || headingMeta?.styleName || "",
           paragraphIndex: index
         });
       }

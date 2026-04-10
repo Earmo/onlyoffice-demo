@@ -150,28 +150,46 @@
         return style && typeof style.GetName === "function" ? style.GetName() : "";
       }
 
-      function getLevel(styleName, outlineLevel) {
-        // Heading N 优先级最高，其次才回退到 outline level。
-        const matched = /^Heading\s+(\d+)/i.exec(styleName || "");
-        if (matched) {
-          return Number(matched[1]);
-        }
+      function getOutlineLevel(paragraph) {
+        const outlineLevel = paragraph && typeof paragraph.GetOutlineLvl === "function"
+          ? paragraph.GetOutlineLvl()
+          : undefined;
         if (typeof outlineLevel === "number" && outlineLevel >= 0) {
           return outlineLevel + 1;
         }
-        return 1;
+        return null;
+      }
+
+      function getStyleLevel(styleName) {
+        // ONLYOFFICE 的标题样式既可能是英文 Heading 1，也可能是中文 标题 1，
+        // 所以这里统一兼容两种写法，尽量贴近左侧官方目录树的层级判断。
+        const normalizedStyleName = String(styleName || "").replace(/\u00a0/g, " ").trim();
+        const matched = /^(?:Heading|标题)\s*(\d+)\b/i.exec(normalizedStyleName);
+        if (matched) {
+          return Number(matched[1]);
+        }
+        return null;
+      }
+
+      function getLevel(paragraph, styleName, fallbackLevel) {
+        // 优先使用显式样式级别，其次再回退到 outline level。
+        return getStyleLevel(styleName) || getOutlineLevel(paragraph) || fallbackLevel || 1;
       }
 
       // 先收集官方认定的 heading internalId，再遍历全文兜底补齐 Heading 样式段落。
       const doc = Api.GetDocument();
       const allParagraphs = typeof doc.GetAllParagraphs === "function" ? doc.GetAllParagraphs() : [];
       const headingParagraphs = typeof doc.GetAllHeadingParagraphs === "function" ? doc.GetAllHeadingParagraphs() : [];
-      const headingIds = {};
+      const headingMetaById = {};
 
       for (let index = 0; index < headingParagraphs.length; index += 1) {
         const paragraph = headingParagraphs[index];
         if (paragraph && typeof paragraph.GetInternalId === "function") {
-          headingIds[paragraph.GetInternalId()] = true;
+          const styleName = getStyleName(paragraph);
+          headingMetaById[paragraph.GetInternalId()] = {
+            level: getLevel(paragraph, styleName, null),
+            styleName
+          };
         }
       }
 
@@ -183,9 +201,11 @@
         }
 
         const styleName = getStyleName(paragraph);
-        const outlineLevel = typeof paragraph.GetOutlineLvl === "function" ? paragraph.GetOutlineLvl() : undefined;
         const internalId = typeof paragraph.GetInternalId === "function" ? paragraph.GetInternalId() : "";
-        const isHeading = headingIds[internalId] || /^Heading\s+/i.test(styleName) || typeof outlineLevel === "number";
+        const headingMeta = internalId ? headingMetaById[internalId] : null;
+        const styleLevel = getStyleLevel(styleName);
+        const outlineLevel = getOutlineLevel(paragraph);
+        const isHeading = Boolean(headingMeta) || styleLevel !== null || outlineLevel !== null;
         if (!isHeading) {
           continue;
         }
@@ -194,8 +214,8 @@
           // 宿主页用 paragraphIndex 作为当前阶段最稳定的跳转锚点。
           id: "heading-" + index,
           text: getParagraphText(paragraph),
-          level: getLevel(styleName, outlineLevel),
-          styleName,
+          level: getLevel(paragraph, styleName, headingMeta?.level ?? null),
+          styleName: styleName || headingMeta?.styleName || "",
           paragraphIndex: index
         });
       }
