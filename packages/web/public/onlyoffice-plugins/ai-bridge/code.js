@@ -151,8 +151,9 @@
       }
 
       function getOutlineLevel(paragraph) {
-        const outlineLevel = paragraph && typeof paragraph.GetOutlineLvl === "function"
-          ? paragraph.GetOutlineLvl()
+        var paraPr = paragraph && typeof paragraph.GetParaPr === "function" ? paragraph.GetParaPr() : null;
+        var outlineLevel = paraPr && typeof paraPr.GetOutlineLvl === "function"
+          ? paraPr.GetOutlineLvl()
           : undefined;
         if (typeof outlineLevel === "number" && outlineLevel >= 0) {
           return outlineLevel + 1;
@@ -172,8 +173,7 @@
       }
 
       function getLevel(paragraph, styleName, fallbackLevel) {
-        // 优先使用显式样式级别，其次再回退到 outline level。
-        return getStyleLevel(styleName) || getOutlineLevel(paragraph) || fallbackLevel || 1;
+        return getOutlineLevel(paragraph) || getStyleLevel(styleName) || fallbackLevel || 1;
       }
 
       // 先收集官方认定的 heading internalId，再遍历全文兜底补齐 Heading 样式段落。

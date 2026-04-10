@@ -142,8 +142,9 @@
       }
 
       function getOutlineLevel(paragraph) {
-        const outlineLevel = paragraph && typeof paragraph.GetOutlineLvl === "function"
-          ? paragraph.GetOutlineLvl()
+        var paraPr = paragraph && typeof paragraph.GetParaPr === "function" ? paragraph.GetParaPr() : null;
+        var outlineLevel = paraPr && typeof paraPr.GetOutlineLvl === "function"
+          ? paraPr.GetOutlineLvl()
           : undefined;
         if (typeof outlineLevel === "number" && outlineLevel >= 0) {
           return outlineLevel + 1;
@@ -161,7 +162,7 @@
       }
 
       function getLevel(paragraph, styleName, fallbackLevel) {
-        return getStyleLevel(styleName) || getOutlineLevel(paragraph) || fallbackLevel || 1;
+        return getOutlineLevel(paragraph) || getStyleLevel(styleName) || fallbackLevel || 1;
       }
 
       const doc = Api.GetDocument();
