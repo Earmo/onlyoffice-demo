@@ -72,21 +72,7 @@ onMounted(loadPreviewPageData);
 
 <template>
   <el-container class="preview-page-shell" direction="vertical">
-    <el-card shadow="never" class="preview-header-card" style="margin-bottom: 16px;">
-      <div class="preview-header">
-        <div class="preview-copy">
-          <p class="eyebrow">只读预览</p>
-          <h1>{{ currentDocument?.title || currentDocumentId }}</h1>
-          <p class="muted-copy">
-            这里用于安全查看文档内容，不建立活跃编辑会话；若需要修改，请进入独立编辑工作台。
-          </p>
-        </div>
-        <div class="preview-actions">
 
-           <el-button type="primary" :disabled="isLoading" @click="goToEditor">编辑文档</el-button>
-        </div>
-      </div>
-    </el-card>
 
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon style="margin-bottom: 16px;">
       <el-button size="small" @click="loadPreviewPageData" style="margin-top: 8px;">重新加载</el-button>
@@ -107,21 +93,27 @@ onMounted(loadPreviewPageData);
       </el-col>
 
       <el-col :xs="24" :md="8" :lg="6">
-        <el-card shadow="never" class="preview-sidebar">
+        <el-card shadow="never" class="preview-sidebar" style="height: calc(100vh - 36px); display: flex; flex-direction: column;">
           <div class="preview-meta-section" style="margin-bottom: 24px;">
-            <p class="eyebrow">文档信息</p>
-            <h2 style="margin: 4px 0 8px; font-size: 18px;">{{ currentDocument?.title || "未命名文档" }}</h2>
+            <p class="eyebrow">只读预览</p>
+            <h1 style="margin: 4px 0 8px; font-size: 20px;">{{ currentDocument?.title || currentDocumentId }}</h1>
+            <p class="muted-copy" style="margin-bottom: 16px;">
+              这里用于安全查看文档内容，不建立活跃编辑会话；若需要修改，请进入独立编辑工作台。
+            </p>
+            
             <p class="muted-copy">最近保存：<code>{{ formatTimestamp(currentDocument?.lastSavedTime) }}</code></p>
             <p class="muted-copy">当前状态：<el-tag size="small">{{ currentDocument?.status || "未知" }}</el-tag></p>
             <p class="muted-copy">documentId：<code>{{ currentDocumentId }}</code></p>
           </div>
+
+          <div style="flex: 1;"></div>
 
           <div class="preview-meta-section">
             <p class="eyebrow">下一步</p>
             <p class="muted-copy" style="margin-bottom: 12px;">
               预览页只负责查看内容，不会显示编辑控制台，也不会建立“编辑中”会话状态。
             </p>
-            <el-button type="primary" plain @click="goToEditor">
+            <el-button type="primary" style="width: 100%;" @click="goToEditor" :disabled="isLoading">
               进入编辑工作台
             </el-button>
           </div>
@@ -133,30 +125,13 @@ onMounted(loadPreviewPageData);
 
 <style scoped>
 .preview-page-shell {
-  min-height: 100vh;
+  height: 100vh;
+  box-sizing: border-box;
   padding: 18px;
   background-color: var(--el-bg-color-page);
   display: flex;
   flex-direction: column;
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.preview-copy h1 {
-  margin: 4px 0 8px;
-  font-size: 24px;
-}
-
-.preview-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .eyebrow {
@@ -176,20 +151,24 @@ onMounted(loadPreviewPageData);
 
 .preview-layout {
   display: flex;
+  height: 100%;
 }
 
 .preview-stage-col {
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .preview-stage {
   flex: 1;
-  min-height: 600px;
+  height: calc(100vh - 36px);
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-light);
   border-radius: var(--el-border-radius-base);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .preview-sidebar {
