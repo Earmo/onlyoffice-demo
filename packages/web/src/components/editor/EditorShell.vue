@@ -76,7 +76,7 @@ const outlineTreeData = computed(() => {
   const tree = [];
   const stack = [];
   for (const item of outlineItems.value) {
-    const node = { ...item, id: item.id, label: item.text || "未命名标题", level: item.level, children: [] };
+    const node = { ...item, id: item.id, label: item.numberingPrefix ? item.numberingPrefix + " " + (item.text || "未命名标题") : (item.text || "未命名标题"), level: item.level, children: [] };
     while (stack.length > 0 && stack[stack.length - 1].level >= node.level) {
       stack.pop();
     }
