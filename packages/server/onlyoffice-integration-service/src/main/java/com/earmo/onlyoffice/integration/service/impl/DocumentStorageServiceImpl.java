@@ -19,8 +19,10 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -37,7 +39,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.MediaTypeFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.util.UriUtils;
 
 /**
@@ -57,6 +61,8 @@ import org.springframework.web.util.UriUtils;
 public class DocumentStorageServiceImpl implements DocumentStorageService {
 
   private static final String DEFAULT_EXTENSION = "docx";
+  private static final Duration CALLBACK_DOWNLOAD_CONNECT_TIMEOUT = Duration.ofSeconds(5);
+  private static final Duration CALLBACK_DOWNLOAD_READ_TIMEOUT = Duration.ofSeconds(30);
   private static final Set<String> OOXML_EXTENSIONS = Set.of("docx", "xlsx", "pptx");
   private static final Set<String> ODF_EXTENSIONS = Set.of("odt", "ods", "odp");
   private static final Set<String> TEXT_EXTENSIONS = Set.of("txt", "csv");
@@ -166,8 +172,9 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     String documentId = sanitizeDocumentId(rawDocumentId);
     DocumentMetadataEntity entity = documentMetadataService.requireAccessibleDocument(documentId);
     DocumentStorageStrategy strategy = resolveStrategy(entity);
+    String resolvedDownloadUrl = resolveAccessibleCallbackDownloadUrl(downloadUrl);
     byte[] latestFile = getRestClient().get()
-        .uri(downloadUrl)
+        .uri(resolvedDownloadUrl)
         .retrieve()
         .body(byte[].class);
 
@@ -326,7 +333,151 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    * 通过懒加载方式初始化 RestClient，避免每次请求都重复 build。
    */
   private RestClient buildRestClient() {
-    return restClientBuilder.build();
+    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+    requestFactory.setConnectTimeout(CALLBACK_DOWNLOAD_CONNECT_TIMEOUT);
+    requestFactory.setReadTimeout(CALLBACK_DOWNLOAD_READ_TIMEOUT);
+    return restClientBuilder
+        .requestFactory(requestFactory)
+        .build();
+  }
+
+  /**
+   * ONLYOFFICE callback 返回的下载地址有时会带浏览器侧公开域名，甚至回退成 localhost。
+   *
+   * <p>这些地址对 server 容器未必可达，因此这里统一改写到 command service 的内网地址，
+   * 避免 callback 下载最新文件时走宿主页反代、宿主机回环或其他不稳定链路。
+   */
+  private String resolveAccessibleCallbackDownloadUrl(String rawDownloadUrl) throws IOException {
+    String normalizedDownloadUrl = rawDownloadUrl.trim();
+    URI originalUri = parseAbsoluteUri(normalizedDownloadUrl, "ONLYOFFICE callback 最新文件下载地址非法。");
+    URI commandBaseUri = parseOptionalAbsoluteUri(onlyofficeIntegrationProperties.getDocumentServerCommandUrl());
+    if (commandBaseUri == null) {
+      return normalizedDownloadUrl;
+    }
+
+    String originalPath = normalizePath(originalUri.getRawPath());
+    String rewrittenPath = stripKnownOnlyofficePublicPrefix(originalPath);
+    boolean shouldRewrite = isLoopbackHost(originalUri.getHost())
+        || sameOriginIgnorePath(originalUri, parseOptionalAbsoluteUri(onlyofficeIntegrationProperties.getDocumentServerUrl()))
+        || sameOriginIgnorePath(originalUri, parseOptionalAbsoluteUri(onlyofficeIntegrationProperties.getPublicBaseUrl()))
+        || !rewrittenPath.equals(originalPath);
+
+    if (!shouldRewrite) {
+      return normalizedDownloadUrl;
+    }
+
+    String resolvedUrl = UriComponentsBuilder.fromUri(commandBaseUri)
+        .replacePath(joinPaths(commandBaseUri.getPath(), rewrittenPath))
+        .replaceQuery(originalUri.getRawQuery())
+        .build(true)
+        .toUriString();
+
+    log.info(
+        "将 ONLYOFFICE callback 下载地址改写为容器可达地址：originalUrl={}, resolvedUrl={}",
+        normalizedDownloadUrl,
+        resolvedUrl
+    );
+    return resolvedUrl;
+  }
+
+  private String stripKnownOnlyofficePublicPrefix(String rawPath) {
+    String normalizedPath = normalizePath(rawPath);
+    for (String prefix : List.of(
+        normalizeOnlyofficePublicPath(onlyofficeIntegrationProperties.getDocumentServerUrl()),
+        normalizeOnlyofficePublicPath(appendOnlyofficePath(onlyofficeIntegrationProperties.getPublicBaseUrl()))
+    )) {
+      if (!StringUtils.hasText(prefix) || "/".equals(prefix)) {
+        continue;
+      }
+      if (normalizedPath.equals(prefix)) {
+        return "/";
+      }
+      if (normalizedPath.startsWith(prefix + "/")) {
+        return normalizedPath.substring(prefix.length());
+      }
+    }
+    return normalizedPath;
+  }
+
+  private String appendOnlyofficePath(String publicBaseUrl) {
+    if (!StringUtils.hasText(publicBaseUrl)) {
+      return "";
+    }
+    return UriComponentsBuilder.fromHttpUrl(publicBaseUrl.trim()).path("/api/office").build().toUriString();
+  }
+
+  private String normalizeOnlyofficePublicPath(String rawUrl) {
+    URI uri = parseOptionalAbsoluteUri(rawUrl);
+    return uri == null ? "" : normalizePath(uri.getPath());
+  }
+
+  private URI parseOptionalAbsoluteUri(String rawUrl) {
+    if (!StringUtils.hasText(rawUrl)) {
+      return null;
+    }
+    try {
+      URI uri = new URI(rawUrl.trim());
+      return StringUtils.hasText(uri.getScheme()) && StringUtils.hasText(uri.getHost()) ? uri : null;
+    } catch (URISyntaxException ex) {
+      return null;
+    }
+  }
+
+  private URI parseAbsoluteUri(String rawUrl, String errorMessage) throws IOException {
+    try {
+      URI uri = new URI(rawUrl);
+      if (!StringUtils.hasText(uri.getScheme()) || !StringUtils.hasText(uri.getHost())) {
+        throw new IOException(errorMessage);
+      }
+      return uri;
+    } catch (URISyntaxException ex) {
+      throw new IOException(errorMessage, ex);
+    }
+  }
+
+  private boolean sameOriginIgnorePath(URI left, URI right) {
+    if (left == null || right == null) {
+      return false;
+    }
+    return left.getScheme().equalsIgnoreCase(right.getScheme())
+        && left.getHost().equalsIgnoreCase(right.getHost())
+        && effectivePort(left) == effectivePort(right);
+  }
+
+  private int effectivePort(URI uri) {
+    if (uri.getPort() > 0) {
+      return uri.getPort();
+    }
+    return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+  }
+
+  private boolean isLoopbackHost(String host) {
+    if (!StringUtils.hasText(host)) {
+      return false;
+    }
+    return "localhost".equalsIgnoreCase(host)
+        || "127.0.0.1".equals(host)
+        || "::1".equals(host)
+        || "0:0:0:0:0:0:0:1".equals(host);
+  }
+
+  private String normalizePath(String path) {
+    if (!StringUtils.hasText(path)) {
+      return "/";
+    }
+    return path.startsWith("/") ? path : "/" + path;
+  }
+
+  private String joinPaths(String basePath, String relativePath) {
+    String normalizedBase = normalizePath(basePath);
+    String normalizedRelative = normalizePath(relativePath);
+    if ("/".equals(normalizedBase)) {
+      return normalizedRelative;
+    }
+    if ("/".equals(normalizedRelative)) {
+      return normalizedBase;
+    }
+    return normalizedBase + normalizedRelative;
   }
 
   private StoredDocument toStoredDocument(DocumentMetadataEntity entity, StoredObjectResource objectResource) {

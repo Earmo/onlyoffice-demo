@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.zip.ZipEntry;
@@ -299,6 +300,75 @@ class DocumentStorageServiceTest {
       assertEquals("sample.docx", metadata.title());
       assertEquals("docx", metadata.fileType());
       verify(metadataService).updateDocumentFormat("sample", "sample.docx", "docx", "word");
+      assertTrue(hasZipPrefix(java.nio.file.Files.readAllBytes(storedPath)));
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
+  @DisplayName("callback 回写应把公开地址和 loopback 地址改写为 command service 内网地址")
+  void shouldRewriteCallbackDownloadUrlToCommandServiceAddress() throws Exception {
+    OnlyofficeIntegrationProperties properties = properties();
+    properties.setPublicBaseUrl("http://public.example.test");
+    properties.setDocumentServerUrl("http://public.example.test/api/office");
+    LocalDocumentStorageStrategy localStrategy = new LocalDocumentStorageStrategy(properties);
+    StorageProviderResolver resolver = new StorageProviderResolver(properties);
+    StorageKeyFactory keyFactory = new StorageKeyFactory();
+
+    java.nio.file.Path storedPath = tempDir.resolve("native/native/sample.doc");
+    java.nio.file.Files.createDirectories(storedPath.getParent());
+    java.nio.file.Files.write(storedPath, "legacy".getBytes());
+
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    DocumentMetadataEntity legacyEntity = entity("sample", "sample.doc", "native/native/sample.doc", "doc", "word");
+    DocumentMetadataEntity normalizedEntity = entity("sample", "sample.docx", "native/native/sample.doc", "docx", "word");
+    when(metadataService.requireAccessibleDocument("sample")).thenReturn(legacyEntity);
+    when(metadataService.updateDocumentFormat("sample", "sample.docx", "docx", "word")).thenReturn(normalizedEntity);
+
+    HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+    byte[] latestDocx = minimalDocx();
+    List<String> requestedPaths = new ArrayList<>();
+    try {
+      server.createContext("/cache/files", exchange -> {
+        requestedPaths.add(exchange.getRequestURI().getPath());
+        exchange.getResponseHeaders().add(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        exchange.sendResponseHeaders(200, latestDocx.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+          outputStream.write(latestDocx);
+        }
+      });
+      server.start();
+      properties.setDocumentServerCommandUrl("http://localhost:" + server.getAddress().getPort());
+
+      DocumentStorageService service = new DocumentStorageServiceImpl(
+          properties,
+          metadataService,
+          RestClient.builder(),
+          List.of(localStrategy),
+          resolver,
+          keyFactory,
+          new RemoteResourceSecurityServiceImpl(properties, RestClient.builder())
+      );
+
+      service.saveCallbackDocument(
+          "sample",
+          "http://public.example.test/api/office/cache/files/data/proxied/output.docx?download=1",
+          "docx"
+      );
+      service.saveCallbackDocument(
+          "sample",
+          "http://localhost:18080/cache/files/data/loopback/output.docx?download=2",
+          "docx"
+      );
+
+      assertEquals(
+          List.of("/cache/files/data/proxied/output.docx", "/cache/files/data/loopback/output.docx"),
+          requestedPaths
+      );
       assertTrue(hasZipPrefix(java.nio.file.Files.readAllBytes(storedPath)));
     } finally {
       server.stop(0);
