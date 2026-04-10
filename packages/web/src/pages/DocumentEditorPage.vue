@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
+import { ArrowLeft, DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
 import { ElMessageBox } from "element-plus";
 import "element-plus/es/components/message-box/style/css";
 import EditorShell from "../components/editor/EditorShell.vue";
@@ -163,7 +163,7 @@ onMounted(loadEditorPageData);
         @click="toggleSidebar"
         title="展开侧边栏"
       >
-        <el-icon><ArrowRight /></el-icon>
+        <el-icon><DArrowRight /></el-icon>
       </div>
 
       <el-aside
@@ -172,7 +172,9 @@ onMounted(loadEditorPageData);
         class="editor-sidebar"
       >
         <div class="sidebar-header">
-          <a class="back-link" @click.prevent="router.push('/')">← 文档列表</a>
+          <el-button link type="primary" @click="router.push('/')" class="back-button">
+            <el-icon style="margin-right: 4px;"><ArrowLeft /></el-icon> 返回文档列表
+          </el-button>
           <div class="sidebar-header-row">
             <div class="sidebar-header-meta">
               <p class="eyebrow">独立编辑工作台</p>
@@ -180,8 +182,8 @@ onMounted(loadEditorPageData);
                 {{ currentDocument?.title || currentDocumentId }}
               </h1>
             </div>
-            <el-button circle @click="toggleSidebar" title="收起侧边栏">
-              <el-icon><ArrowLeft /></el-icon>
+            <el-button type="primary" @click="toggleSidebar" title="收起侧边栏" style="padding: 8px;">
+              <el-icon size="16"><DArrowLeft /></el-icon>
             </el-button>
           </div>
           <p class="muted-copy sidebar-notice" style="margin-bottom: 12px;">
@@ -269,8 +271,8 @@ onMounted(loadEditorPageData);
 .sidebar-strip-toggle {
   height: 48px;
   width: 24px;
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color);
+  background: var(--el-color-primary);
+  border: 1px solid var(--el-color-primary);
   border-left: none;
   border-radius: 0 4px 4px 0;
   display: flex;
@@ -281,19 +283,23 @@ onMounted(loadEditorPageData);
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
   margin-top: auto;
   margin-bottom: auto;
+  color: #fff;
+  transition: all 0.2s ease;
 }
 
-.back-link {
-  display: inline-block;
-  font-size: 13px;
+.sidebar-strip-toggle:hover {
+  background-color: var(--el-color-primary-light-3);
+  border-color: var(--el-color-primary-light-3);
+}
+
+.back-button {
+  margin-bottom: 12px;
+  padding: 0;
+  font-size: 14px;
   color: var(--el-text-color-secondary);
-  cursor: pointer;
-  margin-bottom: 8px;
-  text-decoration: none;
-  transition: color 0.15s;
 }
 
-.back-link:hover {
+.back-button:hover {
   color: var(--el-color-primary);
 }
 

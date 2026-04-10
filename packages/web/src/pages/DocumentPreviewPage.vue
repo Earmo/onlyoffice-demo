@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ArrowLeft } from "@element-plus/icons-vue";
 import EditorShell from "../components/editor/EditorShell.vue";
 import { apiFetch } from "../lib/api";
 
@@ -95,7 +96,10 @@ onMounted(loadPreviewPageData);
       <el-col :xs="24" :md="8" :lg="6">
         <el-card shadow="never" class="preview-sidebar" style="height: calc(100vh - 36px); display: flex; flex-direction: column;">
           <div class="preview-meta-section" style="margin-bottom: 24px;">
-            <p class="eyebrow">只读预览</p>
+            <el-button link @click="router.push('/')" class="back-button">
+              <el-icon style="margin-right: 4px;"><ArrowLeft /></el-icon> 返回文档列表
+            </el-button>
+            <p class="eyebrow" style="margin-top: 16px;">只读预览</p>
             <h1 style="margin: 4px 0 8px; font-size: 20px;">{{ currentDocument?.title || currentDocumentId }}</h1>
             <p class="muted-copy" style="margin-bottom: 16px;">
               这里用于安全查看文档内容，不建立活跃编辑会话；若需要修改，请进入独立编辑工作台。
@@ -132,6 +136,16 @@ onMounted(loadPreviewPageData);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.back-button {
+  padding: 0;
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+}
+
+.back-button:hover {
+  color: var(--el-color-primary);
 }
 
 .eyebrow {

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { ArrowLeft, ArrowRight } from "@element-plus/icons-vue";
+import { DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 import { apiFetch, buildApiUrl, createAccessContextHeaders } from "../../lib/api";
 import { createOnlyofficeBridge } from "./onlyofficeBridge";
@@ -715,7 +715,7 @@ defineExpose({
         title="打开 AI 对话工作台"
         @click="toggleConsole"
       >
-        <el-icon><ArrowLeft /></el-icon>
+        <el-icon><DArrowLeft /></el-icon>
       </div>
     </el-main>
 
@@ -728,8 +728,8 @@ defineExpose({
             当前页面已进入 AI-ready 编辑工作台，可先抓取选区、刷新章节目录并快速定位内容。
           </p>
         </div>
-        <el-button class="panel-close" circle @click="closeConsole">
-          <el-icon><ArrowRight /></el-icon>
+        <el-button class="panel-close" type="primary" @click="closeConsole" title="收起工作台" style="padding: 8px;">
+          <el-icon size="16"><DArrowRight /></el-icon>
         </el-button>
       </div>
 
@@ -966,8 +966,8 @@ defineExpose({
   transform: translateY(-50%);
   width: 24px;
   height: 48px;
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color);
+  background: var(--el-color-primary);
+  border: 1px solid var(--el-color-primary);
   border-right: none;
   border-radius: 4px 0 0 4px;
   display: flex;
@@ -976,6 +976,13 @@ defineExpose({
   cursor: pointer;
   z-index: 100;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.05);
+  color: #fff;
+  transition: all 0.2s ease;
+}
+
+.stage-edge-toggle:hover {
+  background-color: var(--el-color-primary-light-3);
+  border-color: var(--el-color-primary-light-3);
 }
 
 .floating-console {
