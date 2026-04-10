@@ -59,29 +59,6 @@ describe("DocumentEditorPage", () => {
     confirmMock.mockResolvedValue("confirm");
   });
 
-  it("应在返回列表前先弹出确认并结束当前编辑会话", async () => {
-    // 返回列表是最常见的离场路径，必须验证“先关会话，后跳转”。
-    mockEditorPageRequests();
-
-    const wrapper = mount(DocumentEditorPage);
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("路线图.docx::doc-1");
-
-    const returnButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
-    await returnButton.trigger("click");
-    await flushPromises();
-
-    expect(confirmMock).toHaveBeenCalledWith(
-      "是否保存编辑并返回文档列表？",
-      "返回确认",
-      expect.objectContaining({ confirmButtonText: "保存并返回", cancelButtonText: "取消" })
-    );
-    expect(closeEditingSessionSpy).toHaveBeenCalledTimes(1);
-    expect(routerPush).toHaveBeenCalledWith({ path: "/", query: { highlight: "doc-1" } });
-    expect(closeEditingSessionSpy.mock.invocationCallOrder[0]).toBeLessThan(routerPush.mock.invocationCallOrder[0]);
-  });
-
   it("应在切换文档前确认并先结束当前文档会话", async () => {
     mockEditorPageRequests();
 
@@ -100,60 +77,6 @@ describe("DocumentEditorPage", () => {
     expect(closeEditingSessionSpy).toHaveBeenCalledTimes(1);
     expect(routerPush).toHaveBeenCalledWith({ name: "editor", params: { documentId: "doc-2" } });
     expect(closeEditingSessionSpy.mock.invocationCallOrder[0]).toBeLessThan(routerPush.mock.invocationCallOrder[0]);
-  });
-
-  it("应在重复触发离开时只发送一次 close-session", async () => {
-    let resolveClose;
-    closeEditingSessionSpy.mockReturnValue(new Promise(resolve => {
-      resolveClose = resolve;
-    }));
-    mockEditorPageRequests();
-
-    const wrapper = mount(DocumentEditorPage);
-    await flushPromises();
-
-    const returnButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
-    await returnButton.trigger("click");
-    await flushPromises();
-    await returnButton.trigger("click");
-    await flushPromises();
-
-    expect(closeEditingSessionSpy).toHaveBeenCalledTimes(1);
-    resolveClose();
-    await flushPromises();
-
-    expect(routerPush).toHaveBeenCalledTimes(1);
-    expect(routerPush).toHaveBeenCalledWith({ path: "/", query: { highlight: "doc-1" } });
-  });
-
-  it("应在结束编辑会话失败时停留当前页并展示错误", async () => {
-    closeEditingSessionSpy.mockRejectedValueOnce(new Error("close failed"));
-    mockEditorPageRequests();
-
-    const wrapper = mount(DocumentEditorPage);
-    await flushPromises();
-
-    const returnButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
-    await returnButton.trigger("click");
-    await flushPromises();
-
-    expect(routerPush).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain("close failed");
-  });
-
-  it("应在取消返回确认时留在编辑页", async () => {
-    confirmMock.mockRejectedValueOnce("cancel");
-    mockEditorPageRequests();
-
-    const wrapper = mount(DocumentEditorPage);
-    await flushPromises();
-
-    const returnButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
-    await returnButton.trigger("click");
-    await flushPromises();
-
-    expect(closeEditingSessionSpy).not.toHaveBeenCalled();
-    expect(routerPush).not.toHaveBeenCalled();
   });
 });
 

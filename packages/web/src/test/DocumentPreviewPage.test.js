@@ -42,7 +42,7 @@ describe("DocumentPreviewPage", () => {
     routerPush.mockResolvedValue(undefined);
   });
 
-  it("应以只读方式加载预览页并支持返回列表与进入编辑", async () => {
+  it("应以只读方式加载预览页并支持进入编辑", async () => {
     // 预览页的关键约束是：只读打开 EditorShell，同时不展示右侧控制台。
     fetch.mockResolvedValueOnce(jsonResponse({
       documentId: "doc-1",
@@ -58,11 +58,6 @@ describe("DocumentPreviewPage", () => {
     expect(wrapper.find(".preview-editor-shell-stub").attributes("data-readonly")).toBe("true");
     expect(wrapper.find(".preview-editor-shell-stub").attributes("data-show-console")).toBe("false");
 
-    const backButton = wrapper.findAll("button").find(button => button.text().includes("返回文档列表"));
-    await backButton.trigger("click");
-    expect(routerPush).toHaveBeenCalledWith({ path: "/", query: { highlight: "doc-1" } });
-
-    routerPush.mockClear();
     const editButton = wrapper.findAll("button").find(button => button.text().includes("编辑文档"));
     await editButton.trigger("click");
     expect(routerPush).toHaveBeenCalledWith({ name: "editor", params: { documentId: "doc-1" } });

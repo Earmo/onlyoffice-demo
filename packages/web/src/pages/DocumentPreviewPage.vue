@@ -42,9 +42,7 @@ async function loadPreviewPageData() {
   }
 }
 
-function goBackToLibrary() {
-  router.push({ path: "/", query: { highlight: currentDocumentId.value } });
-}
+
 
 function goToEditor() {
   // 预览和编辑是显式切换，不在当前页内部热切模式，便于保持会话边界清晰。
@@ -84,7 +82,7 @@ onMounted(loadPreviewPageData);
           </p>
         </div>
         <div class="preview-actions">
-           <el-button @click="goBackToLibrary">返回文档列表</el-button>
+
            <el-button type="primary" :disabled="isLoading" @click="goToEditor">编辑文档</el-button>
         </div>
       </div>

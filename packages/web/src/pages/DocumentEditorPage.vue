@@ -10,7 +10,7 @@ import { apiFetch } from "../lib/api";
 const route = useRoute();
 const router = useRouter();
 
-// 这里管理的是“编辑页级别”的页面状态，
+// 这里管理的是"编辑页级别"的页面状态，
 // 和 EditorShell 内部的编辑器运行态分层开来，避免页面层直接承载桥接细节。
 const isLoading = ref(true);
 const errorMessage = ref("");
@@ -21,7 +21,7 @@ const editorShellRef = ref(null);
 const isLeaving = ref(false);
 
 // 编辑页只认路由里的 documentId，把它视为唯一真相源。
-// 这样“切换文档”“刷新当前页”“回退高亮列表”都能围绕同一个 id 工作。
+// 这样"切换文档""刷新当前页""回退高亮列表"都能围绕同一个 id 工作。
 const currentDocumentId = computed(() => String(route.params.documentId ?? ""));
 
 async function readErrorMessage(response, fallbackMessage) {
@@ -73,30 +73,6 @@ async function closeCurrentEditingSession() {
   }
 
   await editorShellRef.value.closeEditingSession();
-}
-
-async function goBackToLibrary() {
-  try {
-    await ElMessageBox.confirm(
-      "是否保存编辑并返回文档列表？",
-      "返回确认",
-      {
-        confirmButtonText: "保存并返回",
-        cancelButtonText: "取消",
-        type: "warning",
-        appendTo: "body",
-        "custom-class": "editor-leave-confirm"
-      }
-    );
-  } catch {
-    // 用户点击取消，继续编辑
-    return;
-  }
-
-  await runLeaveFlow(
-    () => router.push({ path: "/", query: { highlight: currentDocumentId.value } }),
-    "结束当前编辑会话失败"
-  );
 }
 
 async function requestOpenDocument(document) {
@@ -196,6 +172,7 @@ onMounted(loadEditorPageData);
         class="editor-sidebar"
       >
         <div class="sidebar-header">
+          <a class="back-link" @click.prevent="router.push('/')">← 文档列表</a>
           <div class="sidebar-header-row">
             <div class="sidebar-header-meta">
               <p class="eyebrow">独立编辑工作台</p>
@@ -211,9 +188,6 @@ onMounted(loadEditorPageData);
             当前工作台已为 AI 对话侧栏预留选区与章节导航能力。离开页面前会显式结束编辑会话。
           </p>
           <div class="toolbar-actions">
-            <el-button size="small" :loading="isLeaving" :disabled="isLeaving" @click="goBackToLibrary">
-              返回文档列表
-            </el-button>
             <el-button type="primary" size="small" :disabled="isLoading || isLeaving" @click="loadEditorPageData">
               刷新文档上下文
             </el-button>
@@ -307,6 +281,20 @@ onMounted(loadEditorPageData);
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
   margin-top: auto;
   margin-bottom: auto;
+}
+
+.back-link {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  margin-bottom: 8px;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.back-link:hover {
+  color: var(--el-color-primary);
 }
 
 .eyebrow {
