@@ -34,14 +34,15 @@ packages/server/storage/
 .vscode/
 
 .agent/
+.augment/
 .claude/
 .codex/
 .gemini/
 .github/
+.kilo/
 .opencode/
 .qoder/
 .trae/
-.kiro/
 .cursor/
 .planning/
 .windsurf/
