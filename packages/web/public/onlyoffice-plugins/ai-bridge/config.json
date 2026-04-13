@@ -6,8 +6,8 @@
     {
       "description": "Hidden bridge for editor runtime selection and outline sync",
       "url": "index.html",
-      "icons": [],
       "isViewer": true,
+      "isSystem": true,
       "EditorsSupport": [
         "word"
       ],

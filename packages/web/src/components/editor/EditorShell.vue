@@ -141,7 +141,7 @@ function disposeBridge() {
 }
 
 function ensureBridge() {
-  if (props.readonly || !editorPayload.value) {
+  if (!editorPayload.value) {
     return null;
   }
   if (!onlyofficeBridge) {
@@ -417,14 +417,14 @@ function handleDocumentReady() {
   startSessionHeartbeatPolling();
   if (shouldShowConsole.value) {
     startSaveStatusPolling();
-    void nextTick(async () => {
-      ensureBridge();
-      const ready = await waitForBridgeReady({ suppressErrors: true });
-      if (ready) {
-        await refreshOutline({ silent: true });
-      }
-    });
   }
+  void nextTick(async () => {
+    ensureBridge();
+    const ready = await waitForBridgeReady({ suppressErrors: true });
+    if (ready) {
+      await refreshOutline({ silent: true });
+    }
+  });
   openNavigationPanelAfterReady();
 }
 
@@ -681,7 +681,12 @@ defineExpose({
   // 页面层只暴露“离开前收尾”和“桥接能力入口”，避免父组件越过壳层直接摸内部状态。
   closeEditingSession,
   captureSelectedText,
-  refreshOutline
+  refreshOutline,
+  jumpToHeading,
+  outlineTreeData,
+  isRefreshingOutline,
+  hasEmptyOutline,
+  activeHeadingId
 });
 </script>
 

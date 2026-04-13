@@ -11,6 +11,7 @@ const router = useRouter();
 const isLoading = ref(true);
 const errorMessage = ref("");
 const currentDocument = ref(null);
+const editorShellRef = ref(null);
 
 // 预览页沿用和编辑页相同的 documentId 路由语义，
 // 但整个页面明确保持只读，不建立编辑心跳和右侧运行台。
@@ -61,6 +62,19 @@ function formatTimestamp(value) {
   }).format(new Date(value));
 }
 
+const outlineTreeData = computed(() => editorShellRef.value?.outlineTreeData || []);
+const isRefreshingOutline = computed(() => editorShellRef.value?.isRefreshingOutline || false);
+const hasEmptyOutline = computed(() => editorShellRef.value?.hasEmptyOutline || false);
+const activeHeadingId = computed(() => editorShellRef.value?.activeHeadingId || "");
+
+async function refreshOutline() {
+  await editorShellRef.value?.refreshOutline();
+}
+
+async function jumpToHeading(heading) {
+  await editorShellRef.value?.jumpToHeading(heading);
+}
+
 watch(
   () => currentDocumentId.value,
   () => {
@@ -85,6 +99,7 @@ onMounted(loadPreviewPageData);
       <el-col :xs="24" :md="16" :lg="18" class="preview-stage-col">
         <div class="preview-stage">
           <EditorShell
+            ref="editorShellRef"
             :document-id="currentDocumentId"
             :document-title="currentDocument?.title || currentDocumentId"
             :readonly="true"
@@ -110,7 +125,53 @@ onMounted(loadPreviewPageData);
             <p class="muted-copy">documentId：<code>{{ currentDocumentId }}</code></p>
           </div>
 
-          <div style="flex: 1;"></div>
+          <el-divider style="margin: 16px 0" />
+
+          <div class="preview-section" style="flex: 1; overflow-y: auto;">
+            <div class="sidebar-heading" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <p class="eyebrow">当前文档</p>
+                <h3 style="margin: 4px 0; font-size: 16px;">章节目录</h3>
+              </div>
+              <el-button
+                size="small"
+                @click="refreshOutline"
+                :loading="isRefreshingOutline"
+                :disabled="isLoading"
+              >
+                刷新
+              </el-button>
+            </div>
+
+            <div v-if="outlineTreeData && outlineTreeData.length" class="outline-list">
+              <el-tree
+                :data="outlineTreeData"
+                node-key="id"
+                :current-node-key="activeHeadingId"
+                highlight-current
+                default-expand-all
+                :expand-on-click-node="false"
+                @node-click="jumpToHeading"
+              >
+                <template #default="{ node, data }">
+                  <span class="custom-tree-node">
+                    <span class="outline-level-tag">H{{ data.level }}</span>
+                    <span class="outline-text-tag" :title="data.label">{{ data.label }}</span>
+                  </span>
+                </template>
+              </el-tree>
+            </div>
+            <el-empty
+              v-else-if="hasEmptyOutline"
+              description="暂无章节标题"
+              :image-size="60"
+            />
+            <p v-else class="muted-copy" style="text-align: center; margin-top: 24px;">
+              等待文档加载完成后显示...
+            </p>
+          </div>
+
+          <el-divider style="margin: 16px 0" />
 
           <div class="preview-meta-section">
             <p class="eyebrow">下一步</p>
@@ -188,5 +249,40 @@ onMounted(loadPreviewPageData);
 .preview-sidebar {
   position: sticky;
   top: 18px;
+}
+
+.outline-list {
+  display: grid;
+  gap: 8px;
+}
+
+.outline-level-tag {
+  display: inline-flex;
+  min-width: 24px;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--el-fill-color);
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.outline-text-tag {
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+
+.custom-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.custom-tree-node .outline-text-tag {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
