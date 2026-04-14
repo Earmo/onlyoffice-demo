@@ -15,13 +15,12 @@ const router = useRouter();
 const isLoading = ref(true);
 const errorMessage = ref("");
 const currentDocument = ref(null);
-const documents = ref([]);
 const isSidebarOpen = ref(true);
 const editorShellRef = ref(null);
 const isLeaving = ref(false);
 
 // 编辑页只认路由里的 documentId，把它视为唯一真相源。
-// 这样"切换文档""刷新当前页""回退高亮列表"都能围绕同一个 id 工作。
+// 这样"刷新当前页""回退高亮列表"都能围绕同一个 id 工作。
 const currentDocumentId = computed(() => String(route.params.documentId ?? ""));
 
 async function readErrorMessage(response, fallbackMessage) {
@@ -34,29 +33,19 @@ async function readErrorMessage(response, fallbackMessage) {
 }
 
 async function loadEditorPageData() {
-  // 编辑页需要同时拿到：
-  // 1. 当前文档详情，用于顶部提示区和左侧固定栏展示；
-  // 2. 最近文档列表，用于左侧固定栏切换入口。
-  // 这里并行请求，减少进入编辑页的等待时间。
-  isLoading.value = true;
+  if (!currentDocument.value) {
+    isLoading.value = true;
+  }
   errorMessage.value = "";
 
   try {
-    const [detailResponse, listResponse] = await Promise.all([
-      apiFetch(`/api/documents/${currentDocumentId.value}`),
-      apiFetch("/api/documents")
-    ]);
+    const detailResponse = await apiFetch(`/api/documents/${currentDocumentId.value}`);
 
     if (!detailResponse.ok) {
       throw new Error(await readErrorMessage(detailResponse, `文档详情加载失败，HTTP ${detailResponse.status}`));
     }
-    if (!listResponse.ok) {
-      throw new Error(await readErrorMessage(listResponse, `文档列表加载失败，HTTP ${listResponse.status}`));
-    }
 
     currentDocument.value = await detailResponse.json();
-    const listPayload = await listResponse.json();
-    documents.value = listPayload.documents ?? [];
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "编辑页加载失败";
   } finally {
@@ -145,18 +134,52 @@ watch(
   }
 );
 
+const saveStatus = computed(() => editorShellRef.value?.saveStatus);
+const modeLabel = computed(() => editorShellRef.value?.modeLabel);
+
+function loadSaveStatus() {
+  editorShellRef.value?.loadSaveStatus?.();
+}
+
+function loadEditorConfig() {
+  return editorShellRef.value?.loadEditorConfig?.();
+}
+
+function saveStatusTone(state) {
+  return editorShellRef.value?.saveStatusTone?.(state) || "save-status-info";
+}
+
+async function handleFullRefresh() {
+  try {
+    await ElMessageBox.confirm(
+      "此操作将放弃所有未同步到服务器的本地修改并原地重启编辑器 iframe。如果您确定已成功保存或遇到严重卡死，可继续操作。",
+      "确认重置编辑器？",
+      {
+        confirmButtonText: "确认重置",
+        cancelButtonText: "取消",
+        type: "warning"
+      }
+    );
+  } catch {
+    return;
+  }
+
+  await loadEditorPageData();
+  await loadEditorConfig();
+}
+
 onMounted(loadEditorPageData);
 </script>
 
 <template>
   <el-container class="editor-page-shell" direction="vertical">
-    <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon style="margin: 16px;">
+    <el-alert key="error" v-if="errorMessage" :title="errorMessage" type="error" show-icon style="margin: 16px;">
       <el-button size="small" @click="loadEditorPageData" style="margin-top: 8px;">重新加载</el-button>
     </el-alert>
 
-    <el-empty v-else-if="isLoading" description="正在加载编辑页..." />
+    <el-empty key="loading" v-else-if="isLoading" description="正在加载编辑页..." />
 
-    <el-container v-else class="editor-layout">
+    <el-container key="content" v-else class="editor-layout">
       <div
         v-if="!isSidebarOpen"
         class="sidebar-strip-toggle"
@@ -190,8 +213,8 @@ onMounted(loadEditorPageData);
             当前工作台已为 AI 对话侧栏预留选区与章节导航能力。离开页面前会显式结束编辑会话。
           </p>
           <div class="toolbar-actions">
-            <el-button type="primary" size="small" :disabled="isLoading || isLeaving" @click="loadEditorPageData">
-              刷新文档上下文
+            <el-button type="primary" size="small" :disabled="isLoading || isLeaving" @click="handleFullRefresh">
+              重置并刷新编辑器
             </el-button>
           </div>
         </div>
@@ -208,24 +231,39 @@ onMounted(loadEditorPageData);
         <el-divider style="margin: 16px 0" />
 
         <div class="sidebar-section">
-          <div class="sidebar-heading" style="margin-bottom: 8px;">
-            <p class="eyebrow">切换文档</p>
-            <h3 style="margin: 4px 0; font-size: 16px;">最近文档</h3>
+          <div class="sidebar-heading" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div>
+              <p class="eyebrow">运行态 / 现有动作</p>
+              <h3 style="margin: 4px 0; font-size: 16px;">编辑器状态</h3>
+            </div>
           </div>
 
-          <div class="switch-list">
-            <el-card
-              v-for="document in documents"
-              :key="document.documentId"
-              shadow="hover"
-              class="switch-item"
-              :class="{ active: document.documentId === currentDocumentId, disabled: isLeaving }"
-              @click="requestOpenDocument(document)"
-              body-style="padding: 12px;"
-            >
-              <div class="switch-title" :title="document.title">{{ document.title }}</div>
-              <div class="switch-meta">{{ formatTimestamp(document.lastSavedTime) }}</div>
-            </el-card>
+          <p class="muted-copy">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
+
+          <div v-if="saveStatus" class="runtime-block" style="margin-top: 16px;">
+            <p class="eyebrow" style="margin-bottom: 8px;">最近保存状态</p>
+            <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
+              <p class="save-status-headline" style="font-weight: bold; margin-bottom: 8px;">{{ saveStatus.message }}</p>
+              <p class="save-status-meta">
+                最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
+              </p>
+              <p class="save-status-meta">
+                最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackTime) }}</code>
+              </p>
+              <p class="save-status-meta">
+                最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedTime) }}</code>
+              </p>
+            </div>
+            <ul v-if="saveStatus.recentEvents?.length" class="save-status-events">
+              <li v-for="event in saveStatus.recentEvents" :key="`${event.eventType}-${event.eventTime}`">
+                <strong>{{ event.eventType }}</strong>
+                <span>{{ event.message }}</span>
+                <time>{{ formatTimestamp(event.eventTime) }}</time>
+              </li>
+            </ul>
+            <el-button style="margin-top: 12px;" size="small" @click="loadSaveStatus">
+              刷新保存状态
+            </el-button>
           </div>
         </div>
       </el-aside>
@@ -369,5 +407,43 @@ onMounted(loadEditorPageData);
   font-size: 12px;
   color: var(--el-text-color-regular);
   margin-top: 4px;
+}
+.save-status-card {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  margin-bottom: 12px;
+}
+
+.save-status-meta {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.save-status-events {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.save-status-events li {
+  padding: 8px 12px;
+  background: var(--el-fill-color);
+  border-radius: 6px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.save-status-events strong {
+  color: var(--el-color-primary);
+}
+
+.save-status-events time {
+  color: var(--el-text-color-secondary);
 }
 </style>

@@ -66,6 +66,11 @@ const outlineTreeData = computed(() => editorShellRef.value?.outlineTreeData || 
 const isRefreshingOutline = computed(() => editorShellRef.value?.isRefreshingOutline || false);
 const hasEmptyOutline = computed(() => editorShellRef.value?.hasEmptyOutline || false);
 const activeHeadingId = computed(() => editorShellRef.value?.activeHeadingId || "");
+const isOutlineSectionExpanded = ref(true);
+
+function toggleOutlineSection() {
+  isOutlineSectionExpanded.value = !isOutlineSectionExpanded.value;
+}
 
 async function refreshOutline() {
   await editorShellRef.value?.refreshOutline();
@@ -133,15 +138,22 @@ onMounted(loadPreviewPageData);
                 <p class="eyebrow">当前文档</p>
                 <h3 style="margin: 4px 0; font-size: 16px;">章节目录</h3>
               </div>
-              <el-button
-                size="small"
-                @click="refreshOutline"
-                :loading="isRefreshingOutline"
-                :disabled="isLoading"
-              >
-                刷新
-              </el-button>
+              <div style="display: flex; gap: 8px;">
+                <el-button
+                  size="small"
+                  @click="refreshOutline"
+                  :loading="isRefreshingOutline"
+                  :disabled="isLoading"
+                >
+                  刷新
+                </el-button>
+                <el-button size="small" text @click="toggleOutlineSection">
+                  {{ isOutlineSectionExpanded ? "收起" : "展开" }}
+                </el-button>
+              </div>
             </div>
+
+            <div v-show="isOutlineSectionExpanded">
 
             <div v-if="outlineTreeData && outlineTreeData.length" class="outline-list">
               <el-tree
@@ -169,6 +181,7 @@ onMounted(loadPreviewPageData);
             <p v-else class="muted-copy" style="text-align: center; margin-top: 24px;">
               等待文档加载完成后显示...
             </p>
+            </div>
           </div>
 
           <el-divider style="margin: 16px 0" />

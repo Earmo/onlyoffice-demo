@@ -686,22 +686,28 @@ defineExpose({
   outlineTreeData,
   isRefreshingOutline,
   hasEmptyOutline,
-  activeHeadingId
+  activeHeadingId,
+  // 暴露给外部调用：运行态 / 保存情况
+  saveStatus,
+  modeLabel,
+  loadSaveStatus,
+  loadEditorConfig,
+  saveStatusTone
 });
 </script>
 
 <template>
   <el-container class="editor-workspace">
     <el-main class="editor-stage-stack">
-      <el-empty v-if="isLoading" description="正在获取编辑器配置..." />
+      <el-empty key="loading" v-if="isLoading" description="正在获取编辑器配置..." />
 
-      <el-alert v-else-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false" style="margin: 16px;">
+      <el-alert key="error" v-else-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false" style="margin: 16px;">
         <p class="hint">
           请确认当前站点的 <code>/api</code> 反向代理可用，并且 ONLYOFFICE 相关路径已通过同源方式转发。
         </p>
       </el-alert>
 
-      <div v-else-if="editorPayload" class="editor-shell">
+      <div key="editor" v-else-if="editorPayload" class="editor-shell">
         <DocumentEditor
           :key="editorKey"
           id="docEditor"
@@ -741,7 +747,8 @@ defineExpose({
       <div class="console-body">
         <!-- 页面顶部展示当前跳转到的活跃标题，帮助用户确认章节定位结果 -->
         <el-alert
-          v-if="activeHeadingNode"
+          v-if="activeHeadingNode && activeHeadingNode.id"
+          :key="'active-heading-' + activeHeadingNode.id"
           type="info"
           :closable="true"
           style="margin-bottom: 0;"
@@ -758,25 +765,26 @@ defineExpose({
           </div>
         </el-alert>
 
-        <el-card shadow="never" class="panel-section">
-          <template #header>
-            <div class="panel-section-header">
-              <span>当前选区</span>
-              <div style="display: flex; gap: 8px;">
-                <el-button
-                  size="small"
-                  :loading="isCapturingSelection"
-                  :disabled="isLoading || isClosingSession"
-                  @click="captureSelectedText"
-                >
-                  {{ isCapturingSelection ? "抓取中..." : "抓取当前选区" }}
-                </el-button>
-                <el-button size="small" text @click="toggleSelectionSection">
-                  {{ isSelectionSectionExpanded ? "收起" : "展开" }}
-                </el-button>
-              </div>
+        <div class="panel-section" style="margin-bottom: 24px;">
+          <div class="panel-section-header">
+            <div>
+              <p class="eyebrow">当前上下文</p>
+              <h3 style="margin: 4px 0; font-size: 16px;">当前选区</h3>
             </div>
-          </template>
+            <div style="display: flex; gap: 8px;">
+              <el-button
+                size="small"
+                :loading="isCapturingSelection"
+                :disabled="isLoading || isClosingSession"
+                @click="captureSelectedText"
+              >
+                {{ isCapturingSelection ? "抓取中..." : "抓取当前选区" }}
+              </el-button>
+              <el-button size="small" text @click="toggleSelectionSection">
+                {{ isSelectionSectionExpanded ? "收起" : "展开" }}
+              </el-button>
+            </div>
+          </div>
 
           <div v-show="isSelectionSectionExpanded">
             <div class="bridge-status-row">
@@ -805,34 +813,35 @@ defineExpose({
               点击“抓取当前选区”后，这里会展示可直接进入 AI 对话窗口的文本上下文。
             </p>
           </div>
-        </el-card>
+        </div>
 
-        <el-card shadow="never" class="panel-section">
-          <template #header>
-            <div class="panel-section-header">
-              <span>章节标题</span>
-              <div style="display: flex; gap: 8px;">
-                <el-button
-                  size="small"
-                  :loading="isRefreshingOutline"
-                  :disabled="isLoading || isClosingSession"
-                  @click="refreshOutline"
-                >
-                  {{ isRefreshingOutline ? "刷新中..." : "刷新目录" }}
-                </el-button>
-                <el-button size="small" text @click="toggleOutlineSection">
-                  {{ isOutlineSectionExpanded ? "收起" : "展开" }}
-                </el-button>
-              </div>
+        <div class="panel-section" style="margin-bottom: 24px;">
+          <div class="panel-section-header">
+            <div>
+              <p class="eyebrow">当前上下文</p>
+              <h3 style="margin: 4px 0; font-size: 16px;">章节标题</h3>
             </div>
-          </template>
+            <div style="display: flex; gap: 8px;">
+              <el-button
+                size="small"
+                :loading="isRefreshingOutline"
+                :disabled="isLoading || isClosingSession"
+                @click="refreshOutline"
+              >
+                {{ isRefreshingOutline ? "刷新中..." : "刷新目录" }}
+              </el-button>
+              <el-button size="small" text @click="toggleOutlineSection">
+                {{ isOutlineSectionExpanded ? "收起" : "展开" }}
+              </el-button>
+            </div>
+          </div>
 
           <div v-show="isOutlineSectionExpanded">
             <div v-if="outlineTreeData.length" class="outline-list">
               <el-tree
                 :data="outlineTreeData"
                 node-key="id"
-                :current-node-key="activeHeadingId"
+                :current-node-key="activeHeadingId || undefined"
                 highlight-current
                 default-expand-all
                 :expand-on-click-node="false"
@@ -855,80 +864,41 @@ defineExpose({
               点击“刷新目录”后，这里会显示文档中的章节标题，并支持快速定位。
             </p>
           </div>
-        </el-card>
+        </div>
 
-        <el-card shadow="never" class="panel-section">
-          <template #header>
-            <div class="panel-section-header">
-              <span>运行态 / 现有动作</span>
-              <el-button size="small" text @click="toggleRuntimeSection">
-                {{ isRuntimeSectionExpanded ? "收起" : "展开" }}
-              </el-button>
+        <div class="panel-section">
+          <div class="panel-section-header">
+            <div>
+              <p class="eyebrow">当前动作</p>
+              <h3 style="margin: 4px 0; font-size: 16px;">在光标处插入网络图片</h3>
             </div>
-          </template>
+            <el-button size="small" text @click="toggleRuntimeSection">
+              {{ isRuntimeSectionExpanded ? "收起" : "展开" }}
+            </el-button>
+          </div>
 
           <div v-if="isRuntimeSectionExpanded">
-            <p class="panel-document-title">{{ props.documentTitle || "未命名文档" }}</p>
-            <p class="panel-document-meta">documentId: <code>{{ props.documentId }}</code></p>
-            <p class="panel-document-meta">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
-
-            <div class="console-inline-actions">
-              <el-tag type="info">{{ modeLabel }}</el-tag>
-              <el-button size="small" :disabled="isLoading" @click="loadEditorConfig">
-                重新加载配置
-              </el-button>
-            </div>
-
-            <div v-if="saveStatus" class="runtime-block">
-              <p class="runtime-title">最近保存状态</p>
-              <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
-                <p class="save-status-headline" style="font-weight: bold; margin-bottom: 8px;">{{ saveStatus.message }}</p>
-                <p class="save-status-meta">
-                  最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
-                </p>
-                <p class="save-status-meta">
-                  最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackTime) }}</code>
-                </p>
-                <p class="save-status-meta">
-                  最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedTime) }}</code>
-                </p>
-              </div>
-              <ul v-if="saveStatus.recentEvents?.length" class="save-status-events">
-                <li v-for="event in saveStatus.recentEvents" :key="`${event.eventType}-${event.eventTime}`">
-                  <strong>{{ event.eventType }}</strong>
-                  <span>{{ event.message }}</span>
-                  <time>{{ formatTimestamp(event.eventTime) }}</time>
-                </li>
-              </ul>
-              <el-button style="margin-top: 12px;" @click="loadSaveStatus">
-                刷新保存状态
-              </el-button>
-            </div>
-
-            <div class="runtime-block">
-              <p class="runtime-title">在光标处插入网络图片</p>
-              <el-form label-position="top">
-                <el-form-item label="网络图片地址">
-                  <el-input
-                    v-model="imageUrl"
-                    type="url"
-                    placeholder="https://example.com/demo.png"
-                    :disabled="isLoading || isInsertingImage"
-                  />
-                </el-form-item>
-                <el-form-item>
-                  <el-button
-                    type="primary"
-                    :disabled="isLoading || isInsertingImage || isClosingSession"
-                    @click="insertRemoteImage"
-                  >
-                    {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
-                  </el-button>
-                </el-form-item>
-              </el-form>
-            </div>
+            <el-form label-position="top">
+              <el-form-item label="网络图片地址">
+                <el-input
+                  v-model="imageUrl"
+                  type="url"
+                  placeholder="https://example.com/demo.png"
+                  :disabled="isLoading || isInsertingImage"
+                />
+              </el-form-item>
+              <el-form-item style="margin-bottom: 0;">
+                <el-button
+                  type="primary"
+                  :disabled="isLoading || isInsertingImage || isClosingSession"
+                  @click="insertRemoteImage"
+                >
+                  {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
+                </el-button>
+              </el-form-item>
+            </el-form>
           </div>
-        </el-card>
+        </div>
       </div>
     </div>
   </el-container>
