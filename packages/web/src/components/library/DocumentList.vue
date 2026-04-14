@@ -15,10 +15,16 @@ const props = defineProps({
   deletingDocumentId: {
     type: String,
     default: ""
+  },
+  // 当某行文档正在处理（转换/水印消除）时传入其 documentId，
+  // 对应行的「更多▼」按钮会进入 loading 状态防止重复点击。
+  processingDocumentId: {
+    type: String,
+    default: ""
   }
 });
 
-const emit = defineEmits(["preview", "edit", "delete", "start-edit"]);
+const emit = defineEmits(["preview", "edit", "delete", "start-edit", "convert", "remove-watermark"]);
 
 function startEdit() {
   emit("start-edit");
@@ -36,7 +42,7 @@ function formatTimestamp(value) {
 }
 
 function statusLabel(document) {
-  // storageAvailable 为 false 时优先显示“存储异常”，
+  // storageAvailable 为 false 时优先显示"存储异常"，
   // 因为这类问题比普通业务状态更需要用户立即注意。
   if (!document.storageAvailable) {
     return "存储异常";
@@ -67,7 +73,7 @@ function statusTone(document) {
 }
 
 function previewDocument(document) {
-  // 行点击和“查看”按钮最终都走同一条 preview 事件。
+  // 行点击和"查看"按钮最终都走同一条 preview 事件。
   emit("preview", document);
 }
 
@@ -75,8 +81,20 @@ function editDocument(document) {
   emit("edit", document);
 }
 
-function deleteDocument(document) {
-  emit("delete", document);
+// 判断是否为 Word 类型（docx / doc / odt）
+function isWordFileType(fileType) {
+  return ["docx", "doc", "odt"].includes(fileType);
+}
+
+// 下拉菜单指令路由：将 command 字符串映射到对应的 emit
+function handleDropdownCommand(command, row) {
+  if (command === "convert") {
+    emit("convert", row);
+  } else if (command === "remove-watermark") {
+    emit("remove-watermark", row);
+  } else if (command === "delete") {
+    emit("delete", row);
+  }
 }
 
 function tableRowClassName({ row }) {
@@ -140,7 +158,7 @@ function tableRowClassName({ row }) {
         </template>
       </el-table-column>
       
-      <!-- 所有者 / 访问者并列展示，方便定位“谁创建、谁当前在操作”。 -->
+      <!-- 所有者 / 访问者并列展示，方便定位"谁创建、谁当前在操作"。 -->
       <el-table-column label="所有者 / 访问者" width="180">
         <template #default="{ row }">
           <div style="font-size: 13px;">Owner: {{ row.ownerUser || '暂无' }}</div>
@@ -148,21 +166,44 @@ function tableRowClassName({ row }) {
         </template>
       </el-table-column>
       
-      <!-- 右侧操作列保留显式按钮，避免只靠整行点击造成误触。 -->
-      <el-table-column label="操作" width="260" fixed="right">
+      <!-- 操作列：「查看 / 编辑 / 更多▼」三按钮 -->
+      <!-- 删除操作移入「更多▼」下拉菜单，与文档类型相关的操作（转换/去水印）也在菜单内。 -->
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button size="small" class="preview-document-btn" @click.stop="previewDocument(row)">查看</el-button>
           <el-button size="small" type="primary" class="edit-document-btn" @click.stop="editDocument(row)">编辑</el-button>
-          <el-button
-            size="small"
-            type="danger"
-            plain
-            class="delete-document-btn"
-            :loading="deletingDocumentId === row.documentId"
-            @click.stop="deleteDocument(row)"
+          <el-dropdown
+            trigger="click"
+            :disabled="processingDocumentId === row.documentId"
+            @command="(cmd) => handleDropdownCommand(cmd, row)"
+            @click.stop
           >
-            删除
-          </el-button>
+            <el-button
+              size="small"
+              plain
+              class="more-document-btn"
+              :loading="processingDocumentId === row.documentId"
+              @click.stop
+            >
+              更多<el-icon class="el-icon--right"><arrow-down /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <!-- PDF 类型：提供转换为 Word 入口 -->
+                <el-dropdown-item v-if="row.fileType === 'pdf'" command="convert">
+                  转换为 Word
+                </el-dropdown-item>
+                <!-- Word 类型（docx/doc/odt）：提供消除水印入口 -->
+                <el-dropdown-item v-if="isWordFileType(row.fileType)" command="remove-watermark">
+                  消除水印
+                </el-dropdown-item>
+                <!-- 删除是所有文档类型通用的危险操作 -->
+                <el-dropdown-item divided command="delete" class="delete-document-item">
+                  删除
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </el-table-column>
     </el-table>
@@ -240,6 +281,10 @@ function tableRowClassName({ row }) {
 }
 :deep(.el-table .el-table__row) {
   cursor: pointer;
+}
+
+.delete-document-item {
+  color: var(--el-color-danger);
 }
 
 @media (max-width: 767px) {
