@@ -52,7 +52,10 @@ class AccessContextErrorHandlingTest {
         documentStorageService,
         documentStatusService,
         accessAuditService,
-        accessContextResolver
+        accessContextResolver,
+        null,
+        null,
+        null
     );
     mockMvc = MockMvcBuilders.standaloneSetup(controller)
         .setControllerAdvice(new GlobalExceptionHandler())
