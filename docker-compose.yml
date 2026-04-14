@@ -27,12 +27,17 @@ services:
     environment:
       JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/healthcheck >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/healthcheck > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 40s
+    # ONLYOFFICE "File → Download as" 把 cmd+JWT 放在 URI 中，超过默认 8k 缓冲上限触发 413。
+    # 通过注入 conf.d 配置在 nginx http-level 覆盖缓冲区大小解决该问题。
+    volumes:
+      - ./infra/nginx/onlyoffice-header-buffers.conf:/etc/nginx/conf.d/99-header-buffers.conf:ro
     restart: unless-stopped
+
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
