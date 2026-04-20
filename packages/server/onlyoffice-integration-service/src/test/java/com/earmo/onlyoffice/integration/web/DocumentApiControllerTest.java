@@ -59,15 +59,6 @@ class DocumentApiControllerTest {
   private AccessContextResolver accessContextResolver;
 
   @MockBean
-  private com.earmo.onlyoffice.integration.service.OnlyofficeConversionService onlyofficeConversionService;
-
-  @MockBean
-  private com.earmo.onlyoffice.integration.service.OnlyofficeDocumentBuilderService onlyofficeDocumentBuilderService;
-
-  @MockBean
-  private com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
-
-  @MockBean
   private DocumentMetadataMapper documentMetadataMapper;
 
   @MockBean

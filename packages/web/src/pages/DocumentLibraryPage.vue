@@ -34,8 +34,6 @@ const isCreating = ref(false);
 const isUploading = ref(false);
 const isImporting = ref(false);
 const deletingDocumentId = ref("");
-// 标记当前正在处理（转换/水印消除）的文档，对应行的「更多▼」按钮进入 loading
-const processingDocumentId = ref("");
 const pageNumber = ref(1);
 const pageSize = ref(10);
 const total = ref(0);
@@ -340,45 +338,6 @@ async function handlePageSizeChange(nextPageSize) {
   await reloadDocumentList();
 }
 
-async function convertDocument(doc) {
-  // PDF → Word 转换：同步等待后端完成，结果直接高亮新文档。
-  processingDocumentId.value = doc.documentId;
-  successMessage.value = "";
-  errorMessage.value = "";
-
-  try {
-    const response = await apiFetch(`/api/documents/${doc.documentId}/convert`, { method: "POST" });
-    if (!response.ok) {
-      throw new Error(await readErrorMessage(response, `PDF 转换失败，HTTP ${response.status}`));
-    }
-    const newDoc = await response.json();
-    await revealDocument(newDoc, "");
-  } catch (error) {
-    errorMessage.value = `PDF 转换失败：${normalizeErrorMessage(error, "未知错误")}`;
-  } finally {
-    processingDocumentId.value = "";
-  }
-}
-
-async function removeWatermark(doc) {
-  // 消除水印：后端覆盖原文档，成功后直接刷新列表。
-  processingDocumentId.value = doc.documentId;
-  successMessage.value = "";
-  errorMessage.value = "";
-
-  try {
-    const response = await apiFetch(`/api/documents/${doc.documentId}/remove-watermark`, { method: "POST" });
-    if (!response.ok) {
-      throw new Error(await readErrorMessage(response, `水印消除失败，HTTP ${response.status}`));
-    }
-    await reloadDocumentList();
-  } catch (error) {
-    errorMessage.value = `水印消除失败：${normalizeErrorMessage(error, "未知错误")}`;
-  } finally {
-    processingDocumentId.value = "";
-  }
-}
-
 async function deleteDocument(document) {
   if (!document || deletingDocumentId.value) {
     return;
@@ -605,12 +564,9 @@ onMounted(loadLibraryWorkspace);
                   :documents="documents"
                   :highlighted-document-id="highlightedDocumentId"
                   :deleting-document-id="deletingDocumentId"
-                  :processing-document-id="processingDocumentId"
                   @preview="previewDocument"
                   @edit="editDocument"
                   @delete="deleteDocument"
-                  @convert="convertDocument"
-                  @remove-watermark="removeWatermark"
                   @start-edit="showCreateDialog = true"
                 />
               </div>

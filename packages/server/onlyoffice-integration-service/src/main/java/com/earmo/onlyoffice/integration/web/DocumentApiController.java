@@ -13,9 +13,6 @@ import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
-import com.earmo.onlyoffice.integration.service.OnlyofficeConversionService;
-import com.earmo.onlyoffice.integration.service.OnlyofficeDocumentBuilderService;
-import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.mybatisflex.core.paginate.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -63,9 +60,6 @@ public class DocumentApiController {
   private final DocumentStatusService documentStatusService;
   private final AccessAuditService accessAuditService;
   private final AccessContextResolver accessContextResolver;
-  private final OnlyofficeConversionService onlyofficeConversionService;
-  private final OnlyofficeDocumentBuilderService onlyofficeDocumentBuilderService;
-  private final OnlyofficeIntegrationProperties onlyofficeProperties;
 
   @GetMapping
   @Operation(summary = "查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要列表。")
@@ -231,76 +225,6 @@ public class DocumentApiController {
     }
     documentMetadataService.archiveDocument(documentId);
     accessAuditService.recordDocumentArchived(documentId, accessContext);
-  }
-
-  @PostMapping("/{documentId}/convert")
-  @Operation(
-      summary = "PDF 转换为 Word",
-      description = "调用 ONLYOFFICE Conversion API 将 PDF 文档同步转换为 docx 格式，转换结果作为新文档保存并返回。"
-  )
-  public DocumentSummaryResponse convertToWord(
-      @Parameter(description = "源 PDF 文档内部主键。")
-      @PathVariable String documentId,
-      HttpServletRequest request
-  ) throws IOException {
-    AccessContext accessContext = accessContextResolver.resolve(request);
-    StoredDocument sourceDoc = documentStorageService.getRequiredDocument(documentId);
-    if (!"pdf".equalsIgnoreCase(sourceDoc.fileType())) {
-      throw new IllegalArgumentException("仅支持对 PDF 文档执行转换操作，当前文档类型：" + sourceDoc.fileType());
-    }
-    byte[] resultBytes = onlyofficeConversionService.convertDocument(documentId, "pdf", "docx");
-    String sourceTitle = sourceDoc.title();
-    String newTitle = sourceTitle.toLowerCase().endsWith(".pdf")
-        ? sourceTitle.substring(0, sourceTitle.length() - 4) + ".docx"
-        : sourceTitle + ".docx";
-    StoredDocument newDoc = documentStorageService.storeUploadedDocument(
-        newTitle, resultBytes, accessContext.toRequestContext());
-    accessAuditService.recordDocumentImported(newDoc.documentId(), accessContext);
-    log.info("PDF 转换完成：sourceDocumentId={}, newDocumentId={}, title={}",
-        documentId, newDoc.documentId(), newTitle);
-    return toSummary(newDoc, accessContext);
-  }
-
-  @GetMapping(value = "/{documentId}/watermark-script", produces = "application/javascript")
-  @Operation(
-      summary = "获取水印消除脚本",
-      description = "动态生成供 ONLYOFFICE Document Builder 拉取执行的 JavaScript 脚本内容。此端点仅供 ONLYOFFICE Document Server 容器内部访问，不作为用户端 API。"
-  )
-  public String watermarkScript(
-      @Parameter(description = "目标文档内部主键。")
-      @PathVariable String documentId
-  ) throws IOException {
-    StoredDocument doc = documentStorageService.getRequiredDocument(documentId);
-    return onlyofficeDocumentBuilderService.generateRemoveWatermarkScript(documentId, doc.fileType());
-  }
-
-  @PostMapping("/{documentId}/remove-watermark")
-  @ResponseStatus(HttpStatus.NO_CONTENT)
-  @Operation(
-      summary = "消除 Word 文档水印",
-      description = "调用 ONLYOFFICE Document Builder API 静默消除文档中的水印，处理结果就地覆盖原文档。此操作不可逆。"
-  )
-  public void removeWatermark(
-      @Parameter(description = "目标 Word 文档内部主键。")
-      @PathVariable String documentId,
-      HttpServletRequest request
-  ) throws IOException {
-    AccessContext accessContext = accessContextResolver.resolve(request);
-    StoredDocument doc = documentStorageService.getRequiredDocument(documentId);
-    String fileType = doc.fileType();
-    if (!"docx".equalsIgnoreCase(fileType) && !"doc".equalsIgnoreCase(fileType)
-        && !"odt".equalsIgnoreCase(fileType)) {
-      throw new IllegalArgumentException("仅支持对 Word 格式文档执行水印消除，当前文档类型：" + fileType);
-    }
-    String baseUrl = onlyofficeProperties.getInternalBaseUrl();
-    if (baseUrl.endsWith("/")) {
-      baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-    }
-    String scriptUrl = baseUrl + "/api/documents/" + documentId + "/watermark-script";
-    String outputFileName = "output." + fileType;
-    byte[] resultBytes = onlyofficeDocumentBuilderService.runScript(scriptUrl, outputFileName);
-    documentStorageService.storeUploadedDocument(doc.title(), resultBytes, accessContext.toRequestContext());
-    log.info("水印消除完成：documentId={}, fileType={}", documentId, fileType);
   }
 
   private DocumentSummaryResponse toSummary(

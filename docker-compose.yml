@@ -20,7 +20,8 @@ services:
     restart: unless-stopped
 
   onlyoffice:
-    image: onlyoffice/documentserver:9.3
+    # image: onlyoffice/documentserver:9.3
+    image: onlyoffice/documentserver-de:9.3.1.2
     container_name: onlyoffice-integration-docs
     ports:
       - "18080:80"
