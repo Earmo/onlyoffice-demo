@@ -807,7 +807,13 @@ async function submitInsertImage() {
   </div>
 </template>
 
-<style scoped>\n.action-tools .el-button {\n  margin-right: 8px;\n}\n.action-tools .el-input {\n  margin-left: 0;\n}
+<style scoped>
+.action-tools .el-button {
+  margin-right: 8px;
+}
+.action-tools .el-input {
+  margin-left: 0;
+}
 .ai-workbench-shell {
   width: 800px;
   max-width: 100%;
