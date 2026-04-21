@@ -97,6 +97,15 @@ const topStatusText = computed(() => {
   }
   return props.runtimeContext.bridgeStatusMessage || "等待上下文准备完成。";
 });
+const shortTopStatusText = computed(() => {
+  if (capabilityStatus.value === "capability-disabled") return "模型不可用";
+  if (snapshotState.value === "bridge-pending") return "准备上下文...";
+  if (currentRequestState.value === "cancelling") return "取消中...";
+  if (currentRequestState.value === "in_progress") return "请求中...";
+  if (lastCancelled.value) return "已取消";
+  if (snapshotState.value === "snapshot-ready") return "已抓取当前选区";
+  return "AI 对话已就绪";
+});
 const currentHeadingText = computed(() => props.runtimeContext.activeHeadingNode?.text || props.runtimeContext.activeHeadingNode?.label || "");
 
 watch(
@@ -606,11 +615,30 @@ async function submitInsertImage() {
 
 <template>
   <div class="ai-workbench-shell">
-    <div class="top-status workbench-header-status" :class="[capabilityStatus, snapshotState]">
-      {{ topStatusText }}
+    <div class="workbench-top-bar" style="display: flex; align-items: center; padding: 12px 16px; min-height: 48px; border-bottom: 1px solid var(--el-border-color-lighter);">
+      <div style="flex: 1; display: flex; gap: 8px; align-items: center;">
+        <el-tooltip content="历史会话" placement="bottom">
+          <el-button text @click="drawerVisible = true" style="padding: 4px; margin: 0;">
+            <el-icon :size="18"><Menu /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="新建对话" placement="bottom">
+          <el-button text @click="startNewChat" style="padding: 4px; margin: 0;">
+            <el-icon :size="18"><Plus /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :content="topStatusText" placement="bottom">
+          <div class="top-status workbench-header-status" :class="[capabilityStatus, snapshotState]" style="margin: 0; align-self: auto; text-align: left; cursor: default;">
+            {{ shortTopStatusText }}
+          </div>
+        </el-tooltip>
+      </div>
+      <div style="max-width: 40%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+        <span class="eyebrow" style="margin: 0; text-transform: none; color: var(--el-text-color-secondary);">{{ currentSessionTitle || "新会话" }}</span>
+      </div>
     </div>
 
-    <div v-if="capabilityStatus === 'capability-disabled'" class="capability-disabled">
+    <div v-if="capabilityStatus === 'capability-disabled'" class="capability-disabled" style="margin: 0 16px;">
       <p>llmAvailable=false</p>
       <p>disabledReason: {{ disabledReason }}</p>
       <p>输入区已禁用，请先打开后端 LLM 配置。</p>
@@ -639,30 +667,14 @@ async function submitInsertImage() {
         </div>
       </el-drawer>
 
-      <main class="thread-panel">
-        <div class="panel-title-row" style="border-bottom: 1px solid var(--el-border-color-lighter); padding-bottom: 8px;">
-          <div style="display: flex; gap: 8px;">
-            <el-tooltip content="历史会话" placement="bottom">
-              <el-button text @click="drawerVisible = true" style="padding: 4px;">
-                <el-icon :size="18"><Menu /></el-icon>
-              </el-button>
-            </el-tooltip>
-            <el-tooltip content="新建对话" placement="bottom">
-              <el-button text @click="startNewChat" style="padding: 4px;">
-                <el-icon :size="18"><Plus /></el-icon>
-              </el-button>
-            </el-tooltip>
-          </div>
-          <span class="eyebrow" style="flex:1;text-align:right">{{ currentSessionTitle || "未初始化" }}</span>
-        </div>
-
-        <div v-if="threadError" class="thread-error-card">
+      <main class="thread-panel" style="padding-top: 16px;">
+        <div v-if="threadError" class="thread-error-card" style="margin: 0 16px 12px;">
           <strong>{{ threadError.errorCode || "ERROR" }}</strong>
           <span>{{ threadError.message }}</span>
         </div>
 
-        <div style="margin: 0 16px 12px;">
-          <el-collapse>
+        <div style="margin: 0 16px 12px; border: 1px solid var(--el-border-color); border-radius: 8px; overflow: hidden; padding: 0 12px; background: var(--el-bg-color);">
+          <el-collapse style="border-top: none; border-bottom: none;">
             <el-collapse-item title="文档工具箱" name="1">
               <div class="action-tools" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <el-button size="small" :disabled="isInsertingImage" @click="submitInsertImage">
@@ -700,18 +712,16 @@ async function submitInsertImage() {
           </el-collapse>
         </div>
 
-        <div class="thread-list">
-          <div v-for="entry in conversationEntries" :key="entry.key" class="thread-entry">
-            <div class="bubble user-bubble">
-              <p class="bubble-label">用户问题</p>
-              <p>{{ entry.question }}</p>
+        <div class="thread-list" style="padding: 0 16px;">
+          <div v-for="entry in conversationEntries" :key="entry.key" class="thread-entry" style="margin-bottom: 24px; display: flex; flex-direction: column;">
+            <div class="bubble user-bubble" style="background: var(--el-color-primary-light-9); color: var(--el-text-color-primary); align-self: flex-end; border-radius: 12px 12px 0 12px; max-width: 85%; border: none;">
+              <p style="margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.6;">{{ entry.question }}</p>
             </div>
 
-            <div class="bubble assistant-bubble" :class="entry.status">
-              <div class="panel-title-row">
-                <p class="bubble-label">模型回复</p>
+            <div class="bubble assistant-bubble" :class="entry.status" style="background: transparent; border: none; padding: 4px 0 8px 0; align-self: flex-start; width: 100%;">
+              <div class="panel-title-row" v-if="entry.status === 'failed'">
+                <p class="bubble-label" style="color: var(--el-color-danger); margin: 0;">请求失败</p>
                 <el-button
-                  v-if="entry.status === 'failed'"
                   size="small"
                   plain
                   @click="openRetryDialog(entry)"
@@ -719,14 +729,14 @@ async function submitInsertImage() {
                   重试
                 </el-button>
               </div>
-              <p v-if="entry.assistantText">{{ entry.assistantText }}</p>
-              <p v-else>{{ entry.responseMessage }}</p>
-              <div class="meta-line">
+              <p v-if="entry.assistantText" style="margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.6;">{{ entry.assistantText }}</p>
+              <p v-else style="margin: 0; color: var(--el-text-color-secondary);">{{ entry.responseMessage }}</p>
+              <div class="meta-line" style="margin-top: 8px; opacity: 0.7;" v-if="entry.status !== 'failed'">
                 <span>errorCode: {{ entry.errorCode || "-" }}</span>
                 <span>finishReason: {{ entry.finishReason || "-" }}</span>
                 <span>model: {{ entry.providerResponseMeta?.model || "-" }}</span>
               </div>
-              <div class="meta-line">
+              <div class="meta-line" style="opacity: 0.7;" v-if="entry.status !== 'failed' && entry.usage?.totalTokens">
                 <span>promptTokens: {{ entry.usage?.promptTokens ?? "-" }}</span>
                 <span>completionTokens: {{ entry.usage?.completionTokens ?? "-" }}</span>
                 <span>totalTokens: {{ entry.usage?.totalTokens ?? "-" }}</span>
@@ -860,7 +870,6 @@ async function submitInsertImage() {
 }
 
 .session-panel,
-.thread-panel,
 .context-card,
 .capability-disabled,
 .dialog-card,
@@ -871,7 +880,6 @@ async function submitInsertImage() {
 }
 
 .session-panel,
-.thread-panel,
 .capability-disabled,
 .dialog-card,
 .image-panel {
