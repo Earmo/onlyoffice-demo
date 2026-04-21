@@ -10,6 +10,7 @@ import {
   sendLlmMessage
 } from "./editorAiApi";
 
+const drawerVisible = ref(false);
 const props = defineProps({
   documentTitle: {
     type: String,
@@ -587,14 +588,8 @@ async function submitInsertImage() {
 
 <template>
   <div class="ai-workbench-shell">
-    <div class="workbench-header">
-      <div>
-        <p class="eyebrow">AI 工作台</p>
-        <h2 class="title">{{ documentTitle || runtimeContext.documentId }}</h2>
-      </div>
-      <div class="top-status" :class="[capabilityStatus, snapshotState]">
-        {{ topStatusText }}
-      </div>
+    <div class="top-status workbench-header-status" :class="[capabilityStatus, snapshotState]">
+      {{ topStatusText }}
     </div>
 
     <div v-if="capabilityStatus === 'capability-disabled'" class="capability-disabled">
@@ -603,59 +598,33 @@ async function submitInsertImage() {
       <p>输入区已禁用，请先打开后端 LLM 配置。</p>
     </div>
 
-    <div class="workbench-grid">
-      <aside class="session-panel">
-        <div class="panel-title-row">
-          <h3>最近 10 个会话</h3>
-          <button type="button" class="ghost-button" @click="showAllSessions = !showAllSessions">
-            {{ canShowAllSessions ? "查看全部会话" : "收起会话" }}
-          </button>
-        </div>
-        <p class="eyebrow">当前会话：{{ currentSessionTitle || "未初始化" }}</p>
+      <el-drawer
+        v-model="drawerVisible"
+        title="历史会话"
+        direction="ltr"
+        size="300px"
+      >
         <div class="session-list">
-          <button
-            v-for="session in displayedSessions"
+          <el-button
+            v-for="session in sessions"
             :key="session.sessionId"
-            type="button"
             class="session-item"
             :class="{ active: session.sessionId === currentSessionId }"
-            @click="selectSession(session.sessionId)"
+            @click="selectSession(session.sessionId); drawerVisible = false"
+            plain
           >
-            <strong>{{ session.title }}</strong>
-            <span>{{ session.updatedTime || session.documentId }}</span>
-          </button>
+            <div class="session-info">
+              <strong>{{ session.title }}</strong>
+              <span>{{ session.updatedTime || session.documentId }}</span>
+            </div>
+          </el-button>
         </div>
-      </aside>
+      </el-drawer>
 
       <main class="thread-panel">
-        <div class="context-toolbar">
-          <div class="context-card">
-            <div class="panel-title-row">
-              <h3>当前选区</h3>
-              <button type="button" class="ghost-button" @click="emit('capture-selection')">抓取当前选区</button>
-            </div>
-            <p class="snapshot-badge" :class="snapshotState">{{ snapshotState }}</p>
-            <pre v-if="runtimeContext.selectedText" class="selection-preview">{{ runtimeContext.selectedText }}</pre>
-            <p v-else>当前没有选中文本。</p>
-          </div>
-
-          <div class="context-card">
-            <div class="panel-title-row">
-              <h3>章节标题</h3>
-              <button type="button" class="ghost-button" @click="emit('refresh-outline')">刷新目录</button>
-            </div>
-            <div class="outline-list">
-              <button
-                v-for="node in runtimeContext.outlineTreeData || []"
-                :key="node.id"
-                type="button"
-                class="outline-item"
-                @click="emit('jump-to-heading', node)"
-              >
-                {{ node.label || node.text }}
-              </button>
-            </div>
-          </div>
+        <div class="panel-title-row">
+           <el-button type="default" circle @click="drawerVisible = true" icon="Menu" />
+           <span class="eyebrow" style="flex:1;text-align:right">当前会话：{{ currentSessionTitle || "未初始化" }}</span>
         </div>
 
         <div v-if="threadError" class="thread-error-card">
@@ -673,14 +642,14 @@ async function submitInsertImage() {
             <div class="bubble assistant-bubble" :class="entry.status">
               <div class="panel-title-row">
                 <p class="bubble-label">模型回复</p>
-                <button
+                <el-button
                   v-if="entry.status === 'failed'"
-                  type="button"
-                  class="ghost-button"
+                  size="small"
+                  plain
                   @click="openRetryDialog(entry)"
                 >
                   重试
-                </button>
+                </el-button>
               </div>
               <p v-if="entry.assistantText">{{ entry.assistantText }}</p>
               <p v-else>{{ entry.responseMessage }}</p>
@@ -697,40 +666,71 @@ async function submitInsertImage() {
             </div>
           </div>
         </div>
-
         <div class="composer">
-          <textarea
+          <div class="context-toolbar">
+            <el-button size="small" @click="emit('capture-selection')">
+              <el-icon><Crop /></el-icon> 抓取选区
+            </el-button>
+            <el-tag size="small" :type="snapshotState === 'snapshot-ready' ? 'success' : 'info'">{{ snapshotState }}</el-tag>
+            
+            <el-button size="small" @click="emit('refresh-outline')">
+              <el-icon><List /></el-icon> 刷新目录
+            </el-button>
+
+            <el-dropdown @command="handleOutlineCommand" trigger="click">
+              <el-button size="small">
+                跳转到章节<el-icon class="el-icon--right"><arrow-down /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for="node in runtimeContext.outlineTreeData || []"
+                    :key="node.id"
+                    :command="node"
+                  >
+                    {{ node.label || node.text }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+
+          </div>
+          
+          <el-input
             v-model="draftQuestion"
-            class="composer-input"
+            type="textarea"
+            :rows="3"
             placeholder="围绕当前选区提问"
             :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
+            resize="none"
           />
+          
           <div class="composer-actions">
-            <button
-              type="button"
-              class="primary-button"
-              :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
-              @click="handleSendClick"
-            >
-              发送问题
-            </button>
-            <button
-              v-if="currentRequestId"
-              type="button"
-              class="ghost-button"
-              @click="cancelSending"
-            >
-              取消发送
-            </button>
-          </div>
-        </div>
+             <div class="action-tools">
+               <el-button size="small" :disabled="isInsertingImage" @click="submitInsertImage">
+                 <el-icon><Picture /></el-icon> 插入网图
+               </el-button>
+               <el-input v-model="imageUrl" size="small" style="width: 150px; margin-left: 8px;" placeholder="图片 URL" />
+             </div>
 
-        <div class="image-panel">
-          <h3>运行态 / 现有动作</h3>
-          <input v-model="imageUrl" class="image-input" type="url" />
-          <button type="button" class="ghost-button" :disabled="isInsertingImage" @click="submitInsertImage">
-            {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
-          </button>
+             <div>
+              <el-button
+                v-if="currentRequestId"
+                type="info"
+                plain
+                @click="cancelSending"
+              >
+                取消发送
+              </el-button>
+              <el-button
+                type="primary"
+                :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
+                @click="handleSendClick"
+              >
+                发送问题
+              </el-button>
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -764,7 +764,7 @@ async function submitInsertImage() {
   </div>
 </template>
 
-<style scoped>
+<style scoped>\n.action-tools .el-button {\n  margin-right: 8px;\n}\n.action-tools .el-input {\n  margin-left: 0;\n}
 .ai-workbench-shell {
   width: 800px;
   max-width: 100%;
@@ -974,5 +974,31 @@ async function submitInsertImage() {
 
 .dialog-card {
   width: min(520px, calc(100vw - 32px));
+}
+.workbench-header-status {
+  text-align: center;
+  margin-bottom: 12px;
+  align-self: center;
+}
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.session-item {
+  width: 100%;
+  height: auto;
+  padding: 12px;
+  justify-content: flex-start;
+  margin-bottom: 8px;
+  margin-left: 0;
+}
+
+.action-tools {
+  display: flex;
+  align-items: center;
 }
 </style>
