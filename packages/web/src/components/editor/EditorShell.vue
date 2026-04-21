@@ -729,13 +729,8 @@ defineExpose({
     <div v-show="shouldShowConsole && isConsoleOpen" class="floating-console">
       <div class="console-panel-header">
         <div style="flex: 1;">
-          <p class="eyebrow">AI 对话工作台</p>
-          <h2 class="title">{{ props.documentTitle || props.documentId }}</h2>
-          <p class="summary">
-            当前页面已进入正式 AI 工作台，可围绕选区发起多轮对话，并继续使用章节定位与运行态动作。
-          </p>
         </div>
-        <el-button class="panel-close" type="primary" @click="closeConsole" title="收起工作台" style="padding: 8px;">
+        <el-button class="panel-close" type="primary" @click="closeConsole" title="收起工作台" style="padding: 8px;" plain>
           <el-icon size="16"><DArrowRight /></el-icon>
         </el-button>
       </div>

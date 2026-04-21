@@ -250,40 +250,7 @@ onMounted(loadEditorPageData);
         <el-divider style="margin: 16px 0" />
 
         <div class="sidebar-section">
-          <div class="sidebar-heading" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div>
-              <p class="eyebrow">运行态 / 现有动作</p>
-              <h3 style="margin: 4px 0; font-size: 16px;">编辑器状态</h3>
-            </div>
-          </div>
-
           <p class="muted-copy">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
-
-          <div v-if="saveStatus" class="runtime-block" style="margin-top: 16px;">
-            <p class="eyebrow" style="margin-bottom: 8px;">最近保存状态</p>
-            <div class="save-status-card" :class="saveStatusTone(saveStatus.state)">
-              <p class="save-status-headline" style="font-weight: bold; margin-bottom: 8px;">{{ saveStatus.message }}</p>
-              <p class="save-status-meta">
-                最近回调状态码：<code>{{ saveStatus.lastCallbackStatus ?? "暂无" }}</code>
-              </p>
-              <p class="save-status-meta">
-                最近回调时间：<code>{{ formatTimestamp(saveStatus.lastCallbackTime) }}</code>
-              </p>
-              <p class="save-status-meta">
-                最近成功落盘：<code>{{ formatTimestamp(saveStatus.lastSavedTime) }}</code>
-              </p>
-            </div>
-            <ul v-if="saveStatus.recentEvents?.length" class="save-status-events">
-              <li v-for="event in saveStatus.recentEvents" :key="`${event.eventType}-${event.eventTime}`">
-                <strong>{{ event.eventType }}</strong>
-                <span>{{ event.message }}</span>
-                <time>{{ formatTimestamp(event.eventTime) }}</time>
-              </li>
-            </ul>
-            <el-button style="margin-top: 12px;" size="small" @click="loadSaveStatus">
-              刷新保存状态
-            </el-button>
-          </div>
         </div>
       </el-aside>
 

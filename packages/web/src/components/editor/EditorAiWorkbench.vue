@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { Plus, Menu, ArrowDown, Crop, List, Picture, Close, Position, Collection, CopyDocument } from "@element-plus/icons-vue";
 import {
   cancelLlmRequest,
   createLlmSession,
@@ -573,6 +574,23 @@ function confirmSnapshotDecision(createNewSessionFirst) {
   void sendCurrentQuestion({ retryConfirmed: false, createNewSessionFirst });
 }
 
+async function startNewChat() {
+  currentSessionId.value = "";
+  currentSessionTitle.value = "新会话";
+  currentSessionContextSignature.value = "";
+  conversationEntries.value = [];
+  draftQuestion.value = "";
+  if (props.runtimeContext.documentId) {
+    try {
+      const session = await createLlmSession(props.runtimeContext.documentId);
+      applySessionSummary(session);
+      await refreshSessions(props.runtimeContext.documentId);
+    } catch(err) {
+      threadError.value = toThreadError(err);
+    }
+  }
+}
+
 async function submitInsertImage() {
   if (!imageUrl.value.trim()) {
     return;
@@ -622,14 +640,64 @@ async function submitInsertImage() {
       </el-drawer>
 
       <main class="thread-panel">
-        <div class="panel-title-row">
-           <el-button type="default" circle @click="drawerVisible = true" icon="Menu" />
-           <span class="eyebrow" style="flex:1;text-align:right">当前会话：{{ currentSessionTitle || "未初始化" }}</span>
+        <div class="panel-title-row" style="border-bottom: 1px solid var(--el-border-color-lighter); padding-bottom: 8px;">
+          <div style="display: flex; gap: 8px;">
+            <el-tooltip content="历史会话" placement="bottom">
+              <el-button text @click="drawerVisible = true" style="padding: 4px;">
+                <el-icon :size="18"><Menu /></el-icon>
+              </el-button>
+            </el-tooltip>
+            <el-tooltip content="新建对话" placement="bottom">
+              <el-button text @click="startNewChat" style="padding: 4px;">
+                <el-icon :size="18"><Plus /></el-icon>
+              </el-button>
+            </el-tooltip>
+          </div>
+          <span class="eyebrow" style="flex:1;text-align:right">{{ currentSessionTitle || "未初始化" }}</span>
         </div>
 
         <div v-if="threadError" class="thread-error-card">
           <strong>{{ threadError.errorCode || "ERROR" }}</strong>
           <span>{{ threadError.message }}</span>
+        </div>
+
+        <div style="margin: 0 16px 12px;">
+          <el-collapse>
+            <el-collapse-item title="文档工具箱" name="1">
+              <div class="action-tools" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <el-button size="small" :disabled="isInsertingImage" @click="submitInsertImage">
+                  <el-icon><Picture /></el-icon> 插入网图
+                </el-button>
+                <el-input v-model="imageUrl" size="small" style="width: 150px;" placeholder="图片 URL" />
+
+                <el-button size="small" @click="emit('capture-selection')">
+                  <el-icon><Crop /></el-icon> 抓取选区
+                </el-button>
+                <el-tag size="small" :type="snapshotState === 'snapshot-ready' ? 'success' : 'info'">{{ snapshotState }}</el-tag>
+                
+                <el-button size="small" @click="emit('refresh-outline')">
+                  <el-icon><List /></el-icon> 刷新目录
+                </el-button>
+
+                <el-dropdown @command="handleOutlineCommand" trigger="click">
+                  <el-button size="small">
+                    跳转到章节<el-icon class="el-icon--right"><arrow-down /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        v-for="node in runtimeContext.outlineTreeData || []"
+                        :key="node.id"
+                        :command="node"
+                      >
+                        {{ node.label || node.text }}
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
         </div>
 
         <div class="thread-list">
@@ -666,74 +734,49 @@ async function submitInsertImage() {
             </div>
           </div>
         </div>
-        <div class="composer">
-          <div class="context-toolbar">
-            <el-button size="small" @click="emit('capture-selection')">
-              <el-icon><Crop /></el-icon> 抓取选区
-            </el-button>
-            <el-tag size="small" :type="snapshotState === 'snapshot-ready' ? 'success' : 'info'">{{ snapshotState }}</el-tag>
-            
-            <el-button size="small" @click="emit('refresh-outline')">
-              <el-icon><List /></el-icon> 刷新目录
-            </el-button>
-
-            <el-dropdown @command="handleOutlineCommand" trigger="click">
-              <el-button size="small">
-                跳转到章节<el-icon class="el-icon--right"><arrow-down /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item
-                    v-for="node in runtimeContext.outlineTreeData || []"
-                    :key="node.id"
-                    :command="node"
-                  >
-                    {{ node.label || node.text }}
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-
+        <div class="composer" style="border: 1px solid var(--el-border-color); border-radius: 12px; margin: 0 16px 16px; padding: 12px; background: var(--el-bg-color);">
+          <div class="context-chips" style="display: flex; gap: 8px; font-size: 12px; color: var(--el-text-color-regular); margin-bottom: 8px;" v-if="runtimeContext.activeHeadingNode || snapshotState === 'snapshot-ready'">
+            <el-tag size="small" type="info" v-if="runtimeContext.activeHeadingNode"><el-icon><Collection /></el-icon> {{ runtimeContext.activeHeadingNode.text || runtimeContext.activeHeadingNode.label }}</el-tag>
+            <el-tag size="small" type="info" v-if="snapshotState === 'snapshot-ready'"><el-icon><CopyDocument /></el-icon> 已获取选区片段</el-tag>
           </div>
           
           <el-input
             v-model="draftQuestion"
             type="textarea"
-            :rows="3"
-            placeholder="围绕当前选区提问"
+            :rows="1"
+            :autosize="{ minRows: 1, maxRows: 6 }"
+            placeholder="围绕当前选区提问..."
             :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
             resize="none"
+            style="--el-input-bg-color: transparent; --el-input-border-color: transparent; --el-input-hover-border-color: transparent; --el-input-focus-border-color: transparent; box-shadow: none;"
           />
           
-          <div class="composer-actions">
-             <div class="action-tools">
-               <el-button size="small" :disabled="isInsertingImage" @click="submitInsertImage">
-                 <el-icon><Picture /></el-icon> 插入网图
-               </el-button>
-               <el-input v-model="imageUrl" size="small" style="width: 150px; margin-left: 8px;" placeholder="图片 URL" />
-             </div>
-
-             <div>
+          <div class="composer-actions" style="display: flex; justify-content: flex-end; align-items: center; margin-top: 8px;">
+            <div>
               <el-button
                 v-if="currentRequestId"
-                type="info"
-                plain
+                size="small"
+                circle
                 @click="cancelSending"
+                title="取消发送"
               >
-                取消发送
+                <el-icon><Close /></el-icon>
               </el-button>
               <el-button
                 type="primary"
-                :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
+                size="small"
+                circle
+                :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId) || !draftQuestion.trim()"
                 @click="handleSendClick"
+                title="发送问题"
+                style="margin-left: 8px;"
               >
-                发送问题
+                <el-icon><Position /></el-icon>
               </el-button>
             </div>
           </div>
         </div>
       </main>
-    </div>
 
     <div v-if="showRetryDialog" class="dialog-mask">
       <div class="dialog-card">
