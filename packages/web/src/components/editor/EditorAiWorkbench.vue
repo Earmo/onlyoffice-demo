@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { Plus, Menu, ArrowDown, Crop, List, Picture, Close, Position, Collection, CopyDocument } from "@element-plus/icons-vue";
+import { Plus, Menu, ArrowDown, Crop, List, Picture, Close, Position, Collection, CopyDocument, DocumentCopy, Refresh, Delete } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import {
   cancelLlmRequest,
   createLlmSession,
@@ -10,6 +11,24 @@ import {
   listLlmSessions,
   sendLlmMessage
 } from "./editorAiApi";
+
+import markdownit from "markdown-it";
+import hljs from "highlight.js";
+import "highlight.js/styles/github.css";
+
+const md = markdownit({
+  html: true,
+  linkिफाई: true,
+  typographer: true,
+  highlight: function (str, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return hljs.highlight(str, { language: lang }).value;
+      } catch (__) {}
+    }
+    return '';
+  }
+});
 
 const drawerVisible = ref(false);
 const props = defineProps({
@@ -74,11 +93,15 @@ const snapshotState = computed(() => {
   }
   return props.runtimeContext.hasEmptySelection || !props.runtimeContext.selectedText ? "snapshot-empty" : "snapshot-ready";
 });
-const liveContextSignature = computed(() => buildContextSignature({
-  text: props.runtimeContext.selectedText,
-  emptySelection: props.runtimeContext.hasEmptySelection,
-  headingText: props.runtimeContext.activeHeadingNode?.text || props.runtimeContext.activeHeadingNode?.label || props.runtimeContext.activeHeadingNode?.headingText || ""
-}));
+const liveContextSignature = computed(() => {
+  const selectionText = isExcludedSelection.value ? "" : props.runtimeContext.selectedText;
+  const isEmpty = isExcludedSelection.value ? true : props.runtimeContext.hasEmptySelection;
+  return buildContextSignature({
+    text: selectionText,
+    emptySelection: isEmpty,
+    headingText: props.runtimeContext.activeHeadingNode?.text || props.runtimeContext.activeHeadingNode?.label || props.runtimeContext.activeHeadingNode?.headingText || ""
+  });
+});
 const topStatusText = computed(() => {
   if (capabilityStatus.value === "capability-disabled") {
     return "模型暂不可用";
@@ -103,9 +126,24 @@ const shortTopStatusText = computed(() => {
   if (currentRequestState.value === "cancelling") return "取消中...";
   if (currentRequestState.value === "in_progress") return "请求中...";
   if (lastCancelled.value) return "已取消";
-  if (snapshotState.value === "snapshot-ready") return "已抓取当前选区";
+  if (isExcludedSelection.value) return "AI 对话已就绪";
+  if (snapshotState.value === "snapshot-ready") return "选中文本";
   return "AI 对话已就绪";
 });
+
+const isExcludedSelection = ref(false); // Controls if the user manually deleted the selected context
+
+function handleRemoveSelection() {
+  isExcludedSelection.value = true;
+}
+
+watch(
+  () => props.runtimeContext.selectedText,
+  () => {
+    // any change from the document auto-resets the exclusion
+    isExcludedSelection.value = false;
+  }
+);
 const currentHeadingText = computed(() => props.runtimeContext.activeHeadingNode?.text || props.runtimeContext.activeHeadingNode?.label || "");
 
 watch(
@@ -334,6 +372,7 @@ async function sendCurrentQuestion(options) {
     return;
   }
 
+  isExcludedSelection.value = false;
   lastCancelled.value = false;
   threadError.value = null;
 
@@ -601,15 +640,59 @@ async function startNewChat() {
 }
 
 async function submitInsertImage() {
-  if (!imageUrl.value.trim()) {
-    return;
-  }
-  isInsertingImage.value = true;
   try {
-    await emit("insert-image", imageUrl.value.trim());
-  } finally {
-    isInsertingImage.value = false;
+    const result = await ElMessageBox.prompt("请输入待插入图的完整 URL", "插入网图", {
+      confirmButtonText: "插入",
+      cancelButtonText: "取消",
+      inputPattern: /^https?:\/\/.+/,
+      inputErrorMessage: "格式不正确，必须以 http:// 或 https:// 开头。"
+    });
+    
+    if (result.value && result.value.trim()) {
+      isInsertingImage.value = true;
+      try {
+        await emit("insert-image", result.value.trim());
+      } finally {
+        isInsertingImage.value = false;
+      }
+    }
+  } catch (cancel) {
+    // cancelled
   }
+}
+
+function handleCopy(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      ElMessage.success("已复制到剪贴板");
+    }).catch(() => {
+      ElMessage.error("复制失败");
+    });
+  }
+}
+
+function handleRegenerate(entryIndex) {
+  const entry = conversationEntries.value[entryIndex];
+  if (!entry) return;
+  // Automatically re-send the question from the targeted entry
+  sendCurrentQuestion({
+    retryConfirmed: true,
+    retryPayload: {
+      question: entry.question,
+      selectionSnapshot: entry.selectionSnapshot,
+      headingContext: entry.headingContext
+    }
+  });
+}
+
+function handleDeleteMessage(entryIndex) {
+  ElMessageBox.confirm("确定删除这条问答?", "删除确认", {
+    confirmButtonText: "删除",
+    cancelButtonText: "取消",
+    type: "warning"
+  }).then(() => {
+    conversationEntries.value.splice(entryIndex, 1);
+  }).catch(() => {});
 }
 </script>
 
@@ -680,12 +763,10 @@ async function submitInsertImage() {
                 <el-button size="small" :disabled="isInsertingImage" @click="submitInsertImage">
                   <el-icon><Picture /></el-icon> 插入网图
                 </el-button>
-                <el-input v-model="imageUrl" size="small" style="width: 150px;" placeholder="图片 URL" />
 
-                <el-button size="small" @click="emit('capture-selection')">
-                  <el-icon><Crop /></el-icon> 抓取选区
+                <el-button size="small" @click="emit('capture-selection')" :type="snapshotState === 'snapshot-ready' && !isExcludedSelection ? 'primary' : 'default'">
+                  <el-icon><Crop /></el-icon> 选中文本
                 </el-button>
-                <el-tag size="small" :type="snapshotState === 'snapshot-ready' ? 'success' : 'info'">{{ snapshotState }}</el-tag>
                 
                 <el-button size="small" @click="emit('refresh-outline')">
                   <el-icon><List /></el-icon> 刷新目录
@@ -713,7 +794,7 @@ async function submitInsertImage() {
         </div>
 
         <div class="thread-list" style="padding: 0 16px;">
-          <div v-for="entry in conversationEntries" :key="entry.key" class="thread-entry" style="margin-bottom: 24px; display: flex; flex-direction: column;">
+          <div v-for="(entry, index) in conversationEntries" :key="entry.key" class="thread-entry" style="margin-bottom: 24px; display: flex; flex-direction: column;">
             <div class="bubble user-bubble" style="background: var(--el-color-primary-light-9); color: var(--el-text-color-primary); align-self: flex-end; border-radius: 12px 12px 0 12px; max-width: 85%; border: none;">
               <p style="margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.6;">{{ entry.question }}</p>
             </div>
@@ -729,8 +810,16 @@ async function submitInsertImage() {
                   重试
                 </el-button>
               </div>
-              <p v-if="entry.assistantText" style="margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.6;">{{ entry.assistantText }}</p>
+              
+              <div v-if="entry.assistantText" class="markdown-body" style="line-height: 1.6;" v-html="md.render(entry.assistantText)"></div>
               <p v-else style="margin: 0; color: var(--el-text-color-secondary);">{{ entry.responseMessage }}</p>
+              
+              <div class="message-actions" style="margin-top: 12px; display: flex; gap: 8px;" v-if="entry.status !== 'failed'">
+                <el-button size="small" text @click="handleCopy(entry.assistantText)"><el-icon><DocumentCopy /></el-icon> 复制</el-button>
+                <el-button size="small" text @click="handleRegenerate(index)"><el-icon><Refresh /></el-icon> 重新生成</el-button>
+                <el-button size="small" text @click="handleDeleteMessage(index)" type="danger"><el-icon><Delete /></el-icon> 删除</el-button>
+              </div>
+
               <div class="meta-line" style="margin-top: 8px; opacity: 0.7;" v-if="entry.status !== 'failed'">
                 <span>errorCode: {{ entry.errorCode || "-" }}</span>
                 <span>finishReason: {{ entry.finishReason || "-" }}</span>
@@ -745,9 +834,14 @@ async function submitInsertImage() {
           </div>
         </div>
         <div class="composer" style="border: 1px solid var(--el-border-color); border-radius: 12px; margin: 0 16px 16px; padding: 12px; background: var(--el-bg-color);">
-          <div class="context-chips" style="display: flex; gap: 8px; font-size: 12px; color: var(--el-text-color-regular); margin-bottom: 8px;" v-if="runtimeContext.activeHeadingNode || snapshotState === 'snapshot-ready'">
+          <div class="context-chips" style="display: flex; gap: 8px; font-size: 12px; color: var(--el-text-color-regular); margin-bottom: 8px;" v-if="runtimeContext.activeHeadingNode || (snapshotState === 'snapshot-ready' && !isExcludedSelection)">
             <el-tag size="small" type="info" v-if="runtimeContext.activeHeadingNode"><el-icon><Collection /></el-icon> {{ runtimeContext.activeHeadingNode.text || runtimeContext.activeHeadingNode.label }}</el-tag>
-            <el-tag size="small" type="info" v-if="snapshotState === 'snapshot-ready'"><el-icon><CopyDocument /></el-icon> 已获取选区片段</el-tag>
+            
+            <el-tooltip content="取消选中" placement="top" v-if="snapshotState === 'snapshot-ready' && !isExcludedSelection">
+              <el-tag size="small" type="info" closable @close="handleRemoveSelection" style="cursor: pointer;">
+                <el-icon><CopyDocument /></el-icon> 已获取选区片段
+              </el-tag>
+            </el-tooltip>
           </div>
           
           <el-input
