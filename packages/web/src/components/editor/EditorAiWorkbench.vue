@@ -811,6 +811,7 @@ function handleDeleteMessage(entryIndex) {
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
+                </el-tooltip>
               </div>
             </el-collapse-item>
           </el-collapse>
