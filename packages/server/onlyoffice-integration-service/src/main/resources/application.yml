@@ -59,7 +59,7 @@ onlyoffice:
     # 服务端调用 ONLYOFFICE Command Service 时使用的内部地址。
     document-server-command-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_COMMAND_URL:}
     # editor-config 签名和 callback 验签共用的 JWT 密钥。
-    jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET:5d8fc72d49e070f303bb963f69902fe626eece4e}
+    jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET}
     callback:
       # callback JWT 默认读取的请求头名称。
       jwt-header-name: ${ONLYOFFICE_INTEGRATION_CALLBACK_JWT_HEADER_NAME:Authorization}

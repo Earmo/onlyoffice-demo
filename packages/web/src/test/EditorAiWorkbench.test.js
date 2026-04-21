@@ -320,6 +320,21 @@ describe("EditorAiWorkbench", () => {
     expect(apiMocks.sendLlmMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ retryConfirmed: true }));
     expect(wrapper.text()).toContain("重试成功");
   });
+
+  it("应在发送接口抛错时把 pending 条目标记为 failed 并展示错误卡片", async () => {
+    apiMocks.sendLlmMessage.mockRejectedValueOnce(apiError("NETWORK_ERROR", "网络断开"));
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find(".composer-input").setValue("模拟网络失败");
+    await wrapper.find(".primary-button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("NETWORK_ERROR");
+    expect(wrapper.text()).toContain("网络断开");
+    expect(wrapper.find(".thread-error-card").exists()).toBe(true);
+  });
 });
 
 function mountWorkbench(props = {}) {

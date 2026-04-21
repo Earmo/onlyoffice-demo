@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.integration.service.llm;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -38,6 +39,39 @@ public class LlmRequestExecutionRegistry {
     return state != null && state.cancelled.get();
   }
 
+  public boolean hasExecution(String requestId) {
+    return executions.containsKey(requestId);
+  }
+
+  public boolean tryMarkCompleted(String requestId) {
+    ExecutionState state = executions.get(requestId);
+    return state != null && state.terminalStatus.compareAndSet(null, "completed");
+  }
+
+  public boolean tryMarkFailed(String requestId) {
+    ExecutionState state = executions.get(requestId);
+    return state != null && state.terminalStatus.compareAndSet(null, "failed");
+  }
+
+  public boolean tryMarkCancelled(String requestId) {
+    ExecutionState state = executions.get(requestId);
+    if (state == null) {
+      return false;
+    }
+    if ("cancelled".equals(state.terminalStatus.get())) {
+      return true;
+    }
+    if (!state.terminalStatus.compareAndSet(null, "cancelled")) {
+      return false;
+    }
+    state.cancelled.set(true);
+    if (state.providerRequestId != null && state.strategy.supportsUpstreamCancel()) {
+      // 本地 cancelled 才是真正硬保证；上游取消只做 best effort。
+      state.strategy.cancelRequest(state.providerRequestId);
+    }
+    return true;
+  }
+
   public void unregister(String requestId) {
     executions.remove(requestId);
   }
@@ -45,6 +79,7 @@ public class LlmRequestExecutionRegistry {
   private static final class ExecutionState {
 
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
+    private final AtomicReference<String> terminalStatus = new AtomicReference<>(null);
     private final LlmProviderStrategy strategy;
     private volatile String providerRequestId;
 

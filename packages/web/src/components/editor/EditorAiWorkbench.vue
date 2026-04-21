@@ -32,6 +32,11 @@ const props = defineProps({
 const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "insert-image"]);
 
 const pollIntervalMs = 1500;
+// 工作台内部状态机分成 4 层：
+// 1. capabilityStatus：LLM 功能是否可用
+// 2. snapshotState：bridge/选区快照是否就绪
+// 3. currentRequest*：当前发送中的请求生命周期
+// 4. conversationEntries：线程里已经固化的问答条目
 const capabilityStatus = ref("bridge-pending");
 const capability = ref(null);
 const disabledReason = ref("");
@@ -56,6 +61,7 @@ const bootstrapRequestDocumentId = ref("");
 
 let bootstrapToken = 0;
 let sessionLoadToken = 0;
+let sessionLoadRequestedId = "";
 let pollTimer = null;
 
 const displayedSessions = computed(() => (showAllSessions.value ? sessions.value : sessions.value.slice(0, 10)));
@@ -79,7 +85,7 @@ const topStatusText = computed(() => {
     return "正在准备上下文";
   }
   if (currentRequestState.value === "cancelling") {
-    return "正在请求模型";
+    return "正在取消请求";
   }
   if (currentRequestState.value === "in_progress") {
     return "正在请求模型";
@@ -117,6 +123,7 @@ function resetWorkbench() {
   currentSessionId.value = "";
   currentSessionTitle.value = "";
   currentSessionContextSignature.value = "";
+  sessionLoadRequestedId = "";
   conversationEntries.value = [];
   currentRequestId.value = "";
   currentRequestState.value = "";
@@ -188,6 +195,7 @@ async function selectSession(sessionId) {
     return;
   }
   const token = ++sessionLoadToken;
+  sessionLoadRequestedId = sessionId;
   threadError.value = null;
   try {
     const session = await getLlmSession(sessionId, documentId);
@@ -204,9 +212,13 @@ async function selectSession(sessionId) {
     if (error.errorCode === "LLM_SESSION_NOT_FOUND" || error.errorCode === "LLM_SESSION_FORBIDDEN") {
       currentSessionId.value = "";
       conversationEntries.value = [];
-      const fallbackSession = await createLlmSession(documentId);
-      applySessionSummary(fallbackSession);
-      await refreshSessions(documentId);
+      try {
+        const fallbackSession = await createLlmSession(documentId);
+        applySessionSummary(fallbackSession);
+        await refreshSessions(documentId);
+      } catch (fallbackError) {
+        threadError.value = toThreadError(fallbackError);
+      }
     }
   }
 }
@@ -315,83 +327,95 @@ async function sendCurrentQuestion(options) {
   threadError.value = null;
 
   let targetSessionId = currentSessionId.value;
-  if (mode.createNewSessionFirst || !targetSessionId) {
-    const session = await createLlmSession(documentId);
-    if (session.documentId !== props.runtimeContext.documentId) {
+  try {
+    if (mode.createNewSessionFirst || !targetSessionId) {
+      const session = await createLlmSession(documentId);
+      if (session.documentId !== props.runtimeContext.documentId) {
+        return;
+      }
+      applySessionSummary(session);
+      targetSessionId = session.sessionId;
+      await refreshSessions(documentId);
+    }
+
+    const payload = retryPayload ? {
+      documentId,
+      sessionId: targetSessionId,
+      question: retryPayload.question,
+      selectionSnapshot: retryPayload.selectionSnapshot,
+      headingContext: retryPayload.headingContext,
+      retryConfirmed: true
+    } : {
+      documentId,
+      sessionId: targetSessionId,
+      question,
+      selectionSnapshot: {
+        text: props.runtimeContext.selectedText || "",
+        emptySelection: Boolean(props.runtimeContext.hasEmptySelection || !props.runtimeContext.selectedText)
+      },
+      headingContext: {
+        includeHeading: Boolean(currentHeadingText.value),
+        headingId: props.runtimeContext.activeHeadingId || "",
+        headingText: currentHeadingText.value
+      },
+      retryConfirmed: Boolean(mode.retryConfirmed)
+    };
+
+    const pendingEntry = {
+      key: `pending-${Date.now()}`,
+      question: payload.question,
+      selectionSnapshot: payload.selectionSnapshot,
+      headingContext: payload.headingContext,
+      userCreatedTime: new Date().toISOString(),
+      assistantMessageId: "",
+      requestId: "",
+      status: "pending",
+      assistantText: "",
+      usage: null,
+      finishReason: "",
+      providerResponseMeta: {},
+      errorCode: "",
+      responseMessage: "等待模型返回..."
+    };
+    conversationEntries.value = [...conversationEntries.value, pendingEntry];
+    currentSessionContextSignature.value = buildContextSignature({
+      text: payload.selectionSnapshot.text,
+      emptySelection: payload.selectionSnapshot.emptySelection,
+      headingText: payload.headingContext.headingText
+    });
+
+    let result;
+    try {
+      result = await sendLlmMessage(payload);
+    } catch (error) {
+      markPendingEntryFailed(pendingEntry, error);
       return;
     }
-    applySessionSummary(session);
-    targetSessionId = session.sessionId;
+
+    if (documentId !== props.runtimeContext.documentId || targetSessionId !== currentSessionId.value) {
+      // stale response：文档或线程已切换时，旧请求只能静默丢弃，不能回写到当前 UI。
+      return;
+    }
+
+    pendingEntry.assistantMessageId = result.assistantMessageId || pendingEntry.assistantMessageId;
+    pendingEntry.requestId = result.requestId || "";
+    applyRequestResult(pendingEntry, result);
     await refreshSessions(documentId);
-  }
 
-  const payload = retryPayload ? {
-    documentId,
-    sessionId: targetSessionId,
-    question: retryPayload.question,
-    selectionSnapshot: retryPayload.selectionSnapshot,
-    headingContext: retryPayload.headingContext,
-    retryConfirmed: true
-  } : {
-    documentId,
-    sessionId: targetSessionId,
-    question,
-    selectionSnapshot: {
-      text: props.runtimeContext.selectedText || "",
-      emptySelection: Boolean(props.runtimeContext.hasEmptySelection || !props.runtimeContext.selectedText)
-    },
-    headingContext: {
-      includeHeading: Boolean(currentHeadingText.value),
-      headingId: props.runtimeContext.activeHeadingId || "",
-      headingText: currentHeadingText.value
-    },
-    retryConfirmed: Boolean(mode.retryConfirmed)
-  };
+    if (result.status === "in_progress") {
+      currentRequestId.value = result.requestId;
+      currentRequestState.value = "in_progress";
+      startPolling(result.requestId, targetSessionId, pendingEntry);
+    } else {
+      currentRequestId.value = "";
+      currentRequestState.value = "";
+    }
 
-  const pendingEntry = {
-    key: `pending-${Date.now()}`,
-    question: payload.question,
-    selectionSnapshot: payload.selectionSnapshot,
-    headingContext: payload.headingContext,
-    userCreatedTime: new Date().toISOString(),
-    assistantMessageId: "",
-    requestId: "",
-    status: "pending",
-    assistantText: "",
-    usage: null,
-    finishReason: "",
-    providerResponseMeta: {},
-    errorCode: "",
-    responseMessage: "等待模型返回..."
-  };
-  conversationEntries.value = [...conversationEntries.value, pendingEntry];
-  currentSessionContextSignature.value = buildContextSignature({
-    text: payload.selectionSnapshot.text,
-    emptySelection: payload.selectionSnapshot.emptySelection,
-    headingText: payload.headingContext.headingText
-  });
-
-  const result = await sendLlmMessage(payload);
-  if (documentId !== props.runtimeContext.documentId || targetSessionId !== currentSessionId.value) {
-    return;
-  }
-
-  pendingEntry.assistantMessageId = result.assistantMessageId || pendingEntry.assistantMessageId;
-  pendingEntry.requestId = result.requestId || "";
-  applyRequestResult(pendingEntry, result);
-  await refreshSessions(documentId);
-
-  if (result.status === "in_progress") {
-    currentRequestId.value = result.requestId;
-    currentRequestState.value = "in_progress";
-    startPolling(result.requestId, targetSessionId, pendingEntry);
-  } else {
-    currentRequestId.value = "";
-    currentRequestState.value = "";
-  }
-
-  if (!retryPayload) {
-    draftQuestion.value = "";
+    if (!retryPayload) {
+      draftQuestion.value = "";
+    }
+  } catch (error) {
+    threadError.value = toThreadError(error);
   }
 }
 
@@ -427,13 +451,26 @@ async function cancelSending() {
     return;
   }
   currentRequestState.value = "cancelling";
-  const result = await cancelLlmRequest(currentRequestId.value, props.runtimeContext.documentId);
-  const currentEntry = conversationEntries.value.find(entry => entry.requestId === result.requestId) || conversationEntries.value.at(-1);
-  applyRequestResult(currentEntry, result);
-  clearPolling();
-  currentRequestId.value = "";
-  currentRequestState.value = "";
-  lastCancelled.value = true;
+  try {
+    const result = await cancelLlmRequest(currentRequestId.value, props.runtimeContext.documentId);
+    const currentEntry = conversationEntries.value.find(entry => entry.requestId === result.requestId) || conversationEntries.value.at(-1);
+    applyRequestResult(currentEntry, result);
+    clearPolling();
+    currentRequestId.value = "";
+    currentRequestState.value = "";
+    lastCancelled.value = true;
+  } catch (error) {
+    currentRequestState.value = "in_progress";
+    threadError.value = toThreadError(error);
+  }
+}
+
+function markPendingEntryFailed(entry, error) {
+  entry.status = "failed";
+  entry.errorCode = error?.errorCode || "NETWORK_ERROR";
+  entry.responseMessage = error?.message || "请求失败";
+  conversationEntries.value = [...conversationEntries.value];
+  threadError.value = toThreadError(error);
 }
 
 function applyRequestResult(entry, result) {
@@ -490,7 +527,9 @@ function isBootstrapStale(token, documentId) {
 }
 
 function isSessionLoadStale(token, sessionId, documentId) {
-  return token !== sessionLoadToken || sessionId !== currentSessionId.value && currentSessionId.value && documentId !== props.runtimeContext.documentId;
+  return token !== sessionLoadToken
+    || sessionId !== sessionLoadRequestedId
+    || documentId !== props.runtimeContext.documentId;
 }
 
 function toThreadError(error) {

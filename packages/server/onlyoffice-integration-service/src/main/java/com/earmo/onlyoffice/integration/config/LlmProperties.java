@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.config;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,11 @@ public class LlmProperties {
 
   public boolean isConfigured() {
     return hasText(baseUrl) && hasText(apiKey) && hasText(model);
+  }
+
+  @AssertTrue(message = "当 llm.enabled=true 时，必须提供 llm.base-url、llm.api-key 和 llm.model")
+  public boolean isProviderConfigValid() {
+    return !enabled || isConfigured();
   }
 
   private boolean hasText(String value) {

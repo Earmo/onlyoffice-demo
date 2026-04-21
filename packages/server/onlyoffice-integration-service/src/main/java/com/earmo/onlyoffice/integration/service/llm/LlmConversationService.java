@@ -30,13 +30,15 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class LlmConversationService {
 
   private static final String STATUS_PENDING = "pending";
@@ -56,7 +58,7 @@ public class LlmConversationService {
   private final LlmRequestExecutionRegistry executionRegistry;
   private final LlmPromptWindowBuilder promptWindowBuilder;
   private final ObjectMapper objectMapper;
-  private final Executor llmExecutor = Executors.newCachedThreadPool();
+  private final Executor llmExecutor;
 
   public LlmConversationService(
       LlmProperties llmProperties,
@@ -67,7 +69,8 @@ public class LlmConversationService {
       LlmConversationAccessGuard accessGuard,
       LlmRequestExecutionRegistry executionRegistry,
       LlmPromptWindowBuilder promptWindowBuilder,
-      ObjectMapper objectMapper
+      ObjectMapper objectMapper,
+      @Qualifier("llmExecutor") Executor llmExecutor
   ) {
     this.llmProperties = llmProperties;
     this.providerStrategies = providerStrategies;
@@ -78,6 +81,7 @@ public class LlmConversationService {
     this.executionRegistry = executionRegistry;
     this.promptWindowBuilder = promptWindowBuilder;
     this.objectMapper = objectMapper;
+    this.llmExecutor = llmExecutor;
   }
 
   public LlmCapabilityResponse getCapability(String documentId, AccessContext accessContext) {
@@ -141,6 +145,11 @@ public class LlmConversationService {
     DocumentLlmSessionEntity session = accessGuard.requireSession(request.documentId(), request.sessionId(), accessContext);
     Instant now = Instant.now();
 
+    // 发送链路固定拆成 4 步：
+    // 1. 先固化 user message
+    // 2. 预插一条 pending assistant message，给前端和轮询接口稳定锚点
+    // 3. 再插 request(status=in_progress)
+    // 4. 异步执行 provider call，并在同步等待窗口内尽量直接返回终态
     DocumentLlmMessageEntity userMessage = new DocumentLlmMessageEntity();
     userMessage.setMessageId(UUID.randomUUID().toString());
     userMessage.setSessionId(session.getSessionId());
@@ -225,9 +234,17 @@ public class LlmConversationService {
 
   public LlmRequestStatusResponse cancelRequest(String documentId, String requestId, AccessContext accessContext) {
     DocumentLlmRequestEntity requestEntity = accessGuard.requireRequest(documentId, requestId, accessContext);
+    if (!STATUS_IN_PROGRESS.equals(requestEntity.getStatus())) {
+      return getRequest(documentId, requestId, accessContext);
+    }
+    boolean cancelClaimed = executionRegistry.tryMarkCancelled(requestId);
+    if (!cancelClaimed && executionRegistry.hasExecution(requestId)) {
+      // 说明 provider 线程已经先一步赢得终态提交权，此时取消不能再反向覆盖 completed/failed。
+      return getRequest(documentId, requestId, accessContext);
+    }
     documentLlmRequestRepository.markCancelRequested(requestId, accessContext.tenantId(), accessContext.actorUser(), "user");
-    executionRegistry.cancel(requestId);
 
+    // 本地 cancelled 是硬保证：一旦 claim 成功，后续晚到成功结果必须被丢弃。
     requestEntity.setCancelRequested(true);
     requestEntity.setCancelSource("user");
     requestEntity.setStatus(STATUS_CANCELLED);
@@ -281,7 +298,8 @@ public class LlmConversationService {
       ));
       executionRegistry.attachProviderRequestId(requestEntity.getRequestId(), providerResponse.providerRequestId());
 
-      if (executionRegistry.isCancelled(requestEntity.getRequestId())) {
+      if (!executionRegistry.tryMarkCompleted(requestEntity.getRequestId())) {
+        // 取消或失败线程已经先拿到终态提交权，当前 provider 结果只能被丢弃。
         return;
       }
 
@@ -301,18 +319,32 @@ public class LlmConversationService {
       session.setUpdatedTime(Instant.now());
       documentLlmSessionRepository.update(session);
     } catch (LlmApiException exception) {
-      if (executionRegistry.isCancelled(requestEntity.getRequestId())) {
+      if (!executionRegistry.tryMarkFailed(requestEntity.getRequestId())) {
         return;
       }
-      requestEntity.setStatus(STATUS_FAILED);
-      requestEntity.setFinishedTime(Instant.now());
-      documentLlmRequestRepository.update(requestEntity);
-      assistantMessage.setStatus(STATUS_FAILED);
-      assistantMessage.setErrorCode(exception.errorCode());
-      documentLlmMessageRepository.update(assistantMessage);
+      markRequestFailed(requestEntity, assistantMessage, exception.errorCode());
+    } catch (Exception exception) {
+      if (!executionRegistry.tryMarkFailed(requestEntity.getRequestId())) {
+        return;
+      }
+      log.error("Unexpected error in llm provider call, requestId={}", requestEntity.getRequestId(), exception);
+      markRequestFailed(requestEntity, assistantMessage, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR);
     } finally {
       executionRegistry.unregister(requestEntity.getRequestId());
     }
+  }
+
+  private void markRequestFailed(
+      DocumentLlmRequestEntity requestEntity,
+      DocumentLlmMessageEntity assistantMessage,
+      String errorCode
+  ) {
+    requestEntity.setStatus(STATUS_FAILED);
+    requestEntity.setFinishedTime(Instant.now());
+    documentLlmRequestRepository.update(requestEntity);
+    assistantMessage.setStatus(STATUS_FAILED);
+    assistantMessage.setErrorCode(errorCode);
+    documentLlmMessageRepository.update(assistantMessage);
   }
 
   private void requireLlmEnabled() {
@@ -432,9 +464,13 @@ public class LlmConversationService {
   }
 
   private String writeJson(Object payload) {
+    if (payload == null) {
+      return null;
+    }
     try {
       return objectMapper.writeValueAsString(payload);
     } catch (JsonProcessingException exception) {
+      log.warn("Failed to serialize llm metadata, payloadType={}", payload.getClass().getSimpleName(), exception);
       return null;
     }
   }

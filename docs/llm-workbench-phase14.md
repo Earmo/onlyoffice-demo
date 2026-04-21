@@ -149,3 +149,36 @@ Phase 15 写回能力必须直接复用现有线程字段，不重新发起模�
 - 自动化主链路已经基于 fake provider 固定，不依赖真实模型服务。
 - 真实 provider 仅保留为手工 smoke test 入口。
 - Phase 15 可以直接站在 `assistantText`、`assistantMessageId`、`sessionId` 这 3 个字段上接写回闭环。
+
+## 代码步骤导读
+
+### 服务端主流程
+
+1. `LlmController` 接收 `/api/llm/*` 请求，并从 `AccessContextResolver` 解析当前 `tenantId` / `actorUser`。
+2. `LlmConversationService.sendMessage()` 先校验 capability，再通过 `LlmConversationAccessGuard` 确认当前用户确实能访问该 `documentId + sessionId`。
+3. 服务端先落库 `user message`，再预插 `assistant message(status=pending)`，最后创建 `document_llm_request(status=in_progress)`。
+4. `LlmPromptWindowBuilder` 根据 `historyBudgetTokens` 和 `chars_div_4` 规则裁剪历史窗口，始终保留 system prompt、当前问题和当前快照。
+5. `OpenAiCompatibleLlmProviderStrategy` 把 prompt window 归一化成 openai-compatible `messages`，调用 `/chat/completions`。
+6. provider 返回后，`LlmRequestExecutionRegistry` 先仲裁终态所有权：
+   - 若取消先赢，晚到成功直接丢弃
+   - 若完成先赢，取消不能再反向覆盖 completed
+7. 服务端将终态写回 `document_llm_request` 和 `document_llm_message`，前端通过 `GET /api/llm/requests/{requestId}` 轮询读取稳定 DTO。
+
+### 前端主流程
+
+1. `EditorShell` 只维护编辑器生命周期、bridge 和右侧工作台显隐，把聚合后的 `runtimeContext` 传给 `EditorAiWorkbench`。
+2. `EditorAiWorkbench` 首先请求 `getLlmCapability(documentId)`，决定当前是 `capability-enabled` 还是 `capability-disabled`。
+3. capability 可用后，工作台自动 `createLlmSession(documentId)` 建立新空线程，并拉取最近会话列表。
+4. 用户发送问题时，工作台会把当前 `selectionSnapshot`、`headingContext` 和 `retryConfirmed` 一起发给后端。
+5. 若后端在 `requestSyncWaitMillis` 内没完成，前端把请求切到 `in_progress`，每 1500ms 调一次 `getLlmRequest(requestId, documentId)`。
+6. 所有异步响应都要经过 `documentId/sessionId/requestId` 三重 stale guard，不匹配就丢弃，避免切文档或切线程后串线。
+7. 如果发送失败或取消失败，工作台会把错误固化成线程卡片和顶部错误状态，而不是让 pending 条目永远挂住。
+
+### 关键代码入口
+
+- 服务端配置入口：`packages/server/onlyoffice-integration-service/src/main/resources/application.yml`
+- 服务端主服务：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/LlmConversationService.java`
+- provider 适配：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/OpenAiCompatibleLlmProviderStrategy.java`
+- 终态仲裁：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/LlmRequestExecutionRegistry.java`
+- 前端工作台：`packages/web/src/components/editor/EditorAiWorkbench.vue`
+- 前端 API 封装：`packages/web/src/components/editor/editorAiApi.js`

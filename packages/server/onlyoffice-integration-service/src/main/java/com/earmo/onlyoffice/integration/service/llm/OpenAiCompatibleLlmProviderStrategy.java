@@ -4,7 +4,6 @@ import com.earmo.onlyoffice.integration.config.LlmProperties;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
@@ -12,11 +11,15 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 @Component
-@RequiredArgsConstructor
 public class OpenAiCompatibleLlmProviderStrategy implements LlmProviderStrategy {
 
   private final RestClient.Builder restClientBuilder;
   private final LlmProperties llmProperties;
+
+  public OpenAiCompatibleLlmProviderStrategy(RestClient.Builder restClientBuilder, LlmProperties llmProperties) {
+    this.restClientBuilder = restClientBuilder;
+    this.llmProperties = llmProperties;
+  }
 
   @Override
   public String providerName() {
@@ -28,12 +31,14 @@ public class OpenAiCompatibleLlmProviderStrategy implements LlmProviderStrategy 
     try {
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("model", request.model());
+      // 这里把内部 prompt window 归一化成 openai-compatible 的 messages 结构，
+      // 让上游 provider 只接触标准 role/content，不感知本项目的会话实体细节。
       payload.put("messages", request.messages().stream().map(message -> Map.of(
           "role", message.role(),
           "content", message.content()
       )).toList());
 
-      Map<?, ?> response = buildClient()
+      Map<?, ?> response = restClient()
           .post()
           .uri("/chat/completions")
           .contentType(MediaType.APPLICATION_JSON)
@@ -98,10 +103,14 @@ public class OpenAiCompatibleLlmProviderStrategy implements LlmProviderStrategy 
     // openai-compatible 默认没有稳定取消端点；这里只保留 best effort 扩展位。
   }
 
-  private RestClient buildClient() {
-    return restClientBuilder
+  private RestClient restClient() {
+    // 关键点：
+    // 1. 不直接复用并修改注入进来的 builder，避免多线程写同一个 builder。
+    // 2. 每次都从 clone() 出一个快照，保留测试里 MockRestServiceServer 对原 builder 的拦截能力。
+    // 3. Authorization 用 defaultHeaders(setBearerAuth) 覆盖写入，而不是 additive 的 defaultHeader。
+    return restClientBuilder.clone()
         .baseUrl(trimTrailingSlash(llmProperties.getBaseUrl()))
-        .defaultHeader("Authorization", "Bearer " + llmProperties.getApiKey())
+        .defaultHeaders(headers -> headers.setBearerAuth(llmProperties.getApiKey()))
         .build();
   }
 
