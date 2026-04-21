@@ -8,5 +8,8 @@
     "build:web": "corepack pnpm --dir packages/web build",
     "verify:compose": "docker compose config",
     "verify": "npm run test:server && npm run test:web && npm run build:web && npm run verify:compose"
+  },
+  "devDependencies": {
+    "element-plus": "^2.13.7"
   }
 }

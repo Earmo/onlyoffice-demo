@@ -16,7 +16,7 @@ spring:
 onlyoffice:
   integration:
     # 仅限本地开发使用的临时 JWT；生产环境必须通过环境变量覆盖。
-    jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET:dev-only-secret-do-not-use-in-production}
+    jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET:5d8fc72d49e070f303bb963f69902fe626eece4e}
     # 浏览器访问本机后端时使用的公开地址。
     public-base-url: http://localhost:8080
     # ONLYOFFICE 容器回调 Windows 本机后端时使用的内部地址。

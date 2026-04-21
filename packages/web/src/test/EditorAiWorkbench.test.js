@@ -169,7 +169,7 @@ describe("EditorAiWorkbench", () => {
     const wrapper = mountWorkbench();
     await flushPromises();
 
-    await wrapper.find(".composer-input").setValue("帮我总结这一段");
+    await wrapper.find("textarea").setValue("帮我总结这一段");
     await wrapper.find(".primary-button").trigger("click");
     await flushPromises();
 
@@ -214,7 +214,7 @@ describe("EditorAiWorkbench", () => {
     const wrapper = mountWorkbench();
     await flushPromises();
 
-    await wrapper.find(".composer-input").setValue("需要取消");
+    await wrapper.find("textarea").setValue("需要取消");
     await wrapper.find(".primary-button").trigger("click");
     await flushPromises();
 
@@ -301,7 +301,7 @@ describe("EditorAiWorkbench", () => {
     const wrapper = mountWorkbench();
     await flushPromises();
 
-    await wrapper.find(".composer-input").setValue("需要失败后重试");
+    await wrapper.find("textarea").setValue("需要失败后重试");
     await wrapper.find(".primary-button").trigger("click");
     await flushPromises();
 
@@ -327,7 +327,7 @@ describe("EditorAiWorkbench", () => {
     const wrapper = mountWorkbench();
     await flushPromises();
 
-    await wrapper.find(".composer-input").setValue("模拟网络失败");
+    await wrapper.find("textarea").setValue("模拟网络失败");
     await wrapper.find(".primary-button").trigger("click");
     await flushPromises();
 

@@ -58,7 +58,7 @@ describe("DocumentPreviewPage", () => {
     expect(wrapper.find(".preview-editor-shell-stub").attributes("data-readonly")).toBe("true");
     expect(wrapper.find(".preview-editor-shell-stub").attributes("data-show-console")).toBe("false");
 
-    const editButton = wrapper.findAll("button").find(button => button.text().includes("编辑文档"));
+    const editButton = wrapper.findAll("button").find(button => button.text().includes("进入编辑工作台"));
     await editButton.trigger("click");
     expect(routerPush).toHaveBeenCalledWith({ name: "editor", params: { documentId: "doc-1" } });
   });

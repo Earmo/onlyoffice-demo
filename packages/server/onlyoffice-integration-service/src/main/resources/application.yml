@@ -150,17 +150,17 @@ onlyoffice:
 
 llm:
   # 是否真正允许后端发起模型调用；默认关闭，避免本地环境误连真实 provider。
-  enabled: ${LLM_ENABLED:false}
+  enabled: ${LLM_ENABLED:true}
   # 是否向前端暴露 AI 工作台能力；可以在保留配置的前提下单独关闭功能开关。
   feature-enabled: ${LLM_FEATURE_ENABLED:true}
   # 当前 provider 策略名称，Phase 14 默认固定为 openai-compatible。
   provider: ${LLM_PROVIDER:openai-compatible}
   # 上游模型服务的 base URL，例如 https://api.openai.com/v1。
-  base-url: ${LLM_BASE_URL:}
+  base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
   # 上游模型 API Key，仅允许保留在服务端。
-  api-key: ${LLM_API_KEY:}
+  api-key: ${LLM_API_KEY:sk-gzcjuctqqzepbwmpomjacbmyboqwzxnaimjgmopfgydlhvzk}
   # 默认对话模型，例如 gpt-4.1-mini。
-  model: ${LLM_MODEL:}
+  model: ${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}
   # 调用上游 provider 的超时时间，单位毫秒。
   timeout-millis: ${LLM_TIMEOUT_MILLIS:60000}
   # 前端首轮同步等待窗口；超过该时长后转入 request 轮询。

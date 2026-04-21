@@ -189,7 +189,7 @@ async function waitForBridgeReady(options = {}) {
     const payload = await bridge.waitForReady();
     bridgeReady.value = true;
     bridgeCapability.value = payload?.capability || bridge.capability;
-    bridgeStatusMessage.value = "文档桥接已就绪，可读取选区并刷新章节目录。";
+    bridgeStatusMessage.value = "文档桥接已就绪，可读取选中文本并刷新章节目录。";
     return true;
   } catch (error) {
     bridgeReady.value = false;
@@ -218,10 +218,10 @@ async function captureSelectedText() {
     hasEmptySelection.value = Boolean(payload.emptySelection || selectedText.value.trim().length === 0);
     bridgeStatusMessage.value = hasEmptySelection.value
       ? "当前没有选中文本，可先在文档中框选一段内容。"
-      : "已抓取当前选区，可作为下一阶段 AI 对话的上下文输入。";
+      : "已获取当前选中文本，可作为下一阶段 AI 对话的上下文输入。";
     return payload;
   } catch (error) {
-    bridgeErrorMessage.value = toBridgeErrorMessage(error, "抓取当前选区失败，请稍后重试。");
+    bridgeErrorMessage.value = toBridgeErrorMessage(error, "获取当前选中文本失败，请稍后重试。");
     return null;
   } finally {
     isCapturingSelection.value = false;

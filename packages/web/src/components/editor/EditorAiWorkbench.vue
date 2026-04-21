@@ -127,7 +127,7 @@ const shortTopStatusText = computed(() => {
   if (currentRequestState.value === "in_progress") return "请求中...";
   if (lastCancelled.value) return "已取消";
   if (isExcludedSelection.value) return "AI 对话已就绪";
-  if (snapshotState.value === "snapshot-ready") return "选中文本";
+  if (snapshotState.value === "snapshot-ready") return "已获取选中文本";
   return "AI 对话已就绪";
 });
 
@@ -135,6 +135,11 @@ const isExcludedSelection = ref(false); // Controls if the user manually deleted
 
 function handleRemoveSelection() {
   isExcludedSelection.value = true;
+}
+
+function handleManualCapture() {
+  isExcludedSelection.value = false;
+  emit('capture-selection');
 }
 
 watch(
@@ -215,13 +220,24 @@ async function loadCapabilityAndBootstrap(documentId) {
 
 async function bootstrapSession(documentId, token) {
   bootstrapRequestDocumentId.value = documentId;
-  const session = await createLlmSession(documentId);
-  if (isBootstrapStale(token, documentId) || session.documentId !== props.runtimeContext.documentId || bootstrapRequestDocumentId.value !== documentId) {
-    // stale response：文档已切换或 bootstrapRequestDocumentId 已失效，丢弃旧 documentId 的自动建会话结果。
+  const sessionList = await listLlmSessions(documentId);
+  if (isBootstrapStale(token, documentId)) {
     return;
   }
-  applySessionSummary(session);
-  await refreshSessions(documentId, token);
+  
+  if (Array.isArray(sessionList) && sessionList.length > 0) {
+    const lastSession = sessionList[0];
+    await selectSession(lastSession.sessionId);
+    sessions.value = sessionList;
+  } else {
+    const session = await createLlmSession(documentId);
+    if (isBootstrapStale(token, documentId) || session.documentId !== props.runtimeContext.documentId || bootstrapRequestDocumentId.value !== documentId) {
+      // stale response：文档已切换或 bootstrapRequestDocumentId 已失效，丢弃旧 documentId 的自动建会话结果。
+      return;
+    }
+    applySessionSummary(session);
+    await refreshSessions(documentId, token);
+  }
 }
 
 async function refreshSessions(documentId, token = bootstrapToken) {
@@ -760,23 +776,30 @@ function handleDeleteMessage(entryIndex) {
           <el-collapse style="border-top: none; border-bottom: none;">
             <el-collapse-item title="文档工具箱" name="1">
               <div class="action-tools" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <el-button size="small" :disabled="isInsertingImage" @click="submitInsertImage">
-                  <el-icon><Picture /></el-icon> 插入网图
-                </el-button>
-
-                <el-button size="small" @click="emit('capture-selection')" :type="snapshotState === 'snapshot-ready' && !isExcludedSelection ? 'primary' : 'default'">
-                  <el-icon><Crop /></el-icon> 选中文本
-                </el-button>
-                
-                <el-button size="small" @click="emit('refresh-outline')">
-                  <el-icon><List /></el-icon> 刷新目录
-                </el-button>
-
-                <el-dropdown @command="handleOutlineCommand" trigger="click">
-                  <el-button size="small">
-                    跳转到章节<el-icon class="el-icon--right"><arrow-down /></el-icon>
+                <el-tooltip content="插入网络图片" placement="top">
+                  <el-button size="small" :disabled="isInsertingImage" @click="submitInsertImage">
+                    <el-icon><Picture /></el-icon> 插入网图
                   </el-button>
-                  <template #dropdown>
+                </el-tooltip>
+
+                <el-tooltip :content="snapshotState === 'snapshot-ready' && !isExcludedSelection ? '已选择文本' : '选中文本'" placement="top">
+                  <el-button size="small" @click="handleManualCapture" :type="snapshotState === 'snapshot-ready' && !isExcludedSelection ? 'success' : 'default'">
+                    <el-icon><Crop /></el-icon> {{ snapshotState === 'snapshot-ready' && !isExcludedSelection ? '已选择文本' : '选中文本' }}
+                  </el-button>
+                </el-tooltip>
+                
+                <el-tooltip content="刷新文档目录" placement="top">
+                  <el-button size="small" @click="emit('refresh-outline')">
+                    <el-icon><List /></el-icon> 刷新目录
+                  </el-button>
+                </el-tooltip>
+
+                <el-tooltip content="跳转到指定文档章节" placement="top">
+                  <el-dropdown @command="handleOutlineCommand" trigger="click">
+                    <el-button size="small">
+                      跳转到章节<el-icon class="el-icon--right"><arrow-down /></el-icon>
+                    </el-button>
+                    <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item
                         v-for="node in runtimeContext.outlineTreeData || []"
@@ -815,9 +838,15 @@ function handleDeleteMessage(entryIndex) {
               <p v-else style="margin: 0; color: var(--el-text-color-secondary);">{{ entry.responseMessage }}</p>
               
               <div class="message-actions" style="margin-top: 12px; display: flex; gap: 8px;" v-if="entry.status !== 'failed'">
-                <el-button size="small" text @click="handleCopy(entry.assistantText)"><el-icon><DocumentCopy /></el-icon> 复制</el-button>
-                <el-button size="small" text @click="handleRegenerate(index)"><el-icon><Refresh /></el-icon> 重新生成</el-button>
-                <el-button size="small" text @click="handleDeleteMessage(index)" type="danger"><el-icon><Delete /></el-icon> 删除</el-button>
+                <el-tooltip content="复制内容" placement="top">
+                  <el-button size="small" text @click="handleCopy(entry.assistantText)"><el-icon size="16"><DocumentCopy /></el-icon></el-button>
+                </el-tooltip>
+                <el-tooltip content="重新生成回复" placement="top">
+                  <el-button size="small" text @click="handleRegenerate(index)"><el-icon size="16"><Refresh /></el-icon></el-button>
+                </el-tooltip>
+                <el-tooltip content="删除此对话" placement="top">
+                  <el-button size="small" text @click="handleDeleteMessage(index)" type="danger"><el-icon size="16"><Delete /></el-icon></el-button>
+                </el-tooltip>
               </div>
 
               <div class="meta-line" style="margin-top: 8px; opacity: 0.7;" v-if="entry.status !== 'failed'">
@@ -839,7 +868,7 @@ function handleDeleteMessage(entryIndex) {
             
             <el-tooltip content="取消选中" placement="top" v-if="snapshotState === 'snapshot-ready' && !isExcludedSelection">
               <el-tag size="small" type="info" closable @close="handleRemoveSelection" style="cursor: pointer;">
-                <el-icon><CopyDocument /></el-icon> 已获取选区片段
+                <el-icon><CopyDocument /></el-icon> 已获取选中文本片段
               </el-tag>
             </el-tooltip>
           </div>
@@ -849,7 +878,7 @@ function handleDeleteMessage(entryIndex) {
             type="textarea"
             :rows="1"
             :autosize="{ minRows: 1, maxRows: 6 }"
-            placeholder="围绕当前选区提问..."
+            placeholder="围绕当前选中文本提问..."
             :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
             resize="none"
             style="--el-input-bg-color: transparent; --el-input-border-color: transparent; --el-input-hover-border-color: transparent; --el-input-focus-border-color: transparent; box-shadow: none;"
