@@ -1,13 +1,16 @@
 package com.earmo.onlyoffice.integration.service.llm;
 
 import com.earmo.onlyoffice.integration.config.LlmProperties;
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 @Component
@@ -90,6 +93,21 @@ public class OpenAiCompatibleLlmProviderStrategy implements LlmProviderStrategy 
           org.springframework.http.HttpStatus.GATEWAY_TIMEOUT,
           "模型上游服务响应超时。"
       );
+    } catch (RestClientException exception) {
+      // SocketTimeoutException 发生在读取响应头阶段时，Spring 会将其包装为 RestClientException
+      // 而非 ResourceAccessException，需要在这里额外判断根因并转为可识别的 LlmApiException。
+      if (exception.getCause() instanceof IOException) {
+        throw new LlmApiException(
+            LlmErrorCodes.LLM_PROVIDER_TIMEOUT,
+            org.springframework.http.HttpStatus.GATEWAY_TIMEOUT,
+            "模型上游服务响应超时。"
+        );
+      }
+      throw new LlmApiException(
+          LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR,
+          org.springframework.http.HttpStatus.BAD_GATEWAY,
+          "模型上游服务返回无法解析的响应。"
+      );
     }
   }
 
@@ -108,7 +126,14 @@ public class OpenAiCompatibleLlmProviderStrategy implements LlmProviderStrategy 
     // 1. 不直接复用并修改注入进来的 builder，避免多线程写同一个 builder。
     // 2. 每次都从 clone() 出一个快照，保留测试里 MockRestServiceServer 对原 builder 的拦截能力。
     // 3. Authorization 用 defaultHeaders(setBearerAuth) 覆盖写入，而不是 additive 的 defaultHeader。
+    // 4. 用 SimpleClientHttpRequestFactory 把 llm.timeout-millis 显式施加到连接和读超时，
+    //    避免依赖操作系统默认值导致 SocketTimeoutException 行为难以预测。
+    int timeoutMs = (int) Math.min(llmProperties.getTimeoutMillis(), Integer.MAX_VALUE);
+    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(timeoutMs);
+    factory.setReadTimeout(timeoutMs);
     return restClientBuilder.clone()
+        .requestFactory(factory)
         .baseUrl(trimTrailingSlash(llmProperties.getBaseUrl()))
         .defaultHeaders(headers -> headers.setBearerAuth(llmProperties.getApiKey()))
         .build();
