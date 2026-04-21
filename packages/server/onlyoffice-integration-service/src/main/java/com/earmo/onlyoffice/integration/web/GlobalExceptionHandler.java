@@ -4,6 +4,7 @@ import com.earmo.onlyoffice.integration.context.AccessContextException;
 import com.earmo.onlyoffice.integration.model.ApiErrorResponse;
 import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
 import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
+import com.earmo.onlyoffice.integration.service.llm.LlmApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -52,6 +53,12 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiErrorResponse> handleIllegalState(IllegalStateException exception) {
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
         .body(new ApiErrorResponse(exception.getMessage()));
+  }
+
+  @ExceptionHandler(LlmApiException.class)
+  public ResponseEntity<ApiErrorResponse> handleLlmApiException(LlmApiException exception) {
+    return ResponseEntity.status(exception.httpStatus())
+        .body(new ApiErrorResponse(exception.getMessage(), exception.errorCode()));
   }
 
   @ExceptionHandler(Exception.class)

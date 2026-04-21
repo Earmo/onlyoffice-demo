@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { ArrowLeft, DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
 import { ElMessageBox } from "element-plus";
 import "element-plus/es/components/message-box/style/css";
@@ -133,6 +133,25 @@ watch(
     loadEditorPageData();
   }
 );
+
+onBeforeRouteLeave(async () => {
+  if (isLeaving.value) {
+    return;
+  }
+
+  // 路由离开编辑页时先显式结束当前会话，
+  // 避免列表页/预览页切换只依赖 iframe 内部的页面卸载兜底。
+  isLeaving.value = true;
+  errorMessage.value = "";
+
+  try {
+    await closeCurrentEditingSession();
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "离开编辑页失败";
+    isLeaving.value = false;
+    return false;
+  }
+});
 
 const saveStatus = computed(() => editorShellRef.value?.saveStatus);
 const modeLabel = computed(() => editorShellRef.value?.modeLabel);

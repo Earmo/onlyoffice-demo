@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 import { apiFetch, buildApiUrl, createAccessContextHeaders } from "../../lib/api";
+import EditorAiWorkbench from "./EditorAiWorkbench.vue";
 import { createOnlyofficeBridge } from "./onlyofficeBridge";
 
 const props = defineProps({
@@ -28,7 +29,6 @@ const props = defineProps({
 // 1. 编辑器加载与会话生命周期；
 // 2. ONLYOFFICE 桥接能力状态；
 // 3. 右侧 AI-ready 抽屉面板的展示状态。
-const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
 const isConsoleOpen = ref(false);
 const isLoading = ref(true);
 const isInsertingImage = ref(false);
@@ -50,9 +50,6 @@ const bridgeReady = ref(false);
 const bridgeCapability = ref("plugin");
 const activeHeadingId = ref("");
 const activeHeadingNode = ref(null);
-const isSelectionSectionExpanded = ref(true);
-const isOutlineSectionExpanded = ref(true);
-const isRuntimeSectionExpanded = ref(true);
 let saveStatusTimer = null;
 let sessionHeartbeatTimer = null;
 let closeEditingSessionPromise = null;
@@ -96,6 +93,17 @@ const bridgeStatusLabel = computed(() => {
   return bridgeReady.value ? "桥接已就绪" : "桥接连接中";
 });
 const bridgeCapabilityLabel = computed(() => (bridgeCapability.value === "connector" ? "connector + plugin" : "plugin"));
+const runtimeContext = computed(() => ({
+  documentId: props.documentId,
+  documentTitle: props.documentTitle,
+  selectedText: selectedText.value,
+  hasEmptySelection: hasEmptySelection.value,
+  outlineTreeData: outlineTreeData.value,
+  activeHeadingId: activeHeadingId.value,
+  activeHeadingNode: activeHeadingNode.value,
+  bridgeStatusMessage: bridgeStatusMessage.value,
+  bridgeReady: bridgeReady.value
+}));
 
 async function readErrorMessage(response, fallbackMessage) {
   try {
@@ -358,19 +366,7 @@ function closeConsole() {
   isConsoleOpen.value = false;
 }
 
-function toggleSelectionSection() {
-  isSelectionSectionExpanded.value = !isSelectionSectionExpanded.value;
-}
-
-function toggleOutlineSection() {
-  isOutlineSectionExpanded.value = !isOutlineSectionExpanded.value;
-}
-
-function toggleRuntimeSection() {
-  isRuntimeSectionExpanded.value = !isRuntimeSectionExpanded.value;
-}
-
-async function insertRemoteImage() {
+async function insertRemoteImage(sourceUrl) {
   if (props.readonly) {
     errorMessage.value = "预览模式下不能插入图片。";
     return;
@@ -394,7 +390,7 @@ async function insertRemoteImage() {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        sourceUrl: imageUrl.value
+        sourceUrl
       })
     });
 
@@ -733,10 +729,10 @@ defineExpose({
     <div v-show="shouldShowConsole && isConsoleOpen" class="floating-console">
       <div class="console-panel-header">
         <div style="flex: 1;">
-          <p class="eyebrow">AI 对话准备态</p>
+          <p class="eyebrow">AI 对话工作台</p>
           <h2 class="title">{{ props.documentTitle || props.documentId }}</h2>
           <p class="summary">
-            当前页面已进入 AI-ready 编辑工作台，可先抓取选区、刷新章节目录并快速定位内容。
+            当前页面已进入正式 AI 工作台，可围绕选区发起多轮对话，并继续使用章节定位与运行态动作。
           </p>
         </div>
         <el-button class="panel-close" type="primary" @click="closeConsole" title="收起工作台" style="padding: 8px;">
@@ -745,160 +741,16 @@ defineExpose({
       </div>
 
       <div class="console-body">
-        <!-- 页面顶部展示当前跳转到的活跃标题，帮助用户确认章节定位结果 -->
-        <el-alert
-          v-if="activeHeadingNode && activeHeadingNode.id"
-          :key="'active-heading-' + activeHeadingNode.id"
-          type="info"
-          :closable="true"
-          style="margin-bottom: 0;"
-          @close="activeHeadingNode = null"
-        >
-          <template #title>
-            <div style="font-size: 14px; font-weight: bold; color: var(--el-text-color-primary);">
-              {{ activeHeadingNode.text || "未命名标题" }}
-            </div>
-          </template>
-          <div style="font-size: 13px; color: var(--el-text-color-regular); margin-top: 4px;">
-            <span class="outline-level-tag" style="margin-right: 6px;">H{{ activeHeadingNode.level }}</span>
-            <span>{{ activeHeadingNode.styleName || `段落 ${activeHeadingNode.paragraphIndex}` }}</span>
-          </div>
-        </el-alert>
-
-        <div class="panel-section" style="margin-bottom: 24px;">
-          <div class="panel-section-header">
-            <div>
-              <p class="eyebrow">当前上下文</p>
-              <h3 style="margin: 4px 0; font-size: 16px;">当前选区</h3>
-            </div>
-            <div style="display: flex; gap: 8px;">
-              <el-button
-                size="small"
-                :loading="isCapturingSelection"
-                :disabled="isLoading || isClosingSession"
-                @click="captureSelectedText"
-              >
-                {{ isCapturingSelection ? "抓取中..." : "抓取当前选区" }}
-              </el-button>
-              <el-button size="small" text @click="toggleSelectionSection">
-                {{ isSelectionSectionExpanded ? "收起" : "展开" }}
-              </el-button>
-            </div>
-          </div>
-
-          <div v-show="isSelectionSectionExpanded">
-            <div class="bridge-status-row">
-              <el-tag size="small" :type="bridgeStatusType">{{ bridgeStatusLabel }}</el-tag>
-              <span class="bridge-capability">{{ bridgeCapabilityLabel }}</span>
-            </div>
-            <p class="panel-hint">{{ bridgeStatusMessage }}</p>
-            <el-alert
-              v-if="bridgeErrorMessage"
-              :title="bridgeErrorMessage"
-              type="error"
-              show-icon
-              :closable="false"
-              class="panel-inline-alert"
-            />
-
-            <div v-if="selectedText" class="selection-preview">
-              <pre>{{ selectedText }}</pre>
-            </div>
-            <el-empty
-              v-else-if="hasEmptySelection"
-              description="当前没有选中文本，可先在文档中框选一段内容后再抓取。"
-              :image-size="72"
-            />
-            <p v-else class="panel-hint">
-              点击“抓取当前选区”后，这里会展示可直接进入 AI 对话窗口的文本上下文。
-            </p>
-          </div>
-        </div>
-
-        <div class="panel-section" style="margin-bottom: 24px;">
-          <div class="panel-section-header">
-            <div>
-              <p class="eyebrow">当前上下文</p>
-              <h3 style="margin: 4px 0; font-size: 16px;">章节标题</h3>
-            </div>
-            <div style="display: flex; gap: 8px;">
-              <el-button
-                size="small"
-                :loading="isRefreshingOutline"
-                :disabled="isLoading || isClosingSession"
-                @click="refreshOutline"
-              >
-                {{ isRefreshingOutline ? "刷新中..." : "刷新目录" }}
-              </el-button>
-              <el-button size="small" text @click="toggleOutlineSection">
-                {{ isOutlineSectionExpanded ? "收起" : "展开" }}
-              </el-button>
-            </div>
-          </div>
-
-          <div v-show="isOutlineSectionExpanded">
-            <div v-if="outlineTreeData.length" class="outline-list">
-              <el-tree
-                :data="outlineTreeData"
-                node-key="id"
-                :current-node-key="activeHeadingId || undefined"
-                highlight-current
-                default-expand-all
-                :expand-on-click-node="false"
-                @node-click="jumpToHeading"
-              >
-                <template #default="{ node, data }">
-                  <span class="custom-tree-node">
-                    <span class="outline-level-tag">H{{ data.level }}</span>
-                    <span class="outline-text-tag">{{ data.label }}</span>
-                  </span>
-                </template>
-              </el-tree>
-            </div>
-            <el-empty
-              v-else-if="hasEmptyOutline"
-              description="当前文档还没有检测到标题段落。"
-              :image-size="72"
-            />
-            <p v-else class="panel-hint">
-              点击“刷新目录”后，这里会显示文档中的章节标题，并支持快速定位。
-            </p>
-          </div>
-        </div>
-
-        <div class="panel-section">
-          <div class="panel-section-header">
-            <div>
-              <p class="eyebrow">当前动作</p>
-              <h3 style="margin: 4px 0; font-size: 16px;">在光标处插入网络图片</h3>
-            </div>
-            <el-button size="small" text @click="toggleRuntimeSection">
-              {{ isRuntimeSectionExpanded ? "收起" : "展开" }}
-            </el-button>
-          </div>
-
-          <div v-if="isRuntimeSectionExpanded">
-            <el-form label-position="top">
-              <el-form-item label="网络图片地址">
-                <el-input
-                  v-model="imageUrl"
-                  type="url"
-                  placeholder="https://example.com/demo.png"
-                  :disabled="isLoading || isInsertingImage"
-                />
-              </el-form-item>
-              <el-form-item style="margin-bottom: 0;">
-                <el-button
-                  type="primary"
-                  :disabled="isLoading || isInsertingImage || isClosingSession"
-                  @click="insertRemoteImage"
-                >
-                  {{ isInsertingImage ? "插入中..." : "在光标处插入网络图片" }}
-                </el-button>
-              </el-form-item>
-            </el-form>
-          </div>
-        </div>
+        <EditorAiWorkbench
+          :document-title="props.documentTitle"
+          :runtime-context="runtimeContext"
+          :loading="isLoading"
+          :closing="isClosingSession"
+          @capture-selection="captureSelectedText"
+          @refresh-outline="refreshOutline"
+          @jump-to-heading="jumpToHeading"
+          @insert-image="insertRemoteImage"
+        />
       </div>
     </div>
   </el-container>
@@ -961,13 +813,29 @@ defineExpose({
 }
 
 .floating-console {
-  /* 右侧工作台本阶段还是“AI 准备态”，后续会继续演进成正式对话窗口。 */
-  width: 400px;
+  width: 800px;
   max-width: 100vw;
   background: var(--el-bg-color);
   border-left: 1px solid var(--el-border-color);
   display: flex;
   flex-direction: column;
+}
+
+@media (max-width: 1439px) {
+  .floating-console {
+    width: min(70vw, 800px);
+  }
+}
+
+@media (max-width: 1023px) {
+  .floating-console {
+    width: 100vw;
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 120;
+  }
 }
 
 .console-panel-header {

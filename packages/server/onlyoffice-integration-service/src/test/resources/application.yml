@@ -31,3 +31,28 @@ onlyoffice:
     default-user: starter-user
     default-user-name: 默认用户
     storage-root: ./target/test-storage
+
+llm:
+  enabled: true
+  feature-enabled: true
+  provider: openai-compatible
+  base-url: http://127.0.0.1:18089
+  api-key: test-api-key
+  model: fake-gpt
+  timeout-millis: 60000
+  request-sync-wait-millis: 1500
+  default-visible-turns: 6
+  history-budget-tokens: 12000
+  history-token-estimator: chars_div_4
+  allow-heading-context: true
+  default-system-prompt: 你是一个文档协作助手。请基于用户给出的选区和标题上下文，输出可直接写回文档的专业中文建议。
+  provider-response-meta-allowlist:
+    - model
+    - created
+    - usage.promptTokens
+    - usage.completionTokens
+    - usage.totalTokens
+  session:
+    max-sessions-per-document: 20
+    max-messages-per-session: 200
+    retention-days: 30

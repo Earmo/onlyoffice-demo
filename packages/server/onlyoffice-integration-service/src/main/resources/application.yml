@@ -147,3 +147,45 @@ onlyoffice:
     editing-session:
       # 活跃编辑会话的心跳超时窗口（秒）。
       active-timeout-seconds: ${ONLYOFFICE_INTEGRATION_EDITING_SESSION_ACTIVE_TIMEOUT_SECONDS:30}
+
+llm:
+  # 是否真正允许后端发起模型调用；默认关闭，避免本地环境误连真实 provider。
+  enabled: ${LLM_ENABLED:false}
+  # 是否向前端暴露 AI 工作台能力；可以在保留配置的前提下单独关闭功能开关。
+  feature-enabled: ${LLM_FEATURE_ENABLED:true}
+  # 当前 provider 策略名称，Phase 14 默认固定为 openai-compatible。
+  provider: ${LLM_PROVIDER:openai-compatible}
+  # 上游模型服务的 base URL，例如 https://api.openai.com/v1。
+  base-url: ${LLM_BASE_URL:}
+  # 上游模型 API Key，仅允许保留在服务端。
+  api-key: ${LLM_API_KEY:}
+  # 默认对话模型，例如 gpt-4.1-mini。
+  model: ${LLM_MODEL:}
+  # 调用上游 provider 的超时时间，单位毫秒。
+  timeout-millis: ${LLM_TIMEOUT_MILLIS:60000}
+  # 前端首轮同步等待窗口；超过该时长后转入 request 轮询。
+  request-sync-wait-millis: ${LLM_REQUEST_SYNC_WAIT_MILLIS:1500}
+  # 默认向前端返回的最近对话轮次。
+  default-visible-turns: ${LLM_DEFAULT_VISIBLE_TURNS:6}
+  # 历史预算 token 上限，采用 chars_div_4 估算。
+  history-budget-tokens: ${LLM_HISTORY_BUDGET_TOKENS:12000}
+  # 历史 token 估算器名称；Phase 14 固定 chars_div_4。
+  history-token-estimator: ${LLM_HISTORY_TOKEN_ESTIMATOR:chars_div_4}
+  # 是否允许把当前标题上下文拼进 prompt。
+  allow-heading-context: ${LLM_ALLOW_HEADING_CONTEXT:true}
+  # 默认 system prompt。
+  default-system-prompt: ${LLM_DEFAULT_SYSTEM_PROMPT:你是一个文档协作助手。请基于用户给出的选区和标题上下文，输出可直接写回文档的专业中文建议。}
+  # 允许透传给前端的 provider 元数据白名单，禁止包含敏感信息或原始报文。
+  provider-response-meta-allowlist:
+    - model
+    - created
+    - usage.promptTokens
+    - usage.completionTokens
+    - usage.totalTokens
+  session:
+    # 单文档最多保留多少个 AI 会话。
+    max-sessions-per-document: ${LLM_SESSION_MAX_SESSIONS_PER_DOCUMENT:20}
+    # 单会话最多保留多少条消息。
+    max-messages-per-session: ${LLM_SESSION_MAX_MESSAGES_PER_SESSION:200}
+    # 会话保留天数，供后续归档/清理使用。
+    retention-days: ${LLM_SESSION_RETENTION_DAYS:30}

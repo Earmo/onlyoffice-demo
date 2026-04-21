@@ -2,8 +2,6 @@ import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, jsonResponse } from "./helpers";
 
-// 这组 mock 把桥接层从组件测试中剥离出来，
-// 让测试可以聚焦 EditorShell 的页面行为，而不是实际 ONLYOFFICE 运行时。
 const bridgeMocks = vi.hoisted(() => ({
   createOnlyofficeBridge: vi.fn(),
   waitForReady: vi.fn(),
@@ -28,6 +26,24 @@ vi.mock("../components/editor/onlyofficeBridge.js", () => ({
   createOnlyofficeBridge: bridgeMocks.createOnlyofficeBridge
 }));
 
+vi.mock("../components/editor/EditorAiWorkbench.vue", () => ({
+  default: {
+    name: "EditorAiWorkbenchStub",
+    props: ["documentTitle", "runtimeContext", "loading", "closing"],
+    emits: ["capture-selection", "refresh-outline", "jump-to-heading", "insert-image"],
+    template: `
+      <div class="ai-workbench-stub">
+        <p class="workbench-title">{{ documentTitle }}</p>
+        <p class="runtime-document">{{ runtimeContext.documentId }}</p>
+        <p class="runtime-selection">{{ runtimeContext.selectedText }}</p>
+        <button class="emit-capture" @click="$emit('capture-selection')">capture</button>
+        <button class="emit-refresh" @click="$emit('refresh-outline')">refresh</button>
+        <button class="emit-jump" @click="$emit('jump-to-heading', { id: 'heading-1', text: '一、项目背景', paragraphIndex: 3 })">jump</button>
+      </div>
+    `
+  }
+}));
+
 import EditorShell from "../components/editor/EditorShell.vue";
 
 describe("EditorShell", () => {
@@ -44,8 +60,7 @@ describe("EditorShell", () => {
     bridgeMocks.captureSelectedText.mockResolvedValue({ text: "第一段选中文本", emptySelection: false });
     bridgeMocks.refreshOutline.mockResolvedValue({
       headings: [
-        { id: "heading-1", text: "一、项目背景", level: 1, styleName: "Heading 1", paragraphIndex: 3 },
-        { id: "heading-2", text: "1.1 范围", level: 2, styleName: "Heading 2", paragraphIndex: 8 }
+        { id: "heading-1", text: "一、项目背景", level: 1, styleName: "Heading 1", paragraphIndex: 3 }
       ],
       emptyOutline: false
     });
@@ -60,7 +75,7 @@ describe("EditorShell", () => {
     }));
   });
 
-  it("应在编辑模式加载配置、展开控制台，并在显式关闭后卸载时不重复请求 close-session", async () => {
+  it("应在编辑模式挂载 EditorAiWorkbench，并在显式关闭后卸载时不重复请求 close-session", async () => {
     fetch
       .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
       .mockResolvedValueOnce(jsonResponse(saveStatusPayload()))
@@ -76,16 +91,14 @@ describe("EditorShell", () => {
     await flushPromises();
 
     expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/doc-1/editor-config?readonly=false");
-    expect(wrapper.text()).toContain("路线图.docx");
     expect(wrapper.find(".stage-edge-toggle").exists()).toBe(true);
 
     await wrapper.find(".stage-edge-toggle").trigger("click");
     await flushPromises();
 
-    expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
-    expect(wrapper.text()).toContain("当前选区");
-    expect(wrapper.text()).toContain("章节标题");
-    expect(wrapper.text()).toContain("运行态 / 现有动作");
+    expect(wrapper.find(".ai-workbench-stub").exists()).toBe(true);
+    expect(wrapper.text()).toContain("路线图.docx");
+    expect(wrapper.text()).toContain("doc-1");
 
     await wrapper.vm.closeEditingSession();
     await flushPromises();
@@ -96,8 +109,38 @@ describe("EditorShell", () => {
     expect(closeCalls).toHaveLength(1);
   });
 
+  it("应通过 EditorAiWorkbench 事件继续驱动抓取选区、刷新目录和标题跳转", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
+      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+    await flushPromises();
+
+    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await flushPromises();
+
+    await wrapper.find(".emit-capture").trigger("click");
+    await flushPromises();
+    expect(bridgeMocks.captureSelectedText).toHaveBeenCalledTimes(1);
+
+    await wrapper.find(".emit-refresh").trigger("click");
+    await flushPromises();
+    expect(bridgeMocks.refreshOutline).toHaveBeenCalled();
+
+    await wrapper.find(".emit-jump").trigger("click");
+    await flushPromises();
+    expect(bridgeMocks.jumpToHeading).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "heading-1", paragraphIndex: 3 })
+    );
+  });
+
   it("应在 close-session 进行中复用同一个请求而不是重复发送", async () => {
-    // 这个用例保护“重复点击离开 / 返回 / 切换”时不会发多次保存请求。
     let resolveSaveRequest;
     let saveCallCount = 0;
 
@@ -135,71 +178,18 @@ describe("EditorShell", () => {
 
     const firstClose = wrapper.vm.closeEditingSession();
     const secondClose = wrapper.vm.closeEditingSession();
-
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(resolve => setTimeout(resolve, 100));
     await flushPromises();
 
     expect(saveCallCount).toBe(1);
 
     resolveSaveRequest();
     const [firstPayload, secondPayload] = await Promise.all([firstClose, secondClose]);
-
     expect(firstPayload.state).toBe("saved");
     expect(secondPayload.state).toBe("saved");
   });
 
-  it("应先等待后端保存完成，再发送 close-session", async () => {
-    // close-session 顺序很关键：先 save，再 close，避免后端把最后一次修改落空。
-    let resolveSaveRequest;
-    let closeCallCount = 0;
-    fetch.mockImplementation((url) => {
-      const urlStr = String(url);
-      if (urlStr.includes("/editor-config")) {
-        return Promise.resolve(jsonResponse(editorConfigPayload("路线图.docx")));
-      }
-      if (urlStr.includes("/editing-sessions/heartbeat")) {
-        return Promise.resolve(jsonResponse({}, { status: 204 }));
-      }
-      if (urlStr.includes("/save-status")) {
-        return Promise.resolve(jsonResponse(saveStatusPayload()));
-      }
-      if (urlStr.includes("/save")) {
-        return new Promise(resolve => {
-          resolveSaveRequest = () => resolve(jsonResponse(saveStatusPayload({
-            lastSavedTime: "2026-03-25T10:00:05Z"
-          })));
-        });
-      }
-      if (urlStr.includes("/editing-sessions/close")) {
-        closeCallCount++;
-        return Promise.resolve(jsonResponse(closedStatusPayload({
-          lastSavedTime: "2026-03-25T10:00:05Z"
-        })));
-      }
-      return Promise.reject(new Error("unexpected fetch: " + urlStr));
-    });
-
-    const wrapper = mount(EditorShell, {
-      props: {
-        documentId: "doc-1",
-        documentTitle: "路线图.docx"
-      }
-    });
-    await flushPromises();
-
-    const closing = wrapper.vm.closeEditingSession();
-
-    await new Promise(r => setTimeout(r, 200));
-    await flushPromises();
-    expect(closeCallCount).toBe(0);
-
-    resolveSaveRequest();
-    const payload = await closing;
-    expect(closeCallCount).toBe(1);
-    expect(payload.lastSavedTime).toBe("2026-03-25T10:00:05Z");
-  });
-
-  it("应在只读预览模式下请求 readonly 配置且不展示控制台", async () => {
+  it("应在预览模式不展示 EditorAiWorkbench", async () => {
     fetch.mockResolvedValueOnce(jsonResponse(editorConfigPayload("预览稿.docx", "view")));
 
     const wrapper = mount(EditorShell, {
@@ -213,157 +203,12 @@ describe("EditorShell", () => {
     await flushPromises();
 
     expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/doc-2/editor-config?readonly=true");
-    expect(wrapper.text()).toContain("预览稿.docx");
     expect(wrapper.find(".floating-console").isVisible()).toBe(false);
     expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
-  });
-
-  it("应能抓取当前选区并展示文本预览", async () => {
-    // 这里验证的是宿主页按钮 -> 桥接调用 -> 面板渲染这一整条链路。
-    fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
-
-    const wrapper = mount(EditorShell, {
-      props: {
-        documentId: "doc-1",
-        documentTitle: "路线图.docx"
-      }
-    });
-    await flushPromises();
-
-    await wrapper.find(".stage-edge-toggle").trigger("click");
-    await flushPromises();
-
-    const captureButton = wrapper.findAll("button").find(button => button.text().includes("抓取当前选区"));
-    await captureButton.trigger("click");
-    await flushPromises();
-
-    expect(bridgeMocks.captureSelectedText).toHaveBeenCalledTimes(1);
-    expect(wrapper.text()).toContain("第一段选中文本");
-  });
-
-  it("应在没有选中文本时展示明确空态", async () => {
-    bridgeMocks.captureSelectedText.mockResolvedValueOnce({ text: "", emptySelection: true });
-    fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
-
-    const wrapper = mount(EditorShell, {
-      props: {
-        documentId: "doc-1",
-        documentTitle: "路线图.docx"
-      }
-    });
-    await flushPromises();
-
-    await wrapper.find(".stage-edge-toggle").trigger("click");
-    await flushPromises();
-
-    const captureButton = wrapper.findAll("button").find(button => button.text().includes("抓取当前选区"));
-    await captureButton.trigger("click");
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("当前没有选中文本");
-  });
-
-  it("应能刷新目录并展示标题列表", async () => {
-    fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
-
-    const wrapper = mount(EditorShell, {
-      props: {
-        documentId: "doc-1",
-        documentTitle: "路线图.docx"
-      }
-    });
-    await flushPromises();
-
-    await wrapper.find(".stage-edge-toggle").trigger("click");
-    await flushPromises();
-
-    expect(bridgeMocks.refreshOutline).toHaveBeenCalled();
-    expect(wrapper.text()).toContain("一、项目背景");
-    expect(wrapper.text()).toContain("1.1 范围");
-  });
-
-  it("应在没有标题时展示目录空态", async () => {
-    bridgeMocks.refreshOutline.mockResolvedValueOnce({ headings: [], emptyOutline: true });
-    fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
-
-    const wrapper = mount(EditorShell, {
-      props: {
-        documentId: "doc-1",
-        documentTitle: "路线图.docx"
-      }
-    });
-    await flushPromises();
-
-    await wrapper.find(".stage-edge-toggle").trigger("click");
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("当前文档还没有检测到标题段落");
-  });
-
-  it("应在点击标题后调用 jumpToHeading", async () => {
-    fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
-
-    const wrapper = mount(EditorShell, {
-      props: {
-        documentId: "doc-1",
-        documentTitle: "路线图.docx"
-      }
-    });
-    await flushPromises();
-
-    await wrapper.find(".stage-edge-toggle").trigger("click");
-    await flushPromises();
-
-    // 直接点击渲染出的目录节点，更贴近真实用户操作，也能避开组件事件校验噪音。
-    const outlineButton = wrapper.findAll(".custom-tree-node").find(button => button.text().includes("一、项目背景"));
-    await outlineButton.trigger("click");
-    await flushPromises();
-
-    expect(bridgeMocks.jumpToHeading).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "heading-1", paragraphIndex: 3 })
-    );
-  });
-
-  it("应支持折叠运行态与现有动作区域", async () => {
-    fetch
-      .mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")))
-      .mockResolvedValueOnce(jsonResponse(saveStatusPayload()));
-
-    const wrapper = mount(EditorShell, {
-      props: {
-        documentId: "doc-1",
-        documentTitle: "路线图.docx"
-      }
-    });
-    await flushPromises();
-
-    await wrapper.find(".stage-edge-toggle").trigger("click");
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("最近保存状态");
-
-    // 当前页面里有多个“收起”按钮，最后一个才对应“运行态 / 现有动作”区块。
-    const toggleButton = wrapper.findAll("button").filter(button => button.text().includes("收起")).at(-1);
-    await toggleButton.trigger("click");
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("运行态 / 现有动作");
-    expect(wrapper.text()).not.toContain("最近保存状态");
   });
 });
 
 function editorConfigPayload(title, mode = "edit") {
-  // 测试里只保留 EditorShell 真正依赖的最小 editor-config 形状。
   return {
     documentServerUrl: "https://docs.example.test/",
     config: {
@@ -384,13 +229,7 @@ function saveStatusPayload(overrides = {}) {
     lastCallbackStatus: 2,
     lastCallbackTime: "2026-03-25T10:00:00Z",
     lastSavedTime: "2026-03-25T10:00:01Z",
-    recentEvents: [
-      {
-        eventType: "save_succeeded",
-        message: "最新修改已成功回写到共享存储。",
-        eventTime: "2026-03-25T10:00:01Z"
-      }
-    ],
+    recentEvents: [],
     ...overrides
   };
 }

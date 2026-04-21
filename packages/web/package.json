@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "cmd /c node ./node_modules/vite/bin/vite.js",
+    "test": "cmd /c node ./node_modules/vitest/vitest.mjs run",
+    "test:watch": "cmd /c node ./node_modules/vitest/vitest.mjs",
+    "build": "cmd /c node ./node_modules/vite/bin/vite.js build",
+    "preview": "cmd /c node ./node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
