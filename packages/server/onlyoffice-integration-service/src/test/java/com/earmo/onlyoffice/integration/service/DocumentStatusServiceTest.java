@@ -6,7 +6,9 @@ import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentRuntimeEventEntity;
 import com.earmo.onlyoffice.integration.data.repository.DocumentEditorSessionRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentRuntimeEventRepository;
+import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.service.DocumentRuntimeEventStreamService;
 import com.earmo.onlyoffice.integration.service.impl.DocumentStatusServiceImpl;
 import java.time.Instant;
 import java.util.List;
@@ -27,15 +29,15 @@ import static org.mockito.Mockito.when;
 class DocumentStatusServiceTest {
 
   @Test
-  void shouldPersistRuntimeEventsAndProjectRecentStatus() {
+  void shouldPublishReturnedStatusForInitializeCallbackAndSaveMutations() {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
     when(metadataService.markOpened("demo")).thenReturn(status("demo", "draft"));
     when(metadataService.recordCallbackReceived("demo", 2)).thenReturn(status("demo", "editing"));
     when(metadataService.markSaved("demo", 2)).thenReturn(status("demo", "saved"));
     when(metadataService.markFailed("demo", 6, "下载新文件失败")).thenReturn(status("demo", "failed"));
-    when(metadataService.getStatus("demo")).thenReturn(status("demo", "saved"));
     when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
         .thenReturn(List.of(event("save_succeeded", "最新修改已成功回写到共享存储。", 2)));
 
@@ -43,26 +45,35 @@ class DocumentStatusServiceTest {
         properties(),
         metadataService,
         runtimeEventRepository,
-        documentEditorSessionRepository
+        documentEditorSessionRepository,
+        runtimeEventStreamService
     );
 
-    assertEquals("draft", service.initialize("demo").state());
-    assertEquals("editing", service.recordCallbackReceived("demo", 2).state());
-    assertEquals("saved", service.recordSaveSucceeded("demo", 2).state());
-    assertEquals("failed", service.recordSaveFailed("demo", 6, "下载新文件失败").state());
-    DocumentSaveStatusResponse current = service.getStatus("demo");
+    DocumentSaveStatusResponse initialized = service.initialize("demo");
+    DocumentSaveStatusResponse callbackReceived = service.recordCallbackReceived("demo", 2);
+    DocumentSaveStatusResponse saveSucceeded = service.recordSaveSucceeded("demo", 2);
+    DocumentSaveStatusResponse saveFailed = service.recordSaveFailed("demo", 6, "下载新文件失败");
 
-    assertFalse(current.recentEvents().isEmpty());
-    assertEquals("save_succeeded", current.recentEvents().get(0).eventType());
+    assertEquals("draft", initialized.state());
+    assertEquals("editing", callbackReceived.state());
+    assertEquals("saved", saveSucceeded.state());
+    assertEquals("failed", saveFailed.state());
+    assertFalse(saveFailed.recentEvents().isEmpty());
+    assertEquals("save_succeeded", saveFailed.recentEvents().get(0).eventType());
     verify(runtimeEventRepository, times(4))
         .save(org.mockito.ArgumentMatchers.any(DocumentRuntimeEventEntity.class));
+    verify(runtimeEventStreamService).publishSaveStatus("demo", initialized);
+    verify(runtimeEventStreamService).publishSaveStatus("demo", callbackReceived);
+    verify(runtimeEventStreamService).publishSaveStatus("demo", saveSucceeded);
+    verify(runtimeEventStreamService).publishSaveStatus("demo", saveFailed);
   }
 
   @Test
-  void shouldReconcileStableStatusWhenClosedCallbackArrivesAfterEditorsLeft() {
+  void shouldPublishReturnedStatusWhenClosedCallbackArrivesAfterEditorsLeft() {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
     when(metadataService.recordCallbackReceived("demo", 4)).thenReturn(status("demo", "editing"));
     when(metadataService.reconcileClosedEditingSession("demo")).thenReturn(status("demo", "saved"));
     when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(0L);
@@ -73,7 +84,8 @@ class DocumentStatusServiceTest {
         properties(),
         metadataService,
         runtimeEventRepository,
-        documentEditorSessionRepository
+        documentEditorSessionRepository,
+        runtimeEventStreamService
     );
 
     DocumentSaveStatusResponse current = service.recordCallbackReceived("demo", 4);
@@ -82,13 +94,15 @@ class DocumentStatusServiceTest {
     verify(metadataService).recordCallbackReceived("demo", 4);
     verify(metadataService).reconcileClosedEditingSession("demo");
     verify(runtimeEventRepository).save(any(DocumentRuntimeEventEntity.class));
+    verify(runtimeEventStreamService).publishSaveStatus("demo", current);
   }
 
   @Test
-  void shouldRecordRejectedCallbackAsIndependentRuntimeEvent() {
+  void shouldPublishReturnedStatusForRejectedCallback() {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
     when(metadataService.getStatus("demo")).thenReturn(status("demo", "editing"));
     when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
         .thenReturn(List.of(event("callback_rejected", "JWT 无效", null)));
@@ -97,7 +111,8 @@ class DocumentStatusServiceTest {
         properties(),
         metadataService,
         runtimeEventRepository,
-        documentEditorSessionRepository
+        documentEditorSessionRepository,
+        runtimeEventStreamService
     );
 
     DocumentSaveStatusResponse current = service.recordCallbackRejected("demo", "JWT 无效");
@@ -107,13 +122,15 @@ class DocumentStatusServiceTest {
     assertEquals("JWT 无效", current.recentEvents().get(0).message());
     verify(metadataService, never()).markFailed(any(), any(), any());
     verify(runtimeEventRepository).save(any(DocumentRuntimeEventEntity.class));
+    verify(runtimeEventStreamService).publishSaveStatus("demo", current);
   }
 
   @Test
-  void shouldOpenEditingSessionAndPersistActiveEditor() {
+  void shouldPublishReturnedStatusWhenOpeningEditingSession() {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
     when(metadataService.markEditingStarted("demo")).thenReturn(status("demo", "editing"));
     when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
         .thenReturn(List.of(event("editing_session_started", "编辑会话已建立。", null)));
@@ -124,7 +141,8 @@ class DocumentStatusServiceTest {
         properties(),
         metadataService,
         runtimeEventRepository,
-        documentEditorSessionRepository
+        documentEditorSessionRepository,
+        runtimeEventStreamService
     );
 
     DocumentSaveStatusResponse current = service.openEditingSession("demo", accessContext());
@@ -133,13 +151,15 @@ class DocumentStatusServiceTest {
     assertEquals("editing_session_started", current.recentEvents().get(0).eventType());
     verify(documentEditorSessionRepository).insert(any(DocumentEditorSessionEntity.class));
     verify(runtimeEventRepository).save(any(DocumentRuntimeEventEntity.class));
+    verify(runtimeEventStreamService).publishSaveStatus("demo", current);
   }
 
   @Test
-  void shouldCloseEditingSessionAndReconcileStatusWhenNoActiveEditorsRemain() {
+  void shouldPublishReturnedStatusWhenClosingEditingSessionWithoutActiveEditors() {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
     when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
         .thenReturn(Optional.of(editorSession()));
     when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(0L);
@@ -151,7 +171,8 @@ class DocumentStatusServiceTest {
         properties(),
         metadataService,
         runtimeEventRepository,
-        documentEditorSessionRepository
+        documentEditorSessionRepository,
+        runtimeEventStreamService
     );
 
     DocumentSaveStatusResponse current = service.closeEditingSession("demo", accessContext());
@@ -159,13 +180,15 @@ class DocumentStatusServiceTest {
     assertEquals("saved", current.state());
     verify(documentEditorSessionRepository).update(any(DocumentEditorSessionEntity.class));
     verify(metadataService).reconcileClosedEditingSession("demo");
+    verify(runtimeEventStreamService).publishSaveStatus("demo", current);
   }
 
   @Test
-  void shouldKeepEditingStatusWhenOtherActiveEditorsStillExist() {
+  void shouldPublishReturnedStatusWhenClosingEditingSessionWithOtherEditorsStillActive() {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
     when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
         .thenReturn(Optional.of(editorSession()));
     when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(2L);
@@ -177,7 +200,8 @@ class DocumentStatusServiceTest {
         properties(),
         metadataService,
         runtimeEventRepository,
-        documentEditorSessionRepository
+        documentEditorSessionRepository,
+        runtimeEventStreamService
     );
 
     DocumentSaveStatusResponse current = service.closeEditingSession("demo", accessContext());
@@ -185,6 +209,7 @@ class DocumentStatusServiceTest {
     assertEquals("editing", current.state());
     verify(metadataService, never()).reconcileClosedEditingSession(any());
     verify(metadataService).getStatus("demo");
+    verify(runtimeEventStreamService).publishSaveStatus("demo", current);
   }
 
   @Test
@@ -192,6 +217,7 @@ class DocumentStatusServiceTest {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
     when(documentEditorSessionRepository.countActiveByDocumentIds(eq(List.of("doc-1", "doc-2")), any()))
         .thenReturn(Map.of("doc-1", 2, "doc-2", 0));
 
@@ -199,7 +225,8 @@ class DocumentStatusServiceTest {
         properties(),
         metadataService,
         runtimeEventRepository,
-        documentEditorSessionRepository
+        documentEditorSessionRepository,
+        runtimeEventStreamService
     );
 
     Map<String, Integer> counts = service.countActiveEditingSessions(List.of("doc-1", "doc-2"));
@@ -214,6 +241,7 @@ class DocumentStatusServiceTest {
     DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
     DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
     DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
     when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
         .thenReturn(Optional.of(editorSession()));
 
@@ -221,13 +249,48 @@ class DocumentStatusServiceTest {
         properties(),
         metadataService,
         runtimeEventRepository,
-        documentEditorSessionRepository
+        documentEditorSessionRepository,
+        runtimeEventStreamService
     );
 
     service.touchEditingSession("demo", accessContext());
 
     verify(documentEditorSessionRepository).update(any(DocumentEditorSessionEntity.class));
     verify(runtimeEventRepository, never()).save(any(DocumentRuntimeEventEntity.class));
+    verify(runtimeEventStreamService, never()).publishSaveStatus(any(), any());
+  }
+
+  @Test
+  void shouldNotPublishWhenReadingProjectedStatus() {
+    DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
+    DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
+    DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
+    DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
+    when(metadataService.getStatus("demo")).thenReturn(status("demo", "saved"));
+    when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
+        .thenReturn(List.of(event("save_succeeded", "最新修改已成功回写到共享存储。", 2)));
+
+    DocumentStatusService service = new DocumentStatusServiceImpl(
+        properties(),
+        metadataService,
+        runtimeEventRepository,
+        documentEditorSessionRepository,
+        runtimeEventStreamService
+    );
+
+    DocumentSaveStatusResponse current = service.getStatus("demo");
+
+    assertEquals("saved", current.state());
+    assertEquals(
+        List.of(new DocumentSaveStatusEventResponse(
+            "save_succeeded",
+            "最新修改已成功回写到共享存储。",
+            2,
+            Instant.parse("2026-03-25T10:00:00Z")
+        )),
+        current.recentEvents()
+    );
+    verify(runtimeEventStreamService, never()).publishSaveStatus(any(), any());
   }
 
   private OnlyofficeIntegrationProperties properties() {
