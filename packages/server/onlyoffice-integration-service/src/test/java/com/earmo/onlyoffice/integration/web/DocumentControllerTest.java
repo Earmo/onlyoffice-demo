@@ -12,6 +12,7 @@ import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.model.NormalizedDocumentMetadata;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
+import com.earmo.onlyoffice.integration.service.DocumentRuntimeEventStreamService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.service.OnlyofficeCommandService;
@@ -28,10 +29,12 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -40,6 +43,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(DocumentController.class)
@@ -59,6 +63,9 @@ class DocumentControllerTest {
 
   @MockBean
   private DocumentStatusService documentStatusService;
+
+  @MockBean
+  private DocumentRuntimeEventStreamService documentRuntimeEventStreamService;
 
   @MockBean
   private AccessAuditService accessAuditService;
@@ -248,6 +255,44 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.state").value("saved"))
         .andExpect(jsonPath("$.recentEvents[0].eventType").value("save_succeeded"))
         .andExpect(jsonPath("$.recentEvents[0].callbackStatus").value(2));
+  }
+
+  @Test
+  void shouldOpenRuntimeEventStreamWithInitialSaveStatus() throws Exception {
+    AccessContext accessContext =
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header");
+    DocumentSaveStatusResponse initialStatus = new DocumentSaveStatusResponse(
+        "sample",
+        "saved",
+        "最新修改已成功回写到共享存储。",
+        2,
+        Instant.parse("2026-03-25T10:00:00Z"),
+        Instant.parse("2026-03-25T10:00:01Z"),
+        List.of()
+    );
+    when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(accessContext);
+    when(documentStatusService.getStatus("sample")).thenReturn(initialStatus);
+    when(documentRuntimeEventStreamService.open(
+        org.mockito.ArgumentMatchers.eq("sample"),
+        org.mockito.ArgumentMatchers.eq(accessContext),
+        org.mockito.ArgumentMatchers.eq(initialStatus),
+        org.mockito.ArgumentMatchers.any(Runnable.class)
+    )).thenReturn(new SseEmitter(180000L));
+
+    mockMvc.perform(get("/api/documents/sample/runtime-events"))
+        .andExpect(status().isOk())
+        .andExpect(request().asyncStarted())
+        .andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString(MediaType.TEXT_EVENT_STREAM_VALUE)));
+
+    verify(accessContextResolver).resolve(org.mockito.ArgumentMatchers.any());
+    verify(documentStatusService).touchEditingSession("sample", accessContext);
+    verify(documentStatusService).getStatus("sample");
+    verify(documentRuntimeEventStreamService).open(
+        org.mockito.ArgumentMatchers.eq("sample"),
+        org.mockito.ArgumentMatchers.eq(accessContext),
+        argThat(statusResponse -> statusResponse != null && "sample".equals(statusResponse.documentId())),
+        org.mockito.ArgumentMatchers.any(Runnable.class)
+    );
   }
 
   @Test
