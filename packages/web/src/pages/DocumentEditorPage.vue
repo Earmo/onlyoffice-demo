@@ -156,6 +156,34 @@ onBeforeRouteLeave(async () => {
 const saveStatus = computed(() => editorShellRef.value?.saveStatus);
 const modeLabel = computed(() => editorShellRef.value?.modeLabel);
 
+const SAVE_STATE_LABELS = {
+  idle: '空闲',
+  editing: '编辑中',
+  'callback-received': '等待保存',
+  'callback-processing': '保存中',
+  saved: '已保存',
+  'save-failed': '保存失败',
+  failed: '异常',
+};
+
+const SAVE_EVENT_LABELS = {
+  preview_opened: '预览已打开',
+  editing_session_started: '编辑会话开始',
+  callback_received: '收到保存回调',
+  save_succeeded: '保存成功',
+  save_failed: '保存失败',
+  editing_session_closed: '编辑会话结束',
+  save_skipped: '跳过保存',
+};
+
+function stateLabel(state) {
+  return SAVE_STATE_LABELS[state] || state || '未知';
+}
+
+function eventLabel(eventType) {
+  return SAVE_EVENT_LABELS[eventType] || eventType || '未知事件';
+}
+
 function loadSaveStatus() {
   editorShellRef.value?.loadSaveStatus?.();
 }
@@ -258,7 +286,7 @@ onMounted(loadEditorPageData);
             <el-tag
               size="small"
               :type="saveStatus.state === 'saved' ? 'success' : saveStatus.state === 'editing' || saveStatus.state === 'callback-received' ? 'warning' : saveStatus.state === 'save-failed' ? 'danger' : 'info'"
-            >{{ saveStatus.state || '未知' }}</el-tag>
+            >{{ stateLabel(saveStatus.state) }}</el-tag>
             <span class="muted-copy" style="font-size: 12px; margin-left: 6px;" v-if="saveStatus.lastSavedTime">
               {{ formatTimestamp(saveStatus.lastSavedTime) }}
             </span>
@@ -266,7 +294,7 @@ onMounted(loadEditorPageData);
           <div v-if="saveStatus?.recentEvents?.length" style="margin-top: 8px;">
             <ul class="save-status-events">
               <li v-for="(ev, i) in (saveStatus.recentEvents || []).slice(0, 3)" :key="i">
-                <strong>{{ ev.eventType }}</strong>
+                <strong>{{ eventLabel(ev.eventType) }}</strong>
                 <time v-if="ev.eventTime">{{ formatTimestamp(ev.eventTime) }}</time>
               </li>
             </ul>

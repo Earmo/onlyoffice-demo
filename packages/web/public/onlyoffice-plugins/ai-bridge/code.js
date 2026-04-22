@@ -274,16 +274,15 @@
 
       // 当文档中存在带编号的标题时，按层级计算编号前缀。
       // 例如：H1 依次为 1, 2, 3；H1=2 下的 H2 依次为 2.1, 2.2；以此递推。
-      // 没有编号的标题不会生成前缀，避免对纯样式标题误加编号。
+      // 没有 list 编号的标题若文本以数字开头（如 "1 接口开关"），仍同步更新 counter，
+      // 避免其子级 list-numbered 标题算出错误的父级编号（如 "0.1" 而非 "1.1"）。
       if (hasAnyNumbering) {
         // counters[i] 记录第 i+1 级标题的当前计数
         var counters = [];
+        // 提取文本开头的数字前缀，例如 "1 接口开关" → "1"，"2.3 节" → "2.3"
+        var textNumRe = /^(\d+(?:\.\d+)*)\s/;
         for (var h = 0; h < headings.length; h += 1) {
           var heading = headings[h];
-          if (!heading.numbered) {
-            heading.numberingPrefix = "";
-            continue;
-          }
           var lvl = heading.level;
           // 按需扩展 counters 数组长度
           while (counters.length < lvl) {
@@ -293,14 +292,27 @@
           for (var r = lvl; r < counters.length; r += 1) {
             counters[r] = 0;
           }
-          // 当前层级计数 +1
-          counters[lvl - 1] += 1;
-          // 拼接从第 1 级到当前级的编号，如 "2.3.1"
-          var parts = [];
-          for (var p = 0; p < lvl; p += 1) {
-            parts.push(counters[p] || 0);
+          if (heading.numbered) {
+            // 当前层级计数 +1
+            counters[lvl - 1] += 1;
+            // 拼接从第 1 级到当前级的编号，如 "2.3.1"
+            var parts = [];
+            for (var p = 0; p < lvl; p += 1) {
+              parts.push(counters[p] || 0);
+            }
+            heading.numberingPrefix = parts.join(".");
+          } else {
+            // 非 list-numbered 标题：若文本以数字前缀开头，同步覆盖 counter 状态
+            // 使后续子级的自动编号能衔接正确的父级序号
+            var textMatch = textNumRe.exec(heading.text || "");
+            if (textMatch) {
+              var numParts = textMatch[1].split(".").map(Number);
+              for (var i = 0; i < numParts.length && i < lvl; i += 1) {
+                counters[i] = numParts[i];
+              }
+            }
+            heading.numberingPrefix = "";
           }
-          heading.numberingPrefix = parts.join(".");
         }
       }
 
