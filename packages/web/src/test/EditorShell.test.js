@@ -329,7 +329,7 @@ describe("EditorShell", () => {
     expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
   });
 
-  it("应在 SSE healthy 时停止 save-status 与 heartbeat polling，并消费 runtime-events", async () => {
+  it("应在 SSE healthy 时停止 save-status polling，但继续 heartbeat 续期并消费 runtime-events", async () => {
     vi.useFakeTimers();
     const stream = createRuntimeStreamController();
     const startStreamSpy = queueRuntimeStreamControllers([stream]);
@@ -353,7 +353,7 @@ describe("EditorShell", () => {
     expect(startStreamSpy).toHaveBeenCalledWith(expect.objectContaining({ documentId: "doc-1" }));
     expect(wrapper.vm.saveStatus?.message).toBe("来自 runtime-events");
     expect(countFetchCalls("/api/documents/doc-1/save-status")).toBe(0);
-    expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
+    expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBeGreaterThan(0);
   });
 
   it("应在 stream 失败后恢复 save-status 与 heartbeat fallback，并按 1000/2000/4000/8000/15000ms 退避重试", async () => {
@@ -424,7 +424,7 @@ describe("EditorShell", () => {
 
     expect(startStreamSpy).toHaveBeenCalledTimes(2);
     expect(countFetchCalls("/api/documents/doc-1/save-status")).toBe(0);
-    expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
+    expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBeGreaterThan(0);
   });
 
   it("应在 showConsole=false 时禁用 SSE 重试但保留 heartbeat 与 save-status fallback，readonly 则两者都不启动", async () => {

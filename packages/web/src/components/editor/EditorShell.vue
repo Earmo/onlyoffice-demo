@@ -605,7 +605,7 @@ function startRuntimeEventStreamForDocument(documentId) {
       runtimeStreamRetryDelayMs = 1000;
       isRuntimeStreamHealthy.value = true;
       stopSaveStatusPolling();
-      stopSessionHeartbeatPolling();
+      startSessionHeartbeatPolling();
     })
     .catch(() => {
       if (runtimeStreamHandle !== streamHandle) {
