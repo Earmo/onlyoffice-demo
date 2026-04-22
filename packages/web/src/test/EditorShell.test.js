@@ -49,6 +49,7 @@ import EditorShell from "../components/editor/EditorShell.vue";
 
 describe("runtimeEventStream", () => {
   it("应使用 access context headers 建立 runtime-events 流，并处理跨 chunks 拆开的 save-status frame", async () => {
+    // Regression: save-status frame split across chunks must keep a partial frame buffer.
     const onSaveStatus = vi.fn();
     const onSessionActive = vi.fn();
     const onKeepalive = vi.fn();
@@ -58,11 +59,12 @@ describe("runtimeEventStream", () => {
 
     fetch.mockResolvedValueOnce(createRuntimeEventResponse([
       "event: save-st",
-      "atus\ndata: {\"documentId\":\"doc 1/test\",\"state\":\"saved\",\n",
+      "atus\ndata: {\"documentId\":\"doc 1/test\",\"state\":\"saved\",",
       "\"message\":\"ok\"}\n\n",
       "event: session-active\ndata: {\"documentId\":\"doc 1/test\",\"active\":true}\n\n",
       ": keepalive comment\n",
-      "event: keepalive\ndata: {\"documentId\":\"doc 1/test\",\"tick\":1}\n\n",
+      "event: keepalive\ndata: {\"documentId\":\"doc 1/test\",\n",
+      "data: \"tick\":1}\n\n",
       "event: runtime-error\ndata: {\"documentId\":\"doc 1/test\",\"code\":\"RUNTIME_DOWN\"}\n\n"
     ]));
 
@@ -94,13 +96,17 @@ describe("runtimeEventStream", () => {
       state: "saved"
     }));
     expect(onSessionActive).toHaveBeenCalledWith(expect.objectContaining({ active: true }));
-    expect(onKeepalive).toHaveBeenCalledWith(expect.objectContaining({ tick: 1 }));
+    expect(onKeepalive).toHaveBeenCalledWith(expect.objectContaining({
+      documentId: "doc 1/test",
+      tick: 1
+    }));
     expect(onRuntimeError).toHaveBeenCalledWith(expect.objectContaining({ code: "RUNTIME_DOWN" }));
     expect(onError).not.toHaveBeenCalled();
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
   it("应在 ready 后 clean completion 调用 onComplete，但不调用 onError", async () => {
+    // Regression: onComplete fires only for clean completion after ready resolves.
     const onComplete = vi.fn();
     const onError = vi.fn();
 
