@@ -1,6 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, jsonResponse } from "./helpers";
+import { startRuntimeEventStream } from "../components/editor/runtimeEventStream.js";
 
 const bridgeMocks = vi.hoisted(() => ({
   createOnlyofficeBridge: vi.fn(),
@@ -45,6 +46,111 @@ vi.mock("../components/editor/EditorAiWorkbench.vue", () => ({
 }));
 
 import EditorShell from "../components/editor/EditorShell.vue";
+
+describe("runtimeEventStream", () => {
+  it("应使用 access context headers 建立 runtime-events 流，并处理跨 chunks 拆开的 save-status frame", async () => {
+    const onSaveStatus = vi.fn();
+    const onSessionActive = vi.fn();
+    const onKeepalive = vi.fn();
+    const onRuntimeError = vi.fn();
+    const onError = vi.fn();
+    const onComplete = vi.fn();
+
+    fetch.mockResolvedValueOnce(createRuntimeEventResponse([
+      "event: save-st",
+      "atus\ndata: {\"documentId\":\"doc 1/test\",\"state\":\"saved\",\n",
+      "\"message\":\"ok\"}\n\n",
+      "event: session-active\ndata: {\"documentId\":\"doc 1/test\",\"active\":true}\n\n",
+      ": keepalive comment\n",
+      "event: keepalive\ndata: {\"documentId\":\"doc 1/test\",\"tick\":1}\n\n",
+      "event: runtime-error\ndata: {\"documentId\":\"doc 1/test\",\"code\":\"RUNTIME_DOWN\"}\n\n"
+    ]));
+
+    const stream = startRuntimeEventStream({
+      documentId: "doc 1/test",
+      onSaveStatus,
+      onSessionActive,
+      onKeepalive,
+      onRuntimeError,
+      onError,
+      onComplete
+    });
+
+    await stream.ready;
+    await flushPromises();
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/documents/doc%201%2Ftest/runtime-events"),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "text/event-stream",
+          "X-External-User-Id": "starter-user"
+        }),
+        signal: expect.any(AbortSignal)
+      })
+    );
+    expect(onSaveStatus).toHaveBeenCalledWith(expect.objectContaining({
+      documentId: "doc 1/test",
+      state: "saved"
+    }));
+    expect(onSessionActive).toHaveBeenCalledWith(expect.objectContaining({ active: true }));
+    expect(onKeepalive).toHaveBeenCalledWith(expect.objectContaining({ tick: 1 }));
+    expect(onRuntimeError).toHaveBeenCalledWith(expect.objectContaining({ code: "RUNTIME_DOWN" }));
+    expect(onError).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("应在 ready 后 clean completion 调用 onComplete，但不调用 onError", async () => {
+    const onComplete = vi.fn();
+    const onError = vi.fn();
+
+    fetch.mockResolvedValueOnce(createRuntimeEventResponse([
+      "event: keepalive\ndata: {\"documentId\":\"doc-1\"}\n\n"
+    ]));
+
+    const stream = startRuntimeEventStream({
+      documentId: "doc-1",
+      onSaveStatus: vi.fn(),
+      onSessionActive: vi.fn(),
+      onKeepalive: vi.fn(),
+      onRuntimeError: vi.fn(),
+      onError,
+      onComplete
+    });
+
+    await stream.ready;
+    await flushPromises();
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("应在 abort 时停止 reader，且不触发 onComplete 或 onError", async () => {
+    const onComplete = vi.fn();
+    const onError = vi.fn();
+    const response = createDeferredRuntimeEventResponse();
+
+    fetch.mockResolvedValueOnce(response);
+
+    const stream = startRuntimeEventStream({
+      documentId: "doc-1",
+      onSaveStatus: vi.fn(),
+      onSessionActive: vi.fn(),
+      onKeepalive: vi.fn(),
+      onRuntimeError: vi.fn(),
+      onError,
+      onComplete
+    });
+
+    await stream.ready;
+    stream.abort();
+    response.rejectPendingRead(abortError());
+    await flushPromises();
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+});
 
 describe("EditorShell", () => {
   beforeEach(() => {
@@ -245,4 +351,66 @@ function closedStatusPayload(overrides = {}) {
     recentEvents: [],
     ...overrides
   };
+}
+
+function createRuntimeEventResponse(chunks) {
+  const encoder = new TextEncoder();
+  let index = 0;
+
+  return {
+    ok: true,
+    status: 200,
+    body: {
+      getReader() {
+        return {
+          async read() {
+            if (index >= chunks.length) {
+              return { done: true, value: undefined };
+            }
+            const value = encoder.encode(chunks[index]);
+            index += 1;
+            return { done: false, value };
+          },
+          releaseLock() {}
+        };
+      }
+    }
+  };
+}
+
+function createDeferredRuntimeEventResponse() {
+  const encoder = new TextEncoder();
+  let settled = false;
+  let rejectPendingRead = () => {};
+
+  return {
+    ok: true,
+    status: 200,
+    body: {
+      getReader() {
+        return {
+          async read() {
+            if (settled) {
+              return { done: true, value: undefined };
+            }
+            settled = true;
+            return new Promise((resolve, reject) => {
+              rejectPendingRead = reject;
+              setTimeout(() => resolve({ done: false, value: encoder.encode("event: keepalive\n") }), 50);
+            });
+          },
+          releaseLock() {}
+        };
+      }
+    },
+    rejectPendingRead(error) {
+      rejectPendingRead(error);
+    }
+  };
+}
+
+function abortError() {
+  const error = new Error("aborted");
+  error.name = "AbortError";
+  return error;
 }
