@@ -816,7 +816,7 @@ function handleDeleteMessage(entryIndex) {
                       跳转到章节<el-icon class="el-icon--right"><arrow-down /></el-icon>
                     </el-button>
                     <template #dropdown>
-                    <el-dropdown-menu>
+                    <el-dropdown-menu style="max-height: calc(100vh - 280px); overflow-y: auto;">
                       <el-dropdown-item
                         v-for="node in flatOutlineItems"
                         :key="node.id"

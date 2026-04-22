@@ -254,20 +254,20 @@ onMounted(loadEditorPageData);
             <p class="eyebrow" style="margin: 0;">实时保存状态</p>
             <el-button size="small" text @click="loadSaveStatus" title="刷新保存状态">刷新</el-button>
           </div>
-          <div v-if="saveStatus" :class="['save-status-badge', saveStatusTone(saveStatus.status)]">
+          <div v-if="saveStatus" :class="['save-status-badge', saveStatusTone(saveStatus.state)]">
             <el-tag
               size="small"
-              :type="saveStatus.status === 'saved' ? 'success' : saveStatus.status === 'editing' || saveStatus.status === 'callback-received' ? 'warning' : saveStatus.status === 'save-failed' ? 'danger' : 'info'"
-            >{{ saveStatus.status || '未知' }}</el-tag>
+              :type="saveStatus.state === 'saved' ? 'success' : saveStatus.state === 'editing' || saveStatus.state === 'callback-received' ? 'warning' : saveStatus.state === 'save-failed' ? 'danger' : 'info'"
+            >{{ saveStatus.state || '未知' }}</el-tag>
             <span class="muted-copy" style="font-size: 12px; margin-left: 6px;" v-if="saveStatus.lastSavedTime">
               {{ formatTimestamp(saveStatus.lastSavedTime) }}
             </span>
           </div>
-          <div v-if="saveStatus?.events?.length" style="margin-top: 8px;">
+          <div v-if="saveStatus?.recentEvents?.length" style="margin-top: 8px;">
             <ul class="save-status-events">
-              <li v-for="(ev, i) in (saveStatus.events || []).slice(0, 3)" :key="i">
-                <strong>{{ ev.type || ev.event }}</strong>
-                <time v-if="ev.time || ev.timestamp">{{ formatTimestamp(ev.time || ev.timestamp) }}</time>
+              <li v-for="(ev, i) in (saveStatus.recentEvents || []).slice(0, 3)" :key="i">
+                <strong>{{ ev.eventType }}</strong>
+                <time v-if="ev.eventTime">{{ formatTimestamp(ev.eventTime) }}</time>
               </li>
             </ul>
           </div>
