@@ -5,6 +5,7 @@ import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 import { apiFetch, buildApiUrl, createAccessContextHeaders } from "../../lib/api";
 import EditorAiWorkbench from "./EditorAiWorkbench.vue";
 import { createOnlyofficeBridge } from "./onlyofficeBridge";
+import { startRuntimeEventStream } from "./runtimeEventStream";
 
 const props = defineProps({
   documentId: {
@@ -55,6 +56,10 @@ let sessionHeartbeatTimer = null;
 let closeEditingSessionPromise = null;
 let removeUnloadListeners = null;
 let onlyofficeBridge = null;
+let runtimeStreamHandle = null;
+let runtimeStreamRetryTimer = null;
+let runtimeStreamRetryDelayMs = 1000;
+const isRuntimeStreamHealthy = ref(false);
 
 // modeLabel / shouldShowConsole / bridgeStatusType 都是给模板直接消费的视图衍生态，
 // 保证模板层不再额外拼判断，便于后面继续往“AI 对话正式版”演进。
@@ -302,18 +307,9 @@ async function loadEditorConfig() {
 
     editorPayload.value = await response.json();
     editingSessionOpened.value = !props.readonly;
-    if (!props.readonly) {
-      // 只有编辑态才需要维护 editing session 心跳。
-      startSessionHeartbeatPolling();
-    }
     editorKey.value += 1;
     ensureBridge();
-
-    if (shouldShowConsole.value) {
-      await loadSaveStatus();
-    } else {
-      saveStatus.value = null;
-    }
+    saveStatus.value = null;
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "未知错误";
     if (!props.readonly) {
@@ -343,7 +339,7 @@ async function fetchSaveStatusSnapshot(options = {}) {
 }
 
 async function loadSaveStatus() {
-  if (!shouldShowConsole.value) {
+  if (props.readonly) {
     return;
   }
 
@@ -410,9 +406,16 @@ async function insertRemoteImage(sourceUrl) {
 function handleDocumentReady() {
   // onDocumentReady 说明编辑器 iframe 已完成主加载。
   // 之后才能安全启动保存轮询、桥接握手和导航面板展开。
-  startSessionHeartbeatPolling();
-  if (shouldShowConsole.value) {
+  if (props.readonly) {
+    stopRuntimeEventStream();
+    clearRuntimeStreamRetry();
+  } else if (props.showConsole === false) {
+    stopRuntimeEventStream();
+    clearRuntimeStreamRetry();
+    startSessionHeartbeatPolling();
     startSaveStatusPolling();
+  } else {
+    activateRuntimeStream();
   }
   void nextTick(async () => {
     ensureBridge();
@@ -467,6 +470,163 @@ function stopSaveStatusPolling() {
     window.clearInterval(saveStatusTimer);
     saveStatusTimer = null;
   }
+}
+
+function clearRuntimeStreamRetry() {
+  if (runtimeStreamRetryTimer !== null) {
+    window.clearTimeout(runtimeStreamRetryTimer);
+    runtimeStreamRetryTimer = null;
+  }
+}
+
+function stopRuntimeEventStream() {
+  const handle = runtimeStreamHandle;
+  runtimeStreamHandle = null;
+  isRuntimeStreamHealthy.value = false;
+  void handle?.abort?.();
+}
+
+function isRuntimeStreamEligibleFor(documentId) {
+  return !props.readonly
+    && props.showConsole !== false
+    && editingSessionOpened.value
+    && documentId === props.documentId;
+}
+
+function scheduleRuntimeStreamRetry(documentId) {
+  if (!isRuntimeStreamEligibleFor(documentId)) {
+    clearRuntimeStreamRetry();
+    return;
+  }
+
+  clearRuntimeStreamRetry();
+  const delay = runtimeStreamRetryDelayMs;
+  runtimeStreamRetryTimer = window.setTimeout(() => {
+    runtimeStreamRetryTimer = null;
+    if (!isRuntimeStreamEligibleFor(documentId)) {
+      return;
+    }
+    runtimeStreamRetryDelayMs = Math.min(delay * 2, 15000);
+    activateRuntimeStream(documentId);
+  }, delay);
+}
+
+function activateRuntimePollingFallback(documentId) {
+  if (props.readonly || documentId !== props.documentId || !editingSessionOpened.value) {
+    stopSaveStatusPolling();
+    stopSessionHeartbeatPolling();
+    clearRuntimeStreamRetry();
+    return;
+  }
+
+  void loadSaveStatus();
+  void touchEditingSession({ suppressErrors: true });
+  startSaveStatusPolling();
+  startSessionHeartbeatPolling();
+  if (isRuntimeStreamEligibleFor(documentId)) {
+    scheduleRuntimeStreamRetry(documentId);
+  } else {
+    clearRuntimeStreamRetry();
+  }
+}
+
+function updateSaveStatusFromRuntime(payload, streamDocumentId) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  if (payload.documentId && payload.documentId !== streamDocumentId) {
+    return;
+  }
+  if (payload.documentId && payload.documentId !== props.documentId) {
+    return;
+  }
+  saveStatus.value = payload;
+}
+
+function handleRuntimeStreamFailure(streamDocumentId) {
+  if (runtimeStreamHandle === null && streamDocumentId !== props.documentId) {
+    return;
+  }
+  isRuntimeStreamHealthy.value = false;
+  if (streamDocumentId !== props.documentId) {
+    return;
+  }
+  activateRuntimePollingFallback(streamDocumentId);
+}
+
+function startRuntimeEventStreamForDocument(documentId) {
+  const streamHandle = startRuntimeEventStream({
+    documentId,
+    onSaveStatus(payload) {
+      if (runtimeStreamHandle !== streamHandle) {
+        return;
+      }
+      updateSaveStatusFromRuntime(payload, documentId);
+    },
+    onSessionActive() {},
+    onKeepalive() {},
+    onRuntimeError() {
+      if (runtimeStreamHandle !== streamHandle) {
+        return;
+      }
+      handleRuntimeStreamFailure(documentId);
+    },
+    onError() {
+      if (runtimeStreamHandle !== streamHandle) {
+        return;
+      }
+      handleRuntimeStreamFailure(documentId);
+    },
+    onComplete() {
+      if (runtimeStreamHandle !== streamHandle) {
+        return;
+      }
+      runtimeStreamHandle = null;
+      isRuntimeStreamHealthy.value = false;
+      clearRuntimeStreamRetry();
+      if (!isRuntimeStreamEligibleFor(documentId)) {
+        return;
+      }
+      void Promise.resolve().then(() => {
+        if (isRuntimeStreamEligibleFor(documentId)) {
+          activateRuntimeStream(documentId);
+        }
+      });
+    }
+  });
+
+  runtimeStreamHandle = streamHandle;
+  streamHandle.ready
+    .then(() => {
+      if (runtimeStreamHandle !== streamHandle || !isRuntimeStreamEligibleFor(documentId)) {
+        return;
+      }
+      clearRuntimeStreamRetry();
+      runtimeStreamRetryDelayMs = 1000;
+      isRuntimeStreamHealthy.value = true;
+      stopSaveStatusPolling();
+      stopSessionHeartbeatPolling();
+    })
+    .catch(() => {
+      if (runtimeStreamHandle !== streamHandle) {
+        return;
+      }
+      handleRuntimeStreamFailure(documentId);
+    });
+}
+
+function activateRuntimeStream(documentId = props.documentId) {
+  if (!isRuntimeStreamEligibleFor(documentId)) {
+    stopRuntimeEventStream();
+    clearRuntimeStreamRetry();
+    return;
+  }
+
+  stopSaveStatusPolling();
+  stopSessionHeartbeatPolling();
+  clearRuntimeStreamRetry();
+  stopRuntimeEventStream();
+  startRuntimeEventStreamForDocument(documentId);
 }
 
 async function touchEditingSession(options = {}) {
@@ -549,6 +709,8 @@ async function closeEditingSession(options = {}) {
     }
   }
 
+  stopRuntimeEventStream();
+  clearRuntimeStreamRetry();
   stopSaveStatusPolling();
   stopSessionHeartbeatPolling();
 
@@ -604,6 +766,8 @@ function dispatchUnloadCloseRequest() {
   // beforeunload/pagehide 场景下不能依赖复杂异步流程，
   // 这里只保留一个最小 keepalive close 请求，尽量把后端会话收尾掉。
   editingSessionOpened.value = false;
+  stopRuntimeEventStream();
+  clearRuntimeStreamRetry();
   stopSaveStatusPolling();
   stopSessionHeartbeatPolling();
 
@@ -640,9 +804,13 @@ watch(
     // 文档切换时必须按顺序重置桥接、轮询和保存状态，
     // 否则上一份文档的运行态很容易污染新文档页面。
     disposeBridge();
+    stopRuntimeEventStream();
+    clearRuntimeStreamRetry();
     stopSaveStatusPolling();
     stopSessionHeartbeatPolling();
     saveStatus.value = null;
+    isRuntimeStreamHealthy.value = false;
+    runtimeStreamRetryDelayMs = 1000;
     editingSessionOpened.value = false;
     if (!props.showConsole || props.readonly) {
       isConsoleOpen.value = false;
@@ -667,6 +835,8 @@ onMounted(() => {
 
 onBeforeUnmount(async () => {
   disposeBridge();
+  stopRuntimeEventStream();
+  clearRuntimeStreamRetry();
   stopSaveStatusPolling();
   stopSessionHeartbeatPolling();
   removeUnloadListeners?.();

@@ -1,7 +1,7 @@
 import { mount } from "@vue/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, jsonResponse } from "./helpers";
-import { startRuntimeEventStream } from "../components/editor/runtimeEventStream.js";
+import * as runtimeEventStreamModule from "../components/editor/runtimeEventStream.js";
 
 const bridgeMocks = vi.hoisted(() => ({
   createOnlyofficeBridge: vi.fn(),
@@ -68,7 +68,7 @@ describe("runtimeEventStream", () => {
       "event: runtime-error\ndata: {\"documentId\":\"doc 1/test\",\"code\":\"RUNTIME_DOWN\"}\n\n"
     ]));
 
-    const stream = startRuntimeEventStream({
+    const stream = runtimeEventStreamModule.startRuntimeEventStream({
       documentId: "doc 1/test",
       onSaveStatus,
       onSessionActive,
@@ -114,7 +114,7 @@ describe("runtimeEventStream", () => {
       "event: keepalive\ndata: {\"documentId\":\"doc-1\"}\n\n"
     ]));
 
-    const stream = startRuntimeEventStream({
+    const stream = runtimeEventStreamModule.startRuntimeEventStream({
       documentId: "doc-1",
       onSaveStatus: vi.fn(),
       onSessionActive: vi.fn(),
@@ -138,7 +138,7 @@ describe("runtimeEventStream", () => {
 
     fetch.mockResolvedValueOnce(response);
 
-    const stream = startRuntimeEventStream({
+    const stream = runtimeEventStreamModule.startRuntimeEventStream({
       documentId: "doc-1",
       onSaveStatus: vi.fn(),
       onSessionActive: vi.fn(),
@@ -161,6 +161,7 @@ describe("runtimeEventStream", () => {
 describe("EditorShell", () => {
   beforeEach(() => {
     fetch.mockReset();
+    vi.useRealTimers();
     bridgeMocks.waitForReady.mockReset();
     bridgeMocks.captureSelectedText.mockReset();
     bridgeMocks.refreshOutline.mockReset();
@@ -185,6 +186,15 @@ describe("EditorShell", () => {
       jumpToHeading: bridgeMocks.jumpToHeading,
       dispose: bridgeMocks.dispose
     }));
+
+    vi.spyOn(runtimeEventStreamModule, "startRuntimeEventStream").mockImplementation(() => ({
+      abort: vi.fn(),
+      ready: Promise.resolve()
+    }));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("应在编辑模式挂载 EditorAiWorkbench，并在显式关闭后卸载时不重复请求 close-session", async () => {
@@ -318,6 +328,182 @@ describe("EditorShell", () => {
     expect(wrapper.find(".floating-console").isVisible()).toBe(false);
     expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
   });
+
+  it("应在 SSE healthy 时停止 save-status 与 heartbeat polling，并消费 runtime-events", async () => {
+    vi.useFakeTimers();
+    const stream = createRuntimeStreamController();
+    const startStreamSpy = queueRuntimeStreamControllers([stream]);
+    installEditorFetchMock();
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+
+    await flushTimersAndPromises();
+    stream.resolveReady();
+    stream.emitSaveStatus(saveStatusPayload({ documentId: "doc-1", message: "来自 runtime-events" }));
+    await flushTimersAndPromises();
+
+    await vi.advanceTimersByTimeAsync(15000);
+    await flushTimersAndPromises();
+
+    expect(startStreamSpy).toHaveBeenCalledWith(expect.objectContaining({ documentId: "doc-1" }));
+    expect(wrapper.vm.saveStatus?.message).toBe("来自 runtime-events");
+    expect(countFetchCalls("/api/documents/doc-1/save-status")).toBe(0);
+    expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
+  });
+
+  it("应在 stream 失败后恢复 save-status 与 heartbeat fallback，并按 1000/2000/4000/8000/15000ms 退避重试", async () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    const controllers = Array.from({ length: 6 }, () => createRuntimeStreamController());
+    const startStreamSpy = queueRuntimeStreamControllers(controllers);
+    installEditorFetchMock();
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+
+    await flushTimersAndPromises();
+    controllers[0].resolveReady();
+    await flushTimersAndPromises();
+    controllers[0].emitError(new Error("stream down"));
+    await flushTimersAndPromises();
+    controllers[0].emitRuntimeError({ documentId: "doc-1", code: "duplicate-failure" });
+    await flushTimersAndPromises();
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+
+    const retriesObserved = [1000, 2000, 4000, 8000, 15000];
+    let expectedCalls = 1;
+    for (let failureIndex = 0; failureIndex < retriesObserved.length; failureIndex += 1) {
+      const retryDelay = retriesObserved[failureIndex];
+      await vi.advanceTimersByTimeAsync(retryDelay);
+      await flushTimersAndPromises();
+      expectedCalls += 1;
+      expect(startStreamSpy).toHaveBeenCalledTimes(expectedCalls);
+      expect(countFetchCalls("/api/documents/doc-1/save-status")).toBeGreaterThan(0);
+      expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBeGreaterThan(0);
+      if (controllers[failureIndex + 1]) {
+        controllers[failureIndex + 1].emitError(new Error(`retry-${failureIndex}`));
+        await flushTimersAndPromises();
+      }
+    }
+
+    wrapper.unmount();
+  });
+
+  it("应在 clean completion 后立即重连而不重新激活 REST fallback polling", async () => {
+    vi.useFakeTimers();
+    const firstStream = createRuntimeStreamController();
+    const secondStream = createRuntimeStreamController();
+    const startStreamSpy = queueRuntimeStreamControllers([firstStream, secondStream]);
+    installEditorFetchMock();
+
+    mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+
+    await flushTimersAndPromises();
+    firstStream.resolveReady();
+    await flushTimersAndPromises();
+
+    firstStream.complete();
+    secondStream.resolveReady();
+    await flushTimersAndPromises();
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushTimersAndPromises();
+
+    expect(startStreamSpy).toHaveBeenCalledTimes(2);
+    expect(countFetchCalls("/api/documents/doc-1/save-status")).toBe(0);
+    expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
+  });
+
+  it("应在 showConsole=false 时禁用 SSE 重试但保留 heartbeat 与 save-status fallback，readonly 则两者都不启动", async () => {
+    vi.useFakeTimers();
+    const startStreamSpy = queueRuntimeStreamControllers([]);
+    installEditorFetchMock();
+
+    const hiddenConsoleWrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx",
+        showConsole: false
+      }
+    });
+
+    await flushTimersAndPromises();
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushTimersAndPromises();
+
+    expect(startStreamSpy).not.toHaveBeenCalled();
+    expect(countFetchCalls("/api/documents/doc-1/save-status")).toBeGreaterThan(0);
+    expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBeGreaterThan(0);
+
+    hiddenConsoleWrapper.unmount();
+    fetch.mockClear();
+
+    const readonlyWrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-2",
+        documentTitle: "预览稿.docx",
+        readonly: true
+      }
+    });
+
+    await flushTimersAndPromises();
+    await vi.advanceTimersByTimeAsync(10000);
+    await flushTimersAndPromises();
+
+    expect(startStreamSpy).not.toHaveBeenCalled();
+    expect(countFetchCalls("/api/documents/doc-2/save-status")).toBe(0);
+    expect(countFetchCalls("/api/documents/doc-2/editing-sessions/heartbeat")).toBe(0);
+
+    readonlyWrapper.unmount();
+  });
+
+  it("应在文档切换时 abort 旧 stream，并忽略旧 documentId 的 save-status", async () => {
+    vi.useFakeTimers();
+    const firstStream = createRuntimeStreamController();
+    const secondStream = createRuntimeStreamController();
+    queueRuntimeStreamControllers([firstStream, secondStream]);
+    installEditorFetchMock();
+
+    const wrapper = mount(EditorShell, {
+      props: {
+        documentId: "doc-1",
+        documentTitle: "路线图.docx"
+      }
+    });
+
+    await flushTimersAndPromises();
+    firstStream.resolveReady();
+    firstStream.emitSaveStatus(saveStatusPayload({ documentId: "doc-1", message: "旧文档状态" }));
+    await flushTimersAndPromises();
+
+    await wrapper.setProps({
+      documentId: "doc-2",
+      documentTitle: "第二份文档.docx"
+    });
+    await flushTimersAndPromises();
+
+    secondStream.resolveReady();
+    firstStream.emitSaveStatus(saveStatusPayload({ documentId: "doc-1", message: "不应污染当前页面" }));
+    secondStream.emitSaveStatus(saveStatusPayload({ documentId: "doc-2", message: "新文档状态" }));
+    await flushTimersAndPromises();
+
+    expect(firstStream.abort).toHaveBeenCalled();
+    expect(wrapper.vm.saveStatus?.documentId).toBe("doc-2");
+    expect(wrapper.vm.saveStatus?.message).toBe("新文档状态");
+  });
 });
 
 function editorConfigPayload(title, mode = "edit") {
@@ -357,6 +543,97 @@ function closedStatusPayload(overrides = {}) {
     recentEvents: [],
     ...overrides
   };
+}
+
+function queueRuntimeStreamControllers(controllers) {
+  let index = 0;
+  return vi.spyOn(runtimeEventStreamModule, "startRuntimeEventStream").mockImplementation((options) => {
+    const controller = controllers[index];
+    index += 1;
+    if (!controller) {
+      throw new Error("unexpected runtime stream start");
+    }
+    controller.options = options;
+    return {
+      abort: controller.abort,
+      ready: controller.ready
+    };
+  });
+}
+
+function createRuntimeStreamController() {
+  let resolveReady;
+  let rejectReady;
+  const ready = new Promise((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+  ready.catch(() => {});
+
+  return {
+    options: null,
+    abort: vi.fn(),
+    ready,
+    resolveReady() {
+      resolveReady();
+    },
+    rejectReady(error) {
+      rejectReady(error);
+    },
+    emitSaveStatus(payload) {
+      this.options?.onSaveStatus?.(payload);
+    },
+    emitRuntimeError(payload) {
+      this.options?.onRuntimeError?.(payload);
+    },
+    emitError(error) {
+      this.options?.onError?.(error);
+    },
+    complete() {
+      this.options?.onComplete?.();
+    }
+  };
+}
+
+function installEditorFetchMock() {
+  fetch.mockImplementation((url) => {
+    const urlString = String(url);
+    const documentId = extractDocumentId(urlString);
+
+    if (urlString.includes("/editor-config")) {
+      const readonly = urlString.includes("readonly=true");
+      return jsonResponse(editorConfigPayload(readonly ? "预览稿.docx" : "路线图.docx", readonly ? "view" : "edit"));
+    }
+    if (urlString.includes("/save-status")) {
+      return jsonResponse(saveStatusPayload({ documentId }));
+    }
+    if (urlString.includes("/editing-sessions/heartbeat")) {
+      return jsonResponse({ documentId, active: true });
+    }
+    if (urlString.endsWith("/save")) {
+      return jsonResponse(saveStatusPayload({ documentId }));
+    }
+    if (urlString.includes("/editing-sessions/close")) {
+      return jsonResponse(closedStatusPayload({ documentId }));
+    }
+
+    return Promise.reject(new Error(`unexpected fetch: ${urlString}`));
+  });
+}
+
+function countFetchCalls(fragment) {
+  return fetch.mock.calls.filter(([url]) => String(url).includes(fragment)).length;
+}
+
+function extractDocumentId(url) {
+  const match = String(url).match(/\/api\/documents\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]) : "doc-1";
+}
+
+async function flushTimersAndPromises() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(0);
 }
 
 function createRuntimeEventResponse(chunks) {
