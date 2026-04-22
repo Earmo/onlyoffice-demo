@@ -9,6 +9,7 @@ import com.earmo.onlyoffice.integration.data.repository.DocumentRuntimeEventRepo
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
+import com.earmo.onlyoffice.integration.service.DocumentRuntimeEventStreamService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import java.time.Instant;
 import java.util.List;
@@ -36,12 +37,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
   private final DocumentMetadataService documentMetadataService;
   private final DocumentRuntimeEventRepository documentRuntimeEventRepository;
   private final DocumentEditorSessionRepository documentEditorSessionRepository;
+  private final DocumentRuntimeEventStreamService runtimeEventStreamService;
 
   @Override
   public DocumentSaveStatusResponse initialize(String documentId) {
     DocumentSaveStatusResponse summary = documentMetadataService.markOpened(documentId);
     recordRuntimeEvent(documentId, "preview_opened", null, "已打开文档预览。");
-    return mergeRecentEvents(summary);
+    return publishAndReturn(mergeRecentEvents(summary));
   }
 
   @Override
@@ -49,13 +51,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     DocumentSaveStatusResponse summary = documentMetadataService.markEditingStarted(documentId);
     upsertEditingSession(documentId, accessContext);
     recordRuntimeEvent(documentId, "editing_session_started", null, "编辑会话已建立。");
-    return mergeRecentEvents(summary);
+    return publishAndReturn(mergeRecentEvents(summary));
   }
 
   @Override
   public DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext) {
     if (!StringUtils.hasText(accessContext.actorUser())) {
-      return mergeRecentEvents(documentMetadataService.getStatus(documentId));
+      return publishAndReturn(mergeRecentEvents(documentMetadataService.getStatus(documentId)));
     }
 
     closeEditingSessionRecord(documentId, accessContext.actorUser());
@@ -72,7 +74,7 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
             ? "当前用户已离开编辑器，仍有其他活跃编辑用户。"
             : "当前用户已离开编辑器，文档已退出活跃编辑状态。"
     );
-    return mergeRecentEvents(summary);
+    return publishAndReturn(mergeRecentEvents(summary));
   }
 
   @Override
@@ -86,21 +88,21 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
       summary = documentMetadataService.reconcileClosedEditingSession(documentId);
     }
     recordRuntimeEvent(documentId, "callback_received", callbackStatus, "已收到 ONLYOFFICE 保存回调。");
-    return mergeRecentEvents(summary);
+    return publishAndReturn(mergeRecentEvents(summary));
   }
 
   @Override
   public DocumentSaveStatusResponse recordCallbackRejected(String documentId, String message) {
     DocumentSaveStatusResponse summary = documentMetadataService.getStatus(documentId);
     recordRuntimeEvent(documentId, "callback_rejected", null, message);
-    return mergeRecentEvents(summary);
+    return publishAndReturn(mergeRecentEvents(summary));
   }
 
   @Override
   public DocumentSaveStatusResponse recordSaveSucceeded(String documentId, Integer callbackStatus) {
     DocumentSaveStatusResponse summary = documentMetadataService.markSaved(documentId, callbackStatus);
     recordRuntimeEvent(documentId, "save_succeeded", callbackStatus, "最新修改已成功回写到共享存储。");
-    return mergeRecentEvents(summary);
+    return publishAndReturn(mergeRecentEvents(summary));
   }
 
   @Override
@@ -112,7 +114,7 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
         callbackStatus,
         failureReason == null ? "回写共享存储失败。" : "回写共享存储失败：" + failureReason
     );
-    return mergeRecentEvents(summary);
+    return publishAndReturn(mergeRecentEvents(summary));
   }
 
   @Override
@@ -235,5 +237,10 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
         summary.lastSavedTime(),
         recentEvents
     );
+  }
+
+  private DocumentSaveStatusResponse publishAndReturn(DocumentSaveStatusResponse status) {
+    runtimeEventStreamService.publishSaveStatus(status.documentId(), status);
+    return status;
   }
 }
