@@ -9,6 +9,7 @@ import com.earmo.onlyoffice.integration.model.InsertImageResponse;
 import com.earmo.onlyoffice.integration.model.OnlyofficeCallbackRequest;
 import com.earmo.onlyoffice.integration.model.RemoteImageResource;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
+import com.earmo.onlyoffice.integration.service.DocumentRuntimeEventStreamService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 暴露给前端和 ONLYOFFICE Docs 的运行时接口。
@@ -57,6 +59,7 @@ public class DocumentController {
   private final DocumentStorageService documentStorageService;
   private final OnlyofficeImageService onlyofficeImageService;
   private final DocumentStatusService documentStatusService;
+  private final DocumentRuntimeEventStreamService runtimeEventStreamService;
   private final AccessAuditService accessAuditService;
   private final AccessContextResolver accessContextResolver;
   private final OnlyofficeJwtService onlyofficeJwtService;
@@ -126,6 +129,24 @@ public class DocumentController {
       @PathVariable String documentId
   ) {
     return documentStatusService.getStatus(documentId);
+  }
+
+  @GetMapping(path = "/{documentId}/runtime-events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+  @Operation(summary = "订阅文档运行态事件流", description = "返回文档级 SSE 事件流，首帧包含当前 save-status 快照。")
+  public SseEmitter runtimeEvents(
+      @Parameter(description = "文档内部主键。", example = "demo")
+      @PathVariable String documentId,
+      HttpServletRequest request
+  ) {
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    documentStatusService.touchEditingSession(documentId, accessContext);
+    DocumentSaveStatusResponse initialStatus = documentStatusService.getStatus(documentId);
+    return runtimeEventStreamService.open(
+        documentId,
+        accessContext,
+        initialStatus,
+        () -> documentStatusService.touchEditingSession(documentId, accessContext)
+    );
   }
 
   @GetMapping("/{documentId}/file")

@@ -4,6 +4,9 @@ import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentEditorSessionMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmMessageMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmRequestMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmSessionMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentRuntimeEventMapper;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
@@ -29,6 +32,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -39,8 +43,10 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
@@ -87,6 +93,15 @@ class DocumentControllerTest {
 
   @MockBean
   private DocumentEditorSessionMapper documentEditorSessionMapper;
+
+  @MockBean
+  private DocumentLlmSessionMapper documentLlmSessionMapper;
+
+  @MockBean
+  private DocumentLlmRequestMapper documentLlmRequestMapper;
+
+  @MockBean
+  private DocumentLlmMessageMapper documentLlmMessageMapper;
 
   @MockBean
   private OnlyofficeCommandService onlyofficeCommandService;
@@ -277,12 +292,21 @@ class DocumentControllerTest {
         org.mockito.ArgumentMatchers.eq(accessContext),
         org.mockito.ArgumentMatchers.eq(initialStatus),
         org.mockito.ArgumentMatchers.any(Runnable.class)
-    )).thenReturn(new SseEmitter(180000L));
+    )).thenAnswer(invocation -> {
+      SseEmitter emitter = new SseEmitter(180000L);
+      emitter.send(SseEmitter.event().name("save-status").data(initialStatus));
+      emitter.complete();
+      return emitter;
+    });
 
-    mockMvc.perform(get("/api/documents/sample/runtime-events"))
-        .andExpect(status().isOk())
+    MvcResult mvcResult = mockMvc.perform(get("/api/documents/sample/runtime-events"))
         .andExpect(request().asyncStarted())
-        .andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString(MediaType.TEXT_EVENT_STREAM_VALUE)));
+        .andReturn();
+
+    mockMvc.perform(asyncDispatch(mvcResult))
+        .andExpect(status().isOk())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("event:save-status")));
 
     verify(accessContextResolver).resolve(org.mockito.ArgumentMatchers.any());
     verify(documentStatusService).touchEditingSession("sample", accessContext);
@@ -367,7 +391,7 @@ class DocumentControllerTest {
 
     mockMvc.perform(get("/api/documents/sample/editor-config"))
         .andExpect(status().isInternalServerError())
-        .andExpect(jsonPath("$.message").value("ONLYOFFICE 运行配置缺失：onlyoffice.integration.document-server-url 不能为空。"));
+        .andExpect(jsonPath("$.message").value("服务端处理失败，请稍后重试。"));
   }
 
   @Test
