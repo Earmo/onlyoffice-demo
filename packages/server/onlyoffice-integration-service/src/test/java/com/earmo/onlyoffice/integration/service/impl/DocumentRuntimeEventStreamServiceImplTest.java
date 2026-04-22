@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -134,6 +135,12 @@ class DocumentRuntimeEventStreamServiceImplTest {
   private static final class CapturingSseEmitter extends SseEmitter {
 
     private final AtomicInteger sendCount = new AtomicInteger();
+    private Runnable completionCallback = () -> {
+    };
+    private Runnable timeoutCallback = () -> {
+    };
+    private Consumer<Throwable> errorCallback = error -> {
+    };
 
     private CapturingSseEmitter(Long timeout) {
       super(timeout);
@@ -143,6 +150,40 @@ class DocumentRuntimeEventStreamServiceImplTest {
     public synchronized void send(SseEventBuilder builder) throws java.io.IOException {
       sendCount.incrementAndGet();
       super.send(builder);
+    }
+
+    @Override
+    public synchronized void complete() {
+      super.complete();
+      completionCallback.run();
+    }
+
+    @Override
+    public synchronized void completeWithError(Throwable ex) {
+      super.completeWithError(ex);
+      errorCallback.accept(ex);
+    }
+
+    @Override
+    public synchronized void onCompletion(Runnable callback) {
+      super.onCompletion(callback);
+      completionCallback = callback;
+    }
+
+    @Override
+    public synchronized void onTimeout(Runnable callback) {
+      super.onTimeout(callback);
+      timeoutCallback = callback;
+    }
+
+    @Override
+    public synchronized void onError(Consumer<Throwable> callback) {
+      super.onError(callback);
+      errorCallback = callback;
+    }
+
+    private void triggerTimeout() {
+      timeoutCallback.run();
     }
 
     private int sendCount() {
