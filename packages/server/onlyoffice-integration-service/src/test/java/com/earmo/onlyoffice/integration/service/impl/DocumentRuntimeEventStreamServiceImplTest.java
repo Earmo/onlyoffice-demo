@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -117,6 +118,30 @@ class DocumentRuntimeEventStreamServiceImplTest {
     }
   }
 
+  @Test
+  void shouldCancelKeepaliveWhenInitialSendFails() {
+    ControlledScheduledExecutorService scheduler = new ControlledScheduledExecutorService();
+    DocumentRuntimeEventStreamServiceImpl service = new DocumentRuntimeEventStreamServiceImpl(
+        scheduler,
+        Clock.fixed(Instant.parse("2026-04-22T00:00:00Z"), ZoneOffset.UTC),
+        180000L,
+        25000L,
+        timeout -> new FailingInitialSendEmitter(timeout)
+    );
+
+    FailingInitialSendEmitter emitter = (FailingInitialSendEmitter) service.open(
+        "demo",
+        accessContext("user-a"),
+        status("demo", "initial"),
+        () -> {
+        }
+    );
+
+    assertFalse(service.hasSubscribers("demo"));
+    assertTrue(scheduler.lastScheduledFuture.cancelled);
+    assertEquals(2, emitter.sendCount());
+  }
+
   private AccessContext accessContext(String actorUser) {
     return new AccessContext(
         "tenant-a",
@@ -132,9 +157,9 @@ class DocumentRuntimeEventStreamServiceImplTest {
     return new DocumentSaveStatusResponse(documentId, state, state, null, null, null, List.of());
   }
 
-  private static final class CapturingSseEmitter extends SseEmitter {
+  private static class CapturingSseEmitter extends SseEmitter {
 
-    private final AtomicInteger sendCount = new AtomicInteger();
+    protected final AtomicInteger sendCount = new AtomicInteger();
     private Runnable completionCallback = () -> {
     };
     private Runnable timeoutCallback = () -> {
@@ -186,8 +211,184 @@ class DocumentRuntimeEventStreamServiceImplTest {
       timeoutCallback.run();
     }
 
-    private int sendCount() {
+    int sendCount() {
       return sendCount.get();
+    }
+  }
+
+  private static final class FailingInitialSendEmitter extends CapturingSseEmitter {
+
+    private final AtomicInteger remainingFailures = new AtomicInteger(1);
+
+    private FailingInitialSendEmitter(Long timeout) {
+      super(timeout);
+    }
+
+    @Override
+    public synchronized void send(SseEventBuilder builder) throws java.io.IOException {
+      if (remainingFailures.getAndDecrement() > 0) {
+        sendCount.incrementAndGet();
+        throw new java.io.IOException("initial send failed");
+      }
+      super.send(builder);
+    }
+  }
+
+  private static final class ControlledScheduledExecutorService implements ScheduledExecutorService {
+
+    private final ControlledScheduledFuture lastScheduledFuture = new ControlledScheduledFuture();
+
+    @Override
+    public ScheduledFuture<?> scheduleAtFixedRate(
+        Runnable command,
+        long initialDelay,
+        long period,
+        TimeUnit unit
+    ) {
+      return lastScheduledFuture;
+    }
+
+    @Override
+    public void shutdown() {
+    }
+
+    @Override
+    public List<Runnable> shutdownNow() {
+      return List.of();
+    }
+
+    @Override
+    public boolean isShutdown() {
+      return false;
+    }
+
+    @Override
+    public boolean isTerminated() {
+      return false;
+    }
+
+    @Override
+    public boolean awaitTermination(long timeout, TimeUnit unit) {
+      return true;
+    }
+
+    @Override
+    public <T> java.util.concurrent.Future<T> submit(java.util.concurrent.Callable<T> task) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> java.util.concurrent.Future<T> submit(Runnable task, T result) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public java.util.concurrent.Future<?> submit(Runnable task) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> List<java.util.concurrent.Future<T>> invokeAll(
+        java.util.Collection<? extends java.util.concurrent.Callable<T>> tasks
+    ) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> List<java.util.concurrent.Future<T>> invokeAll(
+        java.util.Collection<? extends java.util.concurrent.Callable<T>> tasks,
+        long timeout,
+        TimeUnit unit
+    ) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> T invokeAny(java.util.Collection<? extends java.util.concurrent.Callable<T>> tasks) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> T invokeAny(
+        java.util.Collection<? extends java.util.concurrent.Callable<T>> tasks,
+        long timeout,
+        TimeUnit unit
+    ) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void execute(Runnable command) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public java.util.concurrent.ScheduledFuture<?> schedule(
+        Runnable command,
+        long delay,
+        TimeUnit unit
+    ) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <V> java.util.concurrent.ScheduledFuture<V> schedule(
+        java.util.concurrent.Callable<V> callable,
+        long delay,
+        TimeUnit unit
+    ) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public java.util.concurrent.ScheduledFuture<?> scheduleWithFixedDelay(
+        Runnable command,
+        long initialDelay,
+        long delay,
+        TimeUnit unit
+    ) {
+      throw new UnsupportedOperationException();
+    }
+  }
+
+  private static final class ControlledScheduledFuture implements ScheduledFuture<Object> {
+
+    private boolean cancelled = false;
+
+    @Override
+    public long getDelay(TimeUnit unit) {
+      return 0L;
+    }
+
+    @Override
+    public int compareTo(java.util.concurrent.Delayed other) {
+      return 0;
+    }
+
+    @Override
+    public boolean cancel(boolean mayInterruptIfRunning) {
+      cancelled = true;
+      return true;
+    }
+
+    @Override
+    public boolean isCancelled() {
+      return cancelled;
+    }
+
+    @Override
+    public boolean isDone() {
+      return cancelled;
+    }
+
+    @Override
+    public Object get() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Object get(long timeout, TimeUnit unit) {
+      throw new UnsupportedOperationException();
     }
   }
 }

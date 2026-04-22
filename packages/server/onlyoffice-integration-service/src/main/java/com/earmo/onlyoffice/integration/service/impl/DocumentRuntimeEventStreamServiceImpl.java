@@ -82,14 +82,17 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
         } : livenessTouch
     );
     registerSubscriber(subscriber);
-    sendSaveStatus(subscriber, initialStatus);
-    sendSessionActive(subscriber);
-    subscriber.keepaliveFuture = keepaliveScheduler.scheduleAtFixedRate(
+    assignKeepaliveFuture(subscriber, keepaliveScheduler.scheduleAtFixedRate(
         () -> sendKeepalive(subscriber),
         keepaliveIntervalMillis,
         keepaliveIntervalMillis,
         TimeUnit.MILLISECONDS
-    );
+    ));
+    sendSaveStatus(subscriber, initialStatus);
+    if (subscriber.cleanupStarted.get()) {
+      return subscriber.emitter;
+    }
+    sendSessionActive(subscriber);
     return subscriber.emitter;
   }
 
@@ -184,16 +187,28 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
   }
 
   private void cleanupSubscriber(RuntimeSubscriber subscriber) {
+    cancelKeepalive(subscriber);
     if (!subscriber.cleanupStarted.compareAndSet(false, true)) {
       return;
-    }
-    if (subscriber.keepaliveFuture != null) {
-      subscriber.keepaliveFuture.cancel(true);
     }
     subscribersByDocumentId.computeIfPresent(subscriber.documentId, (documentId, subscribers) -> {
       subscribers.remove(subscriber);
       return subscribers.isEmpty() ? null : subscribers;
     });
+  }
+
+  private void assignKeepaliveFuture(RuntimeSubscriber subscriber, ScheduledFuture<?> keepaliveFuture) {
+    subscriber.keepaliveFuture = keepaliveFuture;
+    if (subscriber.cleanupStarted.get()) {
+      keepaliveFuture.cancel(true);
+    }
+  }
+
+  private void cancelKeepalive(RuntimeSubscriber subscriber) {
+    ScheduledFuture<?> keepaliveFuture = subscriber.keepaliveFuture;
+    if (keepaliveFuture != null) {
+      keepaliveFuture.cancel(true);
+    }
   }
 
   private String nextEventId(String documentId) {
