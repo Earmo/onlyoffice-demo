@@ -862,11 +862,10 @@ defineExpose({
 
 .console-body {
   flex: 1;
-  overflow: auto;
-  padding: 16px;
+  overflow: hidden;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
 }
 
 .panel-section {

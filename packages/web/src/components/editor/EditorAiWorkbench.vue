@@ -701,6 +701,22 @@ function handleRegenerate(entryIndex) {
   });
 }
 
+function handleOutlineCommand(node) {
+  emit('jump-to-heading', node);
+}
+
+const flatOutlineItems = computed(() => {
+  const result = [];
+  function flatten(nodes, depth = 0) {
+    for (const node of nodes || []) {
+      result.push({ ...node, depth });
+      if (node.children?.length) flatten(node.children, depth + 1);
+    }
+  }
+  flatten(props.runtimeContext.outlineTreeData || []);
+  return result;
+});
+
 function handleDeleteMessage(entryIndex) {
   ElMessageBox.confirm("确定删除这条问答?", "删除确认", {
     confirmButtonText: "删除",
@@ -802,11 +818,12 @@ function handleDeleteMessage(entryIndex) {
                     <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item
-                        v-for="node in runtimeContext.outlineTreeData || []"
+                        v-for="node in flatOutlineItems"
                         :key="node.id"
                         :command="node"
+                        :style="{ paddingLeft: (12 + node.depth * 12) + 'px' }"
                       >
-                        {{ node.label || node.text }}
+                        <span class="outline-level-tag" style="font-size: 10px; margin-right: 6px; display: inline-block; min-width: 22px; text-align: center;">H{{ node.level }}</span>{{ node.label || node.text }}
                       </el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
@@ -826,19 +843,17 @@ function handleDeleteMessage(entryIndex) {
             <div class="bubble assistant-bubble" :class="entry.status" style="background: transparent; border: none; padding: 4px 0 8px 0; align-self: flex-start; width: 100%;">
               <div class="panel-title-row" v-if="entry.status === 'failed'">
                 <p class="bubble-label" style="color: var(--el-color-danger); margin: 0;">请求失败</p>
-                <el-button
-                  size="small"
-                  plain
-                  @click="openRetryDialog(entry)"
-                >
-                  重试
-                </el-button>
+                <el-tooltip content="重试" placement="top">
+                  <el-button size="small" circle plain @click="openRetryDialog(entry)">
+                    <el-icon><Refresh /></el-icon>
+                  </el-button>
+                </el-tooltip>
               </div>
               
               <div v-if="entry.assistantText" class="markdown-body" style="line-height: 1.6;" v-html="md.render(entry.assistantText)"></div>
               <p v-else style="margin: 0; color: var(--el-text-color-secondary);">{{ entry.responseMessage }}</p>
               
-              <div class="message-actions" style="margin-top: 12px; display: flex; gap: 8px;" v-if="entry.status !== 'failed'">
+              <div class="message-actions" style="margin-top: 6px; display: flex; gap: 2px;" v-if="entry.status !== 'failed'">
                 <el-tooltip content="复制内容" placement="top">
                   <el-button size="small" text @click="handleCopy(entry.assistantText)"><el-icon size="16"><DocumentCopy /></el-icon></el-button>
                 </el-tooltip>
@@ -863,7 +878,10 @@ function handleDeleteMessage(entryIndex) {
             </div>
           </div>
         </div>
-        <div class="composer" style="border: 1px solid var(--el-border-color); border-radius: 12px; margin: 0 16px 16px; padding: 12px; background: var(--el-bg-color);">
+      </main>
+
+      <div class="composer-footer">
+        <div class="composer" style="border: 1px solid var(--el-border-color); border-radius: 12px; padding: 12px; background: var(--el-bg-color);">
           <div class="context-chips" style="display: flex; gap: 8px; font-size: 12px; color: var(--el-text-color-regular); margin-bottom: 8px;" v-if="runtimeContext.activeHeadingNode || (snapshotState === 'snapshot-ready' && !isExcludedSelection)">
             <el-tag size="small" type="info" v-if="runtimeContext.activeHeadingNode"><el-icon><Collection /></el-icon> {{ runtimeContext.activeHeadingNode.text || runtimeContext.activeHeadingNode.label }}</el-tag>
             
@@ -910,7 +928,7 @@ function handleDeleteMessage(entryIndex) {
             </div>
           </div>
         </div>
-      </main>
+      </div>
 
     <div v-if="showRetryDialog" class="dialog-mask">
       <div class="dialog-card">
@@ -954,7 +972,6 @@ function handleDeleteMessage(entryIndex) {
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 16px;
 }
 
 @media (max-width: 1439px) {
@@ -1015,6 +1032,17 @@ function handleDeleteMessage(entryIndex) {
   flex-direction: column;
   gap: 16px;
   min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.composer-footer {
+  flex-shrink: 0;
+  padding: 0 16px 16px;
+  background: var(--el-bg-color);
+  border-top: 1px solid var(--el-border-color-lighter);
+  padding-top: 8px;
 }
 
 .context-toolbar {

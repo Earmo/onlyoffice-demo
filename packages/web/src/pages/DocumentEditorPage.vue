@@ -250,6 +250,33 @@ onMounted(loadEditorPageData);
         <el-divider style="margin: 16px 0" />
 
         <div class="sidebar-section">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <p class="eyebrow" style="margin: 0;">实时保存状态</p>
+            <el-button size="small" text @click="loadSaveStatus" title="刷新保存状态">刷新</el-button>
+          </div>
+          <div v-if="saveStatus" :class="['save-status-badge', saveStatusTone(saveStatus.status)]">
+            <el-tag
+              size="small"
+              :type="saveStatus.status === 'saved' ? 'success' : saveStatus.status === 'editing' || saveStatus.status === 'callback-received' ? 'warning' : saveStatus.status === 'save-failed' ? 'danger' : 'info'"
+            >{{ saveStatus.status || '未知' }}</el-tag>
+            <span class="muted-copy" style="font-size: 12px; margin-left: 6px;" v-if="saveStatus.lastSavedTime">
+              {{ formatTimestamp(saveStatus.lastSavedTime) }}
+            </span>
+          </div>
+          <div v-if="saveStatus?.events?.length" style="margin-top: 8px;">
+            <ul class="save-status-events">
+              <li v-for="(ev, i) in (saveStatus.events || []).slice(0, 3)" :key="i">
+                <strong>{{ ev.type || ev.event }}</strong>
+                <time v-if="ev.time || ev.timestamp">{{ formatTimestamp(ev.time || ev.timestamp) }}</time>
+              </li>
+            </ul>
+          </div>
+          <p v-else-if="!saveStatus" class="muted-copy" style="font-size: 12px; margin-top: 4px;">等待编辑器就绪...</p>
+        </div>
+
+        <el-divider style="margin: 16px 0" />
+
+        <div class="sidebar-section">
           <p class="muted-copy">当前模式：<el-tag size="small">{{ modeLabel }}</el-tag></p>
         </div>
       </el-aside>
@@ -431,5 +458,11 @@ onMounted(loadEditorPageData);
 
 .save-status-events time {
   color: var(--el-text-color-secondary);
+}
+
+.save-status-badge {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
 }
 </style>
