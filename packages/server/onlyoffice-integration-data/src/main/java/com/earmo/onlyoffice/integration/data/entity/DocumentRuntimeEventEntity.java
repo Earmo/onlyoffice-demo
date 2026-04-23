@@ -25,27 +25,33 @@ import lombok.Setter;
 @Setter
 public class DocumentRuntimeEventEntity {
 
+  /** 运行事件主键。 */
   @Schema(description = "运行事件主键。", example = "evt-1")
   @Id
   @Column("event_id")
   private String eventId;
 
+  /** 关联的文档内部主键。 */
   @Schema(description = "关联的文档内部主键。", example = "sample")
   @Column("document_id")
   private String documentId;
 
+  /** 运行事件类型。 */
   @Schema(description = "运行事件类型。", example = "callback_received")
   @Column("event_type")
   private String eventType;
 
+  /** ONLYOFFICE callback 状态码。 */
   @Schema(description = "ONLYOFFICE callback 状态码。", example = "2")
   @Column("callback_status")
   private Integer callbackStatus;
 
+  /** 运行事件补充消息。 */
   @Schema(description = "给排障或前端展示的补充消息。", example = "已收到 ONLYOFFICE 保存回调。")
   @Column("event_message")
   private String eventMessage;
 
+  /** 运行事件发生时间。 */
   @Schema(description = "运行事件发生时间。")
   @Column("event_time")
   private Instant eventTime;

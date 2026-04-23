@@ -217,7 +217,7 @@ llm:
       label: SiliconFlow
       spring-ai-provider: openai-compatible
       base-url: ${LLM_PROVIDER_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
-      api-key: ${LLM_PROVIDER_SILICONFLOW_API_KEY:}
+      api-key: ${LLM_PROVIDER_SILICONFLOW_API_KEY:sk-gzcjuctqqzepbwmpomjacbmyboqwzxnaimjgmopfgydlhvzk}
       default-model: ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
       models:
         - ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}

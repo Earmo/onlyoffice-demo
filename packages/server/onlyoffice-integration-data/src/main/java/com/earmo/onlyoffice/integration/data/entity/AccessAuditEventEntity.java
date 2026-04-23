@@ -20,47 +20,58 @@ import lombok.Setter;
 @Setter
 public class AccessAuditEventEntity {
 
+  /** 审计事件主键。 */
   @Schema(description = "审计事件主键。", example = "evt-1")
   @Id
   @Column("event_id")
   private String eventId;
 
+  /** 关联的文档主键。 */
   @Schema(description = "关联的文档主键。", example = "doc-1")
   @Column("document_id")
   private String documentId;
 
+  /** 关联租户标识。 */
   @Schema(description = "关联租户标识。", example = "tenant-a")
   @Column("tenant_id")
   private String tenantId;
 
+  /** 来源系统标识。 */
   @Schema(description = "来源系统标识。", example = "native")
   @Column("source_system")
   private String sourceSystem;
 
+  /** 操作者用户标识。 */
   @Schema(description = "操作者用户标识。", example = "user-a")
   @Column("actor_user")
   private String actorUser;
 
+  /** 操作者展示名。 */
   @Schema(description = "操作者展示名。", example = "Alice")
   @Column("actor_name")
   private String actorName;
 
+  /** 审计事件类型。 */
   @Schema(description = "事件类型。", example = "document_created")
   @Column("event_type")
   private String eventType;
 
+  /** 审计事件发生时间。 */
   @Schema(description = "事件发生时间。")
   @Column("event_time")
   private Instant eventTime;
 
+  /** 事件来源。 */
   @Schema(description = "事件来源。", example = "header")
   @Column("event_source")
   private String eventSource;
 
+  /** 事件结果。 */
   @Schema(description = "事件结果。", example = "success")
   @Column("event_result")
   private String eventResult;
 
+  /** 事件补充说明。 */
   @Schema(description = "补充消息。", example = "显式创建文档成功。")
   @Column("message")
   private String message;

@@ -9,6 +9,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
+/**
+ * AI 会话访问守卫。
+ *
+ * <p>这一层负责把“资源不存在”和“资源存在但当前用户无权访问”区分开，
+ * 避免 service 层反复拼接 repository 查询与异常映射逻辑。
+ */
 @Component
 @RequiredArgsConstructor
 public class LlmConversationAccessGuard {
@@ -16,6 +22,14 @@ public class LlmConversationAccessGuard {
   private final DocumentLlmSessionRepository documentLlmSessionRepository;
   private final DocumentLlmRequestRepository documentLlmRequestRepository;
 
+  /**
+   * 校验并返回当前用户有权访问的会话。
+   *
+   * <p>处理步骤：
+   * 1. 先按文档、租户、用户作用域查询会话；
+   * 2. 若作用域内不存在，再按主键检查资源是否真实存在；
+   * 3. 存在但越权返回 `403`，否则返回 `404`。
+   */
   public DocumentLlmSessionEntity requireSession(String documentId, String sessionId, AccessContext accessContext) {
     return documentLlmSessionRepository.findSessionByScope(sessionId, documentId, accessContext.tenantId(), accessContext.actorUser())
         .orElseGet(() -> {
@@ -26,6 +40,12 @@ public class LlmConversationAccessGuard {
         });
   }
 
+  /**
+   * 校验并返回当前用户有权访问的请求。
+   *
+   * <p>和 {@link #requireSession(String, String, AccessContext)} 保持相同语义：
+   * 先查作用域，再区分越权和不存在。
+   */
   public DocumentLlmRequestEntity requireRequest(String documentId, String requestId, AccessContext accessContext) {
     return documentLlmRequestRepository.findRequestByScope(requestId, documentId, accessContext.tenantId(), accessContext.actorUser())
         .orElseGet(() -> {

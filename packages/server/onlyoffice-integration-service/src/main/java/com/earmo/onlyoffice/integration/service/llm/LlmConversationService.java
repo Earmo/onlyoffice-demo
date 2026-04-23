@@ -41,8 +41,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-@Service
-@Slf4j
 /**
  * Phase 14.2 的会话主服务。
  *
@@ -50,6 +48,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * 先落库 user/request/pending assistant，再异步消费 provider stream，最后由服务端统一裁决终态并回写数据库。
  * 前端只消费标准 DTO 和 AI SSE 事件，不直接依赖任意上游 provider 的响应格式。
  */
+@Service
+@Slf4j
 public class LlmConversationService {
 
   private static final String STATUS_PENDING = "pending";
@@ -74,6 +74,9 @@ public class LlmConversationService {
   private final ObjectMapper objectMapper;
   private final Executor llmExecutor;
 
+  /**
+   * 注入会话流程所需的仓储、provider 适配器和执行器。
+   */
   public LlmConversationService(
       LlmProperties llmProperties,
       SpringAiProviderRegistry providerRegistry,
@@ -98,6 +101,12 @@ public class LlmConversationService {
     this.llmExecutor = llmExecutor;
   }
 
+  /**
+   * 返回当前文档的 AI 能力描述。
+   *
+   * <p>这里给前端的是“逻辑 provider 是否可用”的结论，
+   * 结论同时依赖功能开关、provider 配置和 provider 实现是否已注册。
+   */
   public LlmCapabilityResponse getCapability(String documentId, AccessContext accessContext) {
     // capability 面向前端暴露的是“逻辑 provider”能力，但真正可用还要满足两层条件：
     // 1. llm.providers.<name> 已配置且启用
@@ -159,6 +168,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 列出当前文档下当前用户可见的 AI 会话摘要。
+   */
   public List<LlmSessionSummaryResponse> listSessions(String documentId, AccessContext accessContext) {
     return documentLlmSessionRepository.findSessionsByScope(documentId, accessContext.tenantId(), accessContext.actorUser(), 50)
         .stream()
@@ -166,6 +178,15 @@ public class LlmConversationService {
         .toList();
   }
 
+  /**
+   * 新建会话并在超额时归档旧会话。
+   *
+   * <p>处理步骤：
+   * 1. 生成会话主键和默认标题；
+   * 2. 初始化最近快照为空；
+   * 3. 写库；
+   * 4. 按配置归档超出上限的旧会话。
+   */
   public LlmSessionDetailResponse createSession(CreateLlmSessionRequest request, AccessContext accessContext) {
     Instant now = Instant.now();
     DocumentLlmSessionEntity entity = new DocumentLlmSessionEntity();
@@ -189,6 +210,9 @@ public class LlmConversationService {
     return toSessionDetail(entity, List.of());
   }
 
+  /**
+   * 获取单个会话详情及消息列表。
+   */
   public LlmSessionDetailResponse getSession(String documentId, String sessionId, AccessContext accessContext) {
     DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
     List<LlmMessageResponse> messages = documentLlmMessageRepository.findMessagesBySessionScope(
@@ -204,6 +228,12 @@ public class LlmConversationService {
     return toSessionDetail(session, messages);
   }
 
+  /**
+   * 兼容旧同步接口发送消息。
+   *
+   * <p>内部仍然使用流式执行链路，只是在当前线程短暂等待一段时间，
+   * 若窗口内未完成则直接返回 `in_progress`。
+   */
   public LlmRequestStatusResponse sendMessage(SendLlmMessageRequest request, AccessContext accessContext) {
     // 兼容旧同步接口：内部仍走同一套流式执行逻辑，只做一个很短的同步等待窗口。
     // 若窗口内未完成，就返回 in_progress，由客户端继续通过 request 查询最终态。
@@ -222,6 +252,9 @@ public class LlmConversationService {
     return getRequest(request.documentId(), preparedRequest.requestEntity().getRequestId(), accessContext);
   }
 
+  /**
+   * 以 SSE 方式发送消息并流式返回模型输出。
+   */
   public SseEmitter streamMessage(SendLlmMessageRequest request, AccessContext accessContext) {
     PreparedRequest preparedRequest = beginRequest(request, accessContext);
     SseEmitter emitter = new SseEmitter(DEFAULT_STREAM_TIMEOUT_MILLIS);
@@ -233,6 +266,9 @@ public class LlmConversationService {
     return emitter;
   }
 
+  /**
+   * 查询单个请求的当前状态。
+   */
   public LlmRequestStatusResponse getRequest(String documentId, String requestId, AccessContext accessContext) {
     DocumentLlmRequestEntity requestEntity = accessGuard.requireRequest(documentId, requestId, accessContext);
     DocumentLlmMessageEntity assistantMessage = documentLlmMessageRepository.findMessageByScope(
@@ -245,6 +281,15 @@ public class LlmConversationService {
     return toRequestStatusResponse(requestEntity, assistantMessage);
   }
 
+  /**
+   * 取消一个仍在执行中的请求。
+   *
+   * <p>处理步骤：
+   * 1. 校验请求访问权限；
+   * 2. 只有 `in_progress` 请求允许取消；
+   * 3. 先抢占内存终态，再持久化取消标记；
+   * 4. 把 assistant 占位消息改成 cancelled。
+   */
   public LlmRequestStatusResponse cancelRequest(String documentId, String requestId, AccessContext accessContext) {
     DocumentLlmRequestEntity requestEntity = accessGuard.requireRequest(documentId, requestId, accessContext);
     if (!STATUS_IN_PROGRESS.equals(requestEntity.getStatus())) {
@@ -277,6 +322,12 @@ public class LlmConversationService {
     return toRequestStatusResponse(requestEntity, assistantMessage);
   }
 
+  /**
+   * 创建一次完整的发送请求上下文。
+   *
+   * <p>这是所有发送路径的共同入口，负责把用户输入折叠成：
+   * 会话更新、user message、pending assistant、request 记录和最终运行时 prompt。
+   */
   private PreparedRequest beginRequest(SendLlmMessageRequest request, AccessContext accessContext) {
     requireLlmEnabled();
     RuntimeSelection runtimeSelection = resolveSelection(request);
@@ -321,6 +372,7 @@ public class LlmConversationService {
     assistantMessage.setCreatedTime(now);
     documentLlmMessageRepository.insert(assistantMessage);
 
+    // request 记录只承载执行态，不直接保存文本内容。
     DocumentLlmRequestEntity requestEntity = new DocumentLlmRequestEntity();
     requestEntity.setRequestId(UUID.randomUUID().toString());
     requestEntity.setSessionId(session.getSessionId());
@@ -334,6 +386,7 @@ public class LlmConversationService {
     requestEntity.setStartedTime(now);
     documentLlmRequestRepository.insert(requestEntity);
 
+    // 会话表只保留“最近一次发送”的摘要，便于列表页和详情页快速展示。
     session.setLastSnapshotText(request.selectionSnapshot().text());
     session.setLastSnapshotIsEmpty(request.selectionSnapshot().emptySelection());
     session.setLastHeadingId(request.headingContext().headingId());
@@ -381,6 +434,16 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 执行 provider 流式请求并收口最终状态。
+   *
+   * <p>处理步骤：
+   * 1. 注册运行态；
+   * 2. 消费 provider stream，把 chunk 累加到内存；
+   * 3. 竞争完成终态；
+   * 4. 一次性回写 request / assistant / session；
+   * 5. 推送最终 SSE 事件并清理运行态。
+   */
   private void executeProviderStream(PreparedRequest preparedRequest, StreamEventSink sink) {
     String requestId = preparedRequest.requestEntity().getRequestId();
     executionRegistry.register(requestId, preparedRequest.runtimeSelection().provider());
@@ -402,11 +465,13 @@ public class LlmConversationService {
         return;
       }
 
+      // 到这里说明成功拿到了 completed 终态，可以安全回写最终结果。
       preparedRequest.requestEntity().setProviderRequestId(accumulator.providerRequestId);
       preparedRequest.requestEntity().setStatus(STATUS_COMPLETED);
       preparedRequest.requestEntity().setFinishedTime(Instant.now());
       documentLlmRequestRepository.update(preparedRequest.requestEntity());
 
+      // assistant 消息在 terminal path 一次性落最终文本与元数据，避免 token 级频繁更新。
       preparedRequest.assistantMessage().setAssistantText(accumulator.assistantText.toString());
       preparedRequest.assistantMessage().setStatus(STATUS_COMPLETED);
       preparedRequest.assistantMessage().setFinishReason(accumulator.finishReason);
@@ -431,6 +496,9 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 处理单个 provider chunk，并把增量信息并入累加器。
+   */
   private void handleProviderChunk(
       PreparedRequest preparedRequest,
       StreamEventSink sink,
@@ -461,6 +529,9 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 统一处理 provider 执行失败。
+   */
   private void handleProviderFailure(
       PreparedRequest preparedRequest,
       StreamEventSink sink,
@@ -477,6 +548,9 @@ public class LlmConversationService {
     sink.complete();
   }
 
+  /**
+   * 把请求和 assistant 消息一起标记为失败。
+   */
   private void markRequestFailed(
       DocumentLlmRequestEntity requestEntity,
       DocumentLlmMessageEntity assistantMessage,
@@ -491,6 +565,9 @@ public class LlmConversationService {
     documentLlmMessageRepository.update(assistantMessage);
   }
 
+  /**
+   * 解析本次请求应使用的 provider、模型和底层实现。
+   */
   private RuntimeSelection resolveSelection(SendLlmMessageRequest request) {
     // 这里要区分两个名字：
     // - providerName: 对前端暴露的逻辑 provider，例如 siliconflow
@@ -518,6 +595,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 在执行发送前校验 AI 功能和 provider 配置是否可用。
+   */
   private void requireLlmEnabled() {
     if (!llmProperties.isFeatureEnabled() || !llmProperties.isEnabled()) {
       throw new LlmApiException(LlmErrorCodes.LLM_DISABLED, HttpStatus.SERVICE_UNAVAILABLE, "AI 工作台当前已禁用。");
@@ -527,11 +607,17 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 判断当前是否存在至少一个可用的逻辑 provider。
+   */
   private boolean hasAnyConfiguredProvider() {
     return llmProperties.resolvedProviders().entrySet().stream()
         .anyMatch(entry -> llmProperties.hasUsableProvider(entry.getKey()) && findSpringAiProvider(entry.getKey()).isPresent());
   }
 
+  /**
+   * 构造前端能力页所需的 provider 选项列表。
+   */
   private List<LlmProviderOptionResponse> buildAvailableProviderOptions() {
     List<LlmProviderOptionResponse> providers = new ArrayList<>();
     for (Map.Entry<String, LlmProperties.ProviderProperties> entry : llmProperties.resolvedProviders().entrySet()) {
@@ -551,6 +637,9 @@ public class LlmConversationService {
     return List.copyOf(providers);
   }
 
+  /**
+   * 从逻辑 provider 名称解析到底层 Spring AI provider 实现。
+   */
   private Optional<SpringAiLlmProvider> findSpringAiProvider(String logicalProviderName) {
     LlmProperties.ProviderProperties providerProperties = llmProperties.getProvider(logicalProviderName);
     if (providerProperties == null || providerProperties.getSpringAiProvider() == null || providerProperties.getSpringAiProvider().isBlank()) {
@@ -559,6 +648,9 @@ public class LlmConversationService {
     return providerRegistry.findProvider(providerProperties.getSpringAiProvider().trim());
   }
 
+  /**
+   * 构造请求刚开始时的初始 provider 元数据。
+   */
   private Map<String, Object> initialProviderMeta(RuntimeSelection runtimeSelection) {
     Map<String, Object> meta = new LinkedHashMap<>();
     meta.put("provider", runtimeSelection.providerName());
@@ -566,6 +658,9 @@ public class LlmConversationService {
     return meta;
   }
 
+  /**
+   * 构造 `request-started` 事件体。
+   */
   private LlmStreamEventResponse startedEvent(PreparedRequest preparedRequest) {
     return new LlmStreamEventResponse(
         preparedRequest.request().documentId(),
@@ -585,6 +680,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 构造 `assistant-delta` 事件体。
+   */
   private LlmStreamEventResponse deltaEvent(PreparedRequest preparedRequest, String delta) {
     return new LlmStreamEventResponse(
         preparedRequest.request().documentId(),
@@ -604,6 +702,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 构造 `assistant-meta` 事件体。
+   */
   private LlmStreamEventResponse metaEvent(PreparedRequest preparedRequest, StreamAccumulator accumulator) {
     return new LlmStreamEventResponse(
         preparedRequest.request().documentId(),
@@ -623,6 +724,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 构造 `assistant-completed` 事件体。
+   */
   private LlmStreamEventResponse completedEvent(PreparedRequest preparedRequest, StreamAccumulator accumulator) {
     Instant finishedTime = preparedRequest.requestEntity().getFinishedTime();
     return new LlmStreamEventResponse(
@@ -643,6 +747,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 构造 `assistant-cancelled` 事件体。
+   */
   private LlmStreamEventResponse cancelledEvent(PreparedRequest preparedRequest) {
     return new LlmStreamEventResponse(
         preparedRequest.request().documentId(),
@@ -662,6 +769,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 构造 `assistant-error` 事件体。
+   */
   private LlmStreamEventResponse errorEvent(PreparedRequest preparedRequest, String errorCode) {
     return new LlmStreamEventResponse(
         preparedRequest.request().documentId(),
@@ -681,6 +791,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 把数据库中的请求实体和 assistant 消息折叠成请求状态 DTO。
+   */
   private LlmRequestStatusResponse toRequestStatusResponse(
       DocumentLlmRequestEntity requestEntity,
       DocumentLlmMessageEntity assistantMessage
@@ -701,6 +814,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 把会话实体和消息列表转换为详情响应。
+   */
   private LlmSessionDetailResponse toSessionDetail(DocumentLlmSessionEntity entity, List<LlmMessageResponse> messages) {
     return new LlmSessionDetailResponse(
         entity.getSessionId(),
@@ -716,6 +832,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 把会话实体转换为摘要响应。
+   */
   private LlmSessionSummaryResponse toSessionSummary(DocumentLlmSessionEntity entity) {
     return new LlmSessionSummaryResponse(
         entity.getSessionId(),
@@ -730,6 +849,9 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 把消息实体转换为前端消息 DTO。
+   */
   private LlmMessageResponse toMessageResponse(DocumentLlmMessageEntity entity) {
     return new LlmMessageResponse(
         entity.getMessageId(),
@@ -750,6 +872,11 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 按白名单过滤 provider 响应元数据。
+   *
+   * <p>只允许前端和持久化真正需要的字段透出，避免把上游原始调试信息暴露出去。
+   */
   private Map<String, Object> filterProviderResponseMeta(Map<String, Object> providerResponseMeta) {
     if (providerResponseMeta == null || providerResponseMeta.isEmpty()) {
       return Map.of();
@@ -777,6 +904,9 @@ public class LlmConversationService {
     return filtered;
   }
 
+  /**
+   * 安全地把对象序列化成 JSON，失败时返回 `null` 并记录日志。
+   */
   private String writeJson(Object payload) {
     if (payload == null) {
       return null;
@@ -789,6 +919,11 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 从 JSON 中读取 usage 信息。
+   *
+   * <p>优先按当前 record 结构解析，失败后回退到 map 兼容读取。
+   */
   private LlmUsageResponse readUsage(String payload) {
     if (payload == null || payload.isBlank()) {
       return new LlmUsageResponse(null, null, null);
@@ -811,6 +946,9 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 从 JSON 中读取 provider 元数据。
+   */
   private Map<String, Object> readMeta(String payload) {
     if (payload == null || payload.isBlank()) {
       return Map.of();
@@ -823,10 +961,16 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 把任意数字对象安全转换为整数。
+   */
   private Integer readInteger(Object value) {
     return value instanceof Number number ? number.intValue() : null;
   }
 
+  /**
+   * 选定后的 provider 运行参数。
+   */
   private record RuntimeSelection(
       String providerName,
       String baseUrl,
@@ -837,6 +981,9 @@ public class LlmConversationService {
   ) {
   }
 
+  /**
+   * 一次发送请求在领域层中的完整准备结果。
+   */
   private record PreparedRequest(
       DocumentLlmSessionEntity session,
       DocumentLlmMessageEntity userMessage,
@@ -849,6 +996,9 @@ public class LlmConversationService {
   ) {
   }
 
+  /**
+   * provider 流式执行过程中的内存累加器。
+   */
   private static final class StreamAccumulator {
 
     private final StringBuilder assistantText = new StringBuilder();
@@ -857,20 +1007,38 @@ public class LlmConversationService {
     private LlmProviderUsage usage = new LlmProviderUsage(null, null, null);
     private String finishReason;
 
+    /**
+     * 用 provider 和 model 初始化元数据骨架。
+     */
     private StreamAccumulator(String providerName, String model) {
       providerMeta.put("provider", providerName);
       providerMeta.put("model", model);
     }
   }
 
+  /**
+   * SSE 事件输出的最小抽象。
+   */
   private interface StreamEventSink {
 
+    /**
+     * 发送一个命名事件。
+     */
     void send(String name, LlmStreamEventResponse event);
 
+    /**
+     * 正常结束事件流。
+     */
     void complete();
 
+    /**
+     * 以异常形式结束事件流。
+     */
     void completeWithError(Exception exception);
 
+    /**
+     * 返回一个什么都不做的 sink，用于同步兼容接口复用同一执行链路。
+     */
     static StreamEventSink noop() {
       return new StreamEventSink() {
         @Override
@@ -888,11 +1056,17 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 基于 {@link SseEmitter} 的事件输出实现。
+   */
   private static final class EmitterStreamEventSink implements StreamEventSink {
 
     private final SseEmitter emitter;
     private volatile boolean closed;
 
+    /**
+     * 绑定 emitter 并在 completion / timeout / error 时关闭本地状态。
+     */
     private EmitterStreamEventSink(SseEmitter emitter) {
       this.emitter = emitter;
       this.emitter.onCompletion(() -> closed = true);
@@ -900,6 +1074,9 @@ public class LlmConversationService {
       this.emitter.onError(error -> closed = true);
     }
 
+    /**
+     * 发送单个 SSE 事件。
+     */
     @Override
     public void send(String name, LlmStreamEventResponse event) {
       if (closed) {
@@ -912,6 +1089,9 @@ public class LlmConversationService {
       }
     }
 
+    /**
+     * 正常关闭 emitter。
+     */
     @Override
     public void complete() {
       if (closed) {
@@ -921,6 +1101,9 @@ public class LlmConversationService {
       emitter.complete();
     }
 
+    /**
+     * 以异常形式关闭 emitter。
+     */
     @Override
     public void completeWithError(Exception exception) {
       if (closed) {

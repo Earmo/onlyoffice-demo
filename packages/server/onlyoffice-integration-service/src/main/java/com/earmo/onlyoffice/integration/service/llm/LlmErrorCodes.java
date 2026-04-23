@@ -1,5 +1,10 @@
 package com.earmo.onlyoffice.integration.service.llm;
 
+/**
+ * LLM 模块对外暴露的稳定错误码集合。
+ *
+ * <p>controller、service 和前端都应依赖这些常量，而不是依赖底层异常文本。
+ */
 public final class LlmErrorCodes {
 
   public static final String LLM_DISABLED = "LLM_DISABLED";
@@ -13,6 +18,9 @@ public final class LlmErrorCodes {
   public static final String LLM_SESSION_FORBIDDEN = "LLM_SESSION_FORBIDDEN";
   public static final String LLM_SESSION_NOT_FOUND = "LLM_SESSION_NOT_FOUND";
 
+  /**
+   * 工具类不允许实例化。
+   */
   private LlmErrorCodes() {
   }
 }

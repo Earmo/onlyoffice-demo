@@ -20,13 +20,13 @@ import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import reactor.core.publisher.Flux;
 import reactor.netty.http.client.HttpClient;
 
-@Component
 /**
  * 适配标准 OpenAI-compatible chat completions 的 provider。
  *
  * <p>Phase 14.2 中，SiliconFlow 这类兼容 OpenAI 协议的服务统一走这里，
  * 固定使用 /v1/chat/completions + stream=true，而不是任何厂商私有路径。
  */
+@Component
 public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider {
 
   private static final ParameterizedTypeReference<ServerSentEvent<String>> SSE_STRING_TYPE =
@@ -36,16 +36,32 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
   private final WebClient.Builder webClientBuilder;
   private final ObjectMapper objectMapper;
 
+  /**
+   * 注入 WebClient 构建器与 JSON 解析器。
+   */
   public OpenAiCompatibleSpringAiLlmProvider(WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
     this.webClientBuilder = webClientBuilder;
     this.objectMapper = objectMapper;
   }
 
+  /**
+   * 返回当前 provider 在注册表中的实现名。
+   */
   @Override
   public String providerName() {
     return "openai-compatible";
   }
 
+  /**
+   * 通过 OpenAI-compatible SSE 协议发起流式对话。
+   *
+   * <p>处理步骤：
+   * 1. 仅构造最小必要 payload；
+   * 2. 调用 `/chat/completions` 并声明 `text/event-stream`；
+   * 3. 逐帧过滤空数据与 `[DONE]`；
+   * 4. 把每帧响应解析成统一 chunk；
+   * 5. 把底层客户端异常映射成稳定业务错误码。
+   */
   @Override
   public Flux<SpringAiProviderChunk> stream(LlmRuntimeRequest request) {
     // 这里只构造 OpenAI-compatible 最小必要 payload：
@@ -75,15 +91,24 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
         .onErrorMap(this::mapException);
   }
 
+  /**
+   * 当前实现暂不支持上游取消。
+   */
   @Override
   public boolean supportsUpstreamCancel() {
     return false;
   }
 
+  /**
+   * 当前 provider 不向上游发送取消请求。
+   */
   @Override
   public void cancelRequest(String providerRequestId) {
   }
 
+  /**
+   * 构建当前请求专属的 WebClient。
+   */
   private WebClient webClient(LlmRuntimeRequest request) {
     HttpClient httpClient = HttpClient.create().responseTimeout(Duration.ofMillis(request.timeoutMillis()));
     return webClientBuilder.clone()
@@ -95,6 +120,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
         .build();
   }
 
+  /**
+   * 解析单个 SSE 数据帧。
+   */
   private SpringAiProviderChunk parseChunk(String data) {
     try {
       Map<String, Object> response = objectMapper.readValue(data, new TypeReference<>() {
@@ -129,6 +157,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
     }
   }
 
+  /**
+   * 把 WebClient / 解析异常映射成统一业务异常。
+   */
   private RuntimeException mapException(Throwable throwable) {
     // 对外只暴露稳定的业务错误码，不把 WebClient 的细节直接抛到 controller / 前端。
     if (throwable instanceof LlmApiException exception) {
@@ -162,6 +193,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
     );
   }
 
+  /**
+   * 把 OpenAI-compatible usage 结构规范化为内部对象。
+   */
   private LlmProviderUsage normalizeUsage(Object usageObject) {
     if (!(usageObject instanceof Map<?, ?> usageMap)) {
       return new LlmProviderUsage(null, null, null);
@@ -173,6 +207,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
     );
   }
 
+  /**
+   * 把 usage map 规范化成前端/数据库使用的 camelCase 键名。
+   */
   private Map<String, Object> normalizeUsageMap(Object usageObject) {
     if (!(usageObject instanceof Map<?, ?> usageMap)) {
       return Map.of();
@@ -184,6 +221,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
     return normalized;
   }
 
+  /**
+   * 规范化 baseUrl，统一补到 `/v1` 根路径。
+   */
   private String normalizeBaseUrl(String value) {
     if (value == null || value.isBlank()) {
       return "";
@@ -195,10 +235,16 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
     return trimmed + "/v1";
   }
 
+  /**
+   * 安全地把任意值转成字符串。
+   */
   private String stringValue(Object value) {
     return value == null ? "" : String.valueOf(value);
   }
 
+  /**
+   * 安全地把任意数字值转成整数。
+   */
   private Integer intValue(Object value) {
     return value instanceof Number number ? number.intValue() : null;
   }

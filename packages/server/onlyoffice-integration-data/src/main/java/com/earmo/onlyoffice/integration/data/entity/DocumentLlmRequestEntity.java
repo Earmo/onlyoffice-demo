@@ -12,43 +12,56 @@ import lombok.Setter;
 @Setter
 public class DocumentLlmRequestEntity {
 
+  /** AI 请求主键。 */
   @Id
   @Column("request_id")
   private String requestId;
 
+  /** 所属 AI 会话主键。 */
   @Column("session_id")
   private String sessionId;
 
+  /** 关联的内部文档主键。 */
   @Column("document_id")
   private String documentId;
 
+  /** 请求所属租户。 */
   @Column("tenant_id")
   private String tenantId;
 
+  /** 请求所属用户标识。 */
   @Column("actor_user")
   private String actorUser;
 
+  /** 关联的用户消息主键。 */
   @Column("user_message_id")
   private String userMessageId;
 
+  /** 关联的 assistant 消息主键。 */
   @Column("assistant_message_id")
   private String assistantMessageId;
 
+  /** 上游 provider 的 request id。 */
   @Column("provider_request_id")
   private String providerRequestId;
 
+  /** 请求状态，例如 `in_progress`、`completed`、`failed`、`cancelled`。 */
   @Column("status")
   private String status;
 
+  /** 是否已发起取消请求。 */
   @Column("cancel_requested")
   private boolean cancelRequested;
 
+  /** 取消来源，例如 `user`。 */
   @Column("cancel_source")
   private String cancelSource;
 
+  /** 请求开始时间。 */
   @Column("started_time")
   private Instant startedTime;
 
+  /** 请求结束时间。 */
   @Column("finished_time")
   private Instant finishedTime;
 }
