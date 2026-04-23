@@ -4,7 +4,7 @@
 
 ## 配置映射
 
-> Phase 14.2 开始，主链路已经切到 `Spring AI + Spring AI Alibaba + 独立 AI SSE`。旧的 `llm.provider / llm.base-url / llm.api-key / llm.model` 仍保留兼容映射，但推荐使用新的 `llm.default-provider / llm.default-model / llm.providers.*`。
+> Phase 14.2 开始，主链路已经切到 `Spring AI + Spring AI Alibaba + 独立 AI SSE`。当前只保留 `llm.default-provider / llm.default-model / llm.providers.*` 这一套多 provider 配置入口。
 
 | 环境变量 | Spring 配置键 | 默认值 | 说明 |
 |---|---|---|---|
@@ -12,10 +12,6 @@
 | `LLM_FEATURE_ENABLED` | `llm.feature-enabled` | `true` | 是否向前端暴露 AI 工作台能力 |
 | `LLM_DEFAULT_PROVIDER` | `llm.default-provider` | `alibaba-dashscope` | 默认运行时 provider |
 | `LLM_DEFAULT_MODEL` | `llm.default-model` | provider 默认模型 | 默认运行时 model |
-| `LLM_PROVIDER` | `llm.provider` | 兼容映射 | 旧单 provider 配置兜底键 |
-| `LLM_BASE_URL` | `llm.base-url` | 空 | 上游模型服务 base URL |
-| `LLM_API_KEY` | `llm.api-key` | 空 | 上游模型 API Key，只允许保留在服务端 |
-| `LLM_MODEL` | `llm.model` | 空 | 默认模型名 |
 | `LLM_TIMEOUT_MILLIS` | `llm.timeout-millis` | `60000` | 上游请求超时时间 |
 | `LLM_HISTORY_BUDGET_TOKENS` | `llm.history-budget-tokens` | `12000` | 历史窗口 token 预算 |
 
@@ -55,7 +51,7 @@ llm:
 
 - 自动化验证：使用 fake provider 集成测试，覆盖成功、4xx、5xx、超时、取消后晚到成功等场景。
 - 手工验证：使用真实 provider 做 smoke test，只验证端到端联调链路。
-- CI 边界：真实 provider 不进入 CI，不要求在自动化环境中配置真实 `LLM_API_KEY`。
+- CI 边界：真实 provider 不进入 CI，不要求在自动化环境中配置真实 `LLM_PROVIDER_*_API_KEY`。
 
 当前分层原则：
 
@@ -95,9 +91,9 @@ llm:
 
 1. 设置 `LLM_ENABLED=true`
 2. 设置 `LLM_FEATURE_ENABLED=true`
-3. 提供 `LLM_BASE_URL`
-4. 提供 `LLM_API_KEY`
-5. 提供 `LLM_MODEL`
+3. 提供目标 provider 的 `LLM_PROVIDER_*_BASE_URL`（如有自定义地址）
+4. 提供目标 provider 的 `LLM_PROVIDER_*_API_KEY`
+5. 提供目标 provider 的 `LLM_PROVIDER_*_DEFAULT_MODEL`
 6. 启动服务端和前端，进入 `/editor/{documentId}`
 
 至少执行下面 7 条 smoke test：
@@ -117,7 +113,7 @@ llm:
 6. Network 面板无 `apiKey` / `Authorization`
    浏览器开发者工具里检查 `/api/llm/*` 请求，确认前端请求体和响应体都不出现 `apiKey`、上游 `Authorization` 或原始 provider header。
 7. 浏览器 console / 错误 toast / 服务端 debug log 示例中无敏感字段
-   检查 `console`、错误提示和服务端 debug log，确认不存在 `LLM_API_KEY`、原始上游请求体或 `Authorization` 值。
+   检查 `console`、错误提示和服务端 debug log，确认不存在 `LLM_PROVIDER_*_API_KEY`、原始上游请求体或 `Authorization` 值。
 
 建议额外确认：
 

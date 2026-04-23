@@ -26,26 +26,6 @@ public class LlmProperties {
 
   private boolean featureEnabled = true;
 
-  /**
-   * 向后兼容旧单 provider 配置。
-   */
-  private String provider = "";
-
-  /**
-   * 向后兼容旧单 provider 配置。
-   */
-  private String baseUrl = "";
-
-  /**
-   * 向后兼容旧单 provider 配置。
-   */
-  private String apiKey = "";
-
-  /**
-   * 向后兼容旧单 provider 配置。
-   */
-  private String model = "";
-
   private String defaultProvider = "alibaba-dashscope";
 
   private String defaultModel = "";
@@ -89,9 +69,6 @@ public class LlmProperties {
     if (hasText(defaultProvider)) {
       return defaultProvider.trim();
     }
-    if (hasText(provider)) {
-      return provider.trim();
-    }
     return resolvedProviders().keySet().stream().findFirst().orElse("");
   }
 
@@ -124,9 +101,6 @@ public class LlmProperties {
     }
     if (hasText(defaultModel)) {
       return defaultModel.trim();
-    }
-    if (hasText(model)) {
-      return model.trim();
     }
     return "";
   }
@@ -164,22 +138,6 @@ public class LlmProperties {
         resolved.put(name.trim(), properties.copyWithDefaults(timeoutMillis));
       }
     });
-    if (hasText(provider) || hasText(baseUrl) || hasText(apiKey) || hasText(model)) {
-      String compatibilityProvider = hasText(provider) ? provider.trim() : resolveDefaultProvider();
-      ProviderProperties compatibility = resolved.computeIfAbsent(compatibilityProvider, ignored -> new ProviderProperties());
-      if (!hasText(compatibility.getBaseUrl()) && hasText(baseUrl)) {
-        compatibility.setBaseUrl(baseUrl.trim());
-      }
-      if (!hasText(compatibility.getApiKey()) && hasText(apiKey)) {
-        compatibility.setApiKey(apiKey.trim());
-      }
-      if (!hasText(compatibility.getDefaultModel()) && hasText(model)) {
-        compatibility.setDefaultModel(model.trim());
-      }
-      if (compatibility.getModels().isEmpty() && hasText(model)) {
-        compatibility.setModels(new ArrayList<>(List.of(model.trim())));
-      }
-    }
     return resolved;
   }
 

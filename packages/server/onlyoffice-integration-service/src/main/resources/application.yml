@@ -41,13 +41,13 @@ spring:
       chat: ${SPRING_AI_CHAT_MODEL:dashscope}
     dashscope:
       # Alibaba DashScope API Key，由 Spring AI Alibaba starter 消费。
-      api-key: ${LLM_PROVIDER_ALIBABA_API_KEY:${LLM_API_KEY:}}
+      api-key: ${LLM_PROVIDER_ALIBABA_API_KEY:}
       # DashScope 服务地址；保留可覆盖项，默认用官方域名。
       base-url: ${LLM_PROVIDER_ALIBABA_BASE_URL:https://dashscope.aliyuncs.com}
       chat:
         options:
           # 启动时默认模型；真正请求仍可通过 ChatOptions 在每次发送时覆盖。
-          model: ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:${LLM_MODEL:qwen-plus}}
+          model: ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:qwen-plus}
 
 mybatis-flex:
   configuration:
@@ -177,12 +177,7 @@ llm:
   feature-enabled: ${LLM_FEATURE_ENABLED:true}
   # 14.2 默认 provider / model。
   default-provider: ${LLM_DEFAULT_PROVIDER:siliconflow}
-  default-model: ${LLM_DEFAULT_MODEL:${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}}}
-  # 旧单 provider 配置保留兼容；未迁移环境变量时仍可兜底映射到 providers。
-  provider: ${LLM_PROVIDER:${LLM_DEFAULT_PROVIDER:alibaba-dashscope}}
-  base-url: ${LLM_BASE_URL:${LLM_PROVIDER_ALIBABA_BASE_URL:https://dashscope.aliyuncs.com}}
-  api-key: ${LLM_API_KEY:${LLM_PROVIDER_ALIBABA_API_KEY:}}
-  model: ${LLM_MODEL:${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:qwen-plus}}
+  default-model: ${LLM_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
   # 调用上游 provider 的超时时间，单位毫秒。
   timeout-millis: ${LLM_TIMEOUT_MILLIS:60000}
   # 前端首轮同步等待窗口；超过该时长后转入 request 轮询。
@@ -211,23 +206,23 @@ llm:
       label: Alibaba DashScope
       spring-ai-provider: dashscope
       base-url: ${LLM_PROVIDER_ALIBABA_BASE_URL:https://dashscope.aliyuncs.com}
-      api-key: ${LLM_PROVIDER_ALIBABA_API_KEY:${LLM_API_KEY:}}
-      default-model: ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:${LLM_MODEL:qwen-plus}}
+      api-key: ${LLM_PROVIDER_ALIBABA_API_KEY:}
+      default-model: ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:qwen-plus}
       models:
-        - ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:${LLM_MODEL:qwen-plus}}
+        - ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:qwen-plus}
       streaming-enabled: ${LLM_PROVIDER_ALIBABA_STREAMING_ENABLED:true}
-      timeout-millis: ${LLM_PROVIDER_ALIBABA_TIMEOUT_MILLIS:${LLM_TIMEOUT_MILLIS:60000}}
+      timeout-millis: ${LLM_PROVIDER_ALIBABA_TIMEOUT_MILLIS:60000}
     siliconflow:
       enabled: ${LLM_PROVIDER_SILICONFLOW_ENABLED:true}
       label: SiliconFlow
       spring-ai-provider: openai-compatible
       base-url: ${LLM_PROVIDER_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
-      api-key: ${LLM_PROVIDER_SILICONFLOW_API_KEY:${LLM_API_KEY:sk-gzcjuctqqzepbwmpomjacbmyboqwzxnaimjgmopfgydlhvzk}}
-      default-model: ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}}
+      api-key: ${LLM_PROVIDER_SILICONFLOW_API_KEY:}
+      default-model: ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
       models:
-        - ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}}
+        - ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
       streaming-enabled: ${LLM_PROVIDER_SILICONFLOW_STREAMING_ENABLED:true}
-      timeout-millis: ${LLM_PROVIDER_SILICONFLOW_TIMEOUT_MILLIS:${LLM_TIMEOUT_MILLIS:60000}}
+      timeout-millis: ${LLM_PROVIDER_SILICONFLOW_TIMEOUT_MILLIS:60000}
   session:
     # 单文档最多保留多少个 AI 会话。
     max-sessions-per-document: ${LLM_SESSION_MAX_SESSIONS_PER_DOCUMENT:20}
