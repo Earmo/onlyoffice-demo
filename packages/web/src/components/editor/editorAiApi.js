@@ -1,4 +1,5 @@
 import { apiFetch } from "../../lib/api";
+import { startLlmMessageStream as startLlmMessageStreamTransport } from "./llmMessageStream.js";
 
 async function parseApiResponse(response) {
   const payload = await response.json().catch(() => ({}));
@@ -32,6 +33,10 @@ export function createLlmSession(documentId, title = "") {
 
 export function getLlmSession(sessionId, documentId) {
   return apiFetch(`/api/llm/sessions/${encodeURIComponent(sessionId)}?documentId=${encodeURIComponent(documentId)}`).then(parseApiResponse);
+}
+
+export function startLlmMessageStream(payload, handlers) {
+  return startLlmMessageStreamTransport(payload, handlers);
 }
 
 export function sendLlmMessage(payload) {

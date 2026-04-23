@@ -9,6 +9,15 @@ server:
   forward-headers-strategy: framework
 
 spring:
+  autoconfigure:
+    exclude:
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioTranscriptionAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeEmbeddingAutoConfiguration
   profiles:
     # 默认开发环境走 dev；生产或测试环境通过 SPRING_PROFILES_ACTIVE 显式切换。
     active: ${SPRING_PROFILES_ACTIVE:dev}
@@ -26,6 +35,19 @@ spring:
       max-file-size: 50MB
       # 单次 multipart 请求总大小上限。
       max-request-size: 50MB
+  ai:
+    model:
+      # Phase 14.2 主 provider 走 Spring AI Alibaba DashScope。
+      chat: ${SPRING_AI_CHAT_MODEL:dashscope}
+    dashscope:
+      # Alibaba DashScope API Key，由 Spring AI Alibaba starter 消费。
+      api-key: ${LLM_PROVIDER_ALIBABA_API_KEY:${LLM_API_KEY:}}
+      # DashScope 服务地址；保留可覆盖项，默认用官方域名。
+      base-url: ${LLM_PROVIDER_ALIBABA_BASE_URL:https://dashscope.aliyuncs.com}
+      chat:
+        options:
+          # 启动时默认模型；真正请求仍可通过 ChatOptions 在每次发送时覆盖。
+          model: ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:${LLM_MODEL:qwen-plus}}
 
 mybatis-flex:
   configuration:
@@ -153,14 +175,14 @@ llm:
   enabled: ${LLM_ENABLED:true}
   # 是否向前端暴露 AI 工作台能力；可以在保留配置的前提下单独关闭功能开关。
   feature-enabled: ${LLM_FEATURE_ENABLED:true}
-  # 当前 provider 策略名称，Phase 14 默认固定为 openai-compatible。
-  provider: ${LLM_PROVIDER:openai-compatible}
-  # 上游模型服务的 base URL，例如 https://api.openai.com/v1。
-  base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
-  # 上游模型 API Key，仅允许保留在服务端。
-  api-key: ${LLM_API_KEY:sk-gzcjuctqqzepbwmpomjacbmyboqwzxnaimjgmopfgydlhvzk}
-  # 默认对话模型，例如 gpt-4.1-mini。
-  model: ${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}
+  # 14.2 默认 provider / model。
+  default-provider: ${LLM_DEFAULT_PROVIDER:siliconflow}
+  default-model: ${LLM_DEFAULT_MODEL:${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}}}
+  # 旧单 provider 配置保留兼容；未迁移环境变量时仍可兜底映射到 providers。
+  provider: ${LLM_PROVIDER:${LLM_DEFAULT_PROVIDER:alibaba-dashscope}}
+  base-url: ${LLM_BASE_URL:${LLM_PROVIDER_ALIBABA_BASE_URL:https://dashscope.aliyuncs.com}}
+  api-key: ${LLM_API_KEY:${LLM_PROVIDER_ALIBABA_API_KEY:}}
+  model: ${LLM_MODEL:${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:qwen-plus}}
   # 调用上游 provider 的超时时间，单位毫秒。
   timeout-millis: ${LLM_TIMEOUT_MILLIS:60000}
   # 前端首轮同步等待窗口；超过该时长后转入 request 轮询。
@@ -177,11 +199,35 @@ llm:
   default-system-prompt: ${LLM_DEFAULT_SYSTEM_PROMPT:你是一个文档协作助手。请基于用户给出的选区和标题上下文，输出可直接写回文档的专业中文建议。}
   # 允许透传给前端的 provider 元数据白名单，禁止包含敏感信息或原始报文。
   provider-response-meta-allowlist:
+    - provider
     - model
     - created
     - usage.promptTokens
     - usage.completionTokens
     - usage.totalTokens
+  providers:
+    alibaba-dashscope:
+      enabled: ${LLM_PROVIDER_ALIBABA_ENABLED:true}
+      label: Alibaba DashScope
+      spring-ai-provider: dashscope
+      base-url: ${LLM_PROVIDER_ALIBABA_BASE_URL:https://dashscope.aliyuncs.com}
+      api-key: ${LLM_PROVIDER_ALIBABA_API_KEY:${LLM_API_KEY:}}
+      default-model: ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:${LLM_MODEL:qwen-plus}}
+      models:
+        - ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:${LLM_MODEL:qwen-plus}}
+      streaming-enabled: ${LLM_PROVIDER_ALIBABA_STREAMING_ENABLED:true}
+      timeout-millis: ${LLM_PROVIDER_ALIBABA_TIMEOUT_MILLIS:${LLM_TIMEOUT_MILLIS:60000}}
+    siliconflow:
+      enabled: ${LLM_PROVIDER_SILICONFLOW_ENABLED:true}
+      label: SiliconFlow
+      spring-ai-provider: openai-compatible
+      base-url: ${LLM_PROVIDER_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
+      api-key: ${LLM_PROVIDER_SILICONFLOW_API_KEY:${LLM_API_KEY:sk-gzcjuctqqzepbwmpomjacbmyboqwzxnaimjgmopfgydlhvzk}}
+      default-model: ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}}
+      models:
+        - ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:${LLM_MODEL:Qwen/Qwen3.5-397B-A17B}}
+      streaming-enabled: ${LLM_PROVIDER_SILICONFLOW_STREAMING_ENABLED:true}
+      timeout-millis: ${LLM_PROVIDER_SILICONFLOW_TIMEOUT_MILLIS:${LLM_TIMEOUT_MILLIS:60000}}
   session:
     # 单文档最多保留多少个 AI 会话。
     max-sessions-per-document: ${LLM_SESSION_MAX_SESSIONS_PER_DOCUMENT:20}

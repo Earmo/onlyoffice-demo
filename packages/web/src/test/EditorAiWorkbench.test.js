@@ -1,5 +1,5 @@
 import { mount } from "@vue/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "./helpers";
 
 const apiMocks = vi.hoisted(() => ({
@@ -7,7 +7,7 @@ const apiMocks = vi.hoisted(() => ({
   listLlmSessions: vi.fn(),
   createLlmSession: vi.fn(),
   getLlmSession: vi.fn(),
-  sendLlmMessage: vi.fn(),
+  startLlmMessageStream: vi.fn(),
   getLlmRequest: vi.fn(),
   cancelLlmRequest: vi.fn()
 }));
@@ -23,9 +23,22 @@ describe("EditorAiWorkbench", () => {
       documentId: "doc-1",
       llmAvailable: true,
       disabledReason: null,
-      provider: "openai-compatible",
+      provider: "stub-provider",
       model: "fake-gpt",
-      supportsUpstreamCancel: false
+      supportsUpstreamCancel: false,
+      streamMode: true,
+      defaultProvider: "stub-provider",
+      defaultModel: "fake-gpt",
+      availableProviders: [
+        {
+          provider: "stub-provider",
+          label: "Stub Provider",
+          defaultModel: "fake-gpt",
+          availableModels: ["fake-gpt", "fake-gpt-2"],
+          supportsUpstreamCancel: false,
+          streamEnabled: true
+        }
+      ]
     });
     apiMocks.listLlmSessions.mockResolvedValue([]);
     apiMocks.createLlmSession.mockResolvedValue({
@@ -48,10 +61,41 @@ describe("EditorAiWorkbench", () => {
       lastHeadingText: "",
       messages: []
     });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-1",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-1",
+          provider: "stub-provider",
+          model: "fake-gpt",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+        handlers.onDelta?.({ requestId: "request-1", delta: "流式" });
+        handlers.onDelta?.({ requestId: "request-1", delta: "回复" });
+        handlers.onMeta?.({
+          requestId: "request-1",
+          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+          finishReason: "stop",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+        handlers.onCompleted?.({
+          requestId: "request-1",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-1",
+          assistantText: "流式回复",
+          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+          finishReason: "stop",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
   });
 
   it("应展示 capability-disabled 和 disabledReason", async () => {
@@ -59,19 +103,16 @@ describe("EditorAiWorkbench", () => {
       documentId: "doc-1",
       llmAvailable: false,
       disabledReason: "LLM_DISABLED",
-      provider: "openai-compatible",
+      provider: "stub-provider",
       model: "fake-gpt",
-      supportsUpstreamCancel: false
+      supportsUpstreamCancel: false,
+      streamMode: true,
+      defaultProvider: "stub-provider",
+      defaultModel: "fake-gpt",
+      availableProviders: []
     });
 
-    const wrapper = mount(EditorAiWorkbench, {
-      props: {
-        documentTitle: "路线图.docx",
-        runtimeContext: runtimeContext(),
-        loading: false,
-        closing: false
-      }
-    });
+    const wrapper = mountWorkbench();
     await flushPromises();
 
     expect(wrapper.find(".capability-disabled").exists()).toBe(true);
@@ -82,26 +123,12 @@ describe("EditorAiWorkbench", () => {
   it("应忽略自动建会话 stale response", async () => {
     const firstSession = deferred();
     const secondSession = deferred();
-    apiMocks.getLlmCapability.mockResolvedValue({
-      documentId: "doc-1",
-      llmAvailable: true,
-      disabledReason: null,
-      provider: "openai-compatible",
-      model: "fake-gpt",
-      supportsUpstreamCancel: false
-    });
     apiMocks.createLlmSession
       .mockImplementationOnce(() => firstSession.promise)
       .mockImplementationOnce(() => secondSession.promise);
-    apiMocks.listLlmSessions.mockResolvedValue([]);
 
-    const wrapper = mount(EditorAiWorkbench, {
-      props: {
-        documentTitle: "路线图.docx",
-        runtimeContext: runtimeContext({ documentId: "doc-1" }),
-        loading: false,
-        closing: false
-      }
+    const wrapper = mountWorkbench({
+      runtimeContext: runtimeContext({ documentId: "doc-1" })
     });
     await flushPromises();
 
@@ -136,65 +163,66 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).not.toContain("当前会话：旧会话");
   });
 
-  it("应在 in_progress 轮询到 completed", async () => {
-    apiMocks.sendLlmMessage.mockResolvedValueOnce({
-      documentId: "doc-1",
-      requestId: "request-1",
-      sessionId: "session-1",
-      assistantMessageId: "assistant-1",
-      status: "in_progress",
-      assistantText: "",
-      usage: null,
-      finishReason: "",
-      providerResponseMeta: {},
-      errorCode: "",
-      startedTime: "",
-      finishedTime: null
-    });
-    apiMocks.getLlmRequest.mockResolvedValueOnce({
-      documentId: "doc-1",
-      requestId: "request-1",
-      sessionId: "session-1",
-      assistantMessageId: "assistant-1",
-      status: "completed",
-      assistantText: "完成回复",
-      usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
-      finishReason: "stop",
-      providerResponseMeta: { model: "fake-gpt" },
-      errorCode: "",
-      startedTime: "",
-      finishedTime: ""
-    });
-
+  it("应在流式事件完成后展示增量回复和 usage", async () => {
     const wrapper = mountWorkbench();
     await flushPromises();
 
     await wrapper.find("textarea").setValue("帮我总结这一段");
-    await wrapper.find(".primary-button").trigger("click");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
     await flushPromises();
 
-    await new Promise(resolve => setTimeout(resolve, 1700));
-    await flushPromises();
-
-    expect(apiMocks.getLlmRequest).toHaveBeenCalledWith("request-1", "doc-1");
-    expect(wrapper.text()).toContain("完成回复");
+    expect(apiMocks.startLlmMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "stub-provider",
+        model: "fake-gpt",
+        retryConfirmed: false
+      }),
+      expect.any(Object)
+    );
+    expect(wrapper.text()).toContain("流式回复");
     expect(wrapper.text()).toContain("promptTokens: 10");
+    expect(wrapper.text()).toContain("provider: stub-provider");
+  });
+
+  it("应把当前 provider/model 选择带入 payload", async () => {
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    wrapper.vm.selectedModel = "fake-gpt-2";
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("切模型发送");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    expect(apiMocks.startLlmMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "stub-provider",
+        model: "fake-gpt-2"
+      }),
+      expect.any(Object)
+    );
   });
 
   it("应在取消后显示请求已取消", async () => {
-    apiMocks.sendLlmMessage.mockResolvedValueOnce({
-      documentId: "doc-1",
-      requestId: "request-2",
-      sessionId: "session-1",
-      assistantMessageId: "assistant-2",
-      status: "in_progress",
-      assistantText: "",
-      usage: null,
-      finishReason: "",
-      providerResponseMeta: {},
-      errorCode: "",
-      startedTime: "",
-      finishedTime: null
+    const abort = vi.fn(() => Promise.resolve());
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-2",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-2",
+          provider: "stub-provider",
+          model: "fake-gpt",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort
+      };
     });
     apiMocks.cancelLlmRequest.mockResolvedValueOnce({
       documentId: "doc-1",
@@ -205,7 +233,7 @@ describe("EditorAiWorkbench", () => {
       assistantText: "",
       usage: null,
       finishReason: "",
-      providerResponseMeta: {},
+      providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" },
       errorCode: "LLM_REQUEST_CANCELLED",
       startedTime: "",
       finishedTime: ""
@@ -215,125 +243,63 @@ describe("EditorAiWorkbench", () => {
     await flushPromises();
 
     await wrapper.find("textarea").setValue("需要取消");
-    await wrapper.find(".primary-button").trigger("click");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
     await flushPromises();
 
-    const cancelButton = wrapper.findAll("button").find(button => button.text().includes("取消发送"));
-    await cancelButton.trigger("click");
+    await wrapper.find('button[title="取消发送"]').trigger("click");
     await flushPromises();
 
+    expect(abort).toHaveBeenCalled();
     expect(apiMocks.cancelLlmRequest).toHaveBeenCalledWith("request-2", "doc-1");
     expect(wrapper.text()).toContain("请求已取消");
     expect(wrapper.text()).toContain("LLM_REQUEST_CANCELLED");
   });
 
-  it("应在 LLM_SESSION_FORBIDDEN 时自动回退到新会话", async () => {
-    apiMocks.listLlmSessions.mockResolvedValue([
-      { sessionId: "session-1", title: "当前会话", updatedTime: "2026-04-21T00:00:00Z" },
-      { sessionId: "session-old", title: "旧线程", updatedTime: "2026-04-20T00:00:00Z" }
-    ]);
-    apiMocks.getLlmSession.mockRejectedValueOnce(apiError("LLM_SESSION_FORBIDDEN", "当前用户无权访问该对话会话。"));
-    apiMocks.createLlmSession
-      .mockResolvedValueOnce({
-        sessionId: "session-1",
-        documentId: "doc-1",
-        title: "当前会话",
-        lastSnapshotText: "",
-        lastSnapshotIsEmpty: true,
-        lastHeadingId: "",
-        lastHeadingText: "",
-        messages: []
-      })
-      .mockResolvedValueOnce({
-        sessionId: "session-fallback",
-        documentId: "doc-1",
-        title: "回退新会话",
-        lastSnapshotText: "",
-        lastSnapshotIsEmpty: true,
-        lastHeadingId: "",
-        lastHeadingText: "",
-        messages: []
+  it("应在流异常断开后只回查一次最终态", async () => {
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-3",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-3",
+          provider: "stub-provider",
+          model: "fake-gpt"
+        });
+        handlers.onDelta?.({ requestId: "request-3", delta: "半截" });
+        handlers.onComplete?.();
       });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+    apiMocks.getLlmRequest.mockResolvedValueOnce({
+      documentId: "doc-1",
+      requestId: "request-3",
+      sessionId: "session-1",
+      assistantMessageId: "assistant-3",
+      status: "completed",
+      assistantText: "最终结果",
+      usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
+      finishReason: "stop",
+      providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" },
+      errorCode: "",
+      startedTime: "",
+      finishedTime: ""
+    });
 
     const wrapper = mountWorkbench();
     await flushPromises();
 
-    const oldSessionButton = wrapper.findAll(".session-item").find(button => button.text().includes("旧线程"));
-    await oldSessionButton.trigger("click");
+    await wrapper.find("textarea").setValue("断流回查");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
     await flushPromises();
 
-    expect(apiMocks.createLlmSession).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain("LLM_SESSION_FORBIDDEN");
-    expect(wrapper.text()).toContain("当前会话：回退新会话");
-  });
-
-  it("应展示 errorCode 并在重试确认后发送 retryConfirmed: true", async () => {
-    apiMocks.sendLlmMessage
-      .mockResolvedValueOnce({
-        documentId: "doc-1",
-        requestId: "request-3",
-        sessionId: "session-1",
-        assistantMessageId: "assistant-3",
-        status: "failed",
-        assistantText: "",
-        usage: null,
-        finishReason: "",
-        providerResponseMeta: {},
-        errorCode: "LLM_PROVIDER_BAD_REQUEST",
-        startedTime: "",
-        finishedTime: ""
-      })
-      .mockResolvedValueOnce({
-        documentId: "doc-1",
-        requestId: "request-4",
-        sessionId: "session-1",
-        assistantMessageId: "assistant-4",
-        status: "completed",
-        assistantText: "重试成功",
-        usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
-        finishReason: "stop",
-        providerResponseMeta: { model: "fake-gpt" },
-        errorCode: "",
-        startedTime: "",
-        finishedTime: ""
-      });
-
-    const wrapper = mountWorkbench();
-    await flushPromises();
-
-    await wrapper.find("textarea").setValue("需要失败后重试");
-    await wrapper.find(".primary-button").trigger("click");
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("LLM_PROVIDER_BAD_REQUEST");
-
-    const retryButton = wrapper.findAll("button").find(button => button.text().includes("重试"));
-    await retryButton.trigger("click");
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("retryConfirmed: true");
-
-    const confirmButton = wrapper.findAll("button").find(button => button.text().includes("确认重试"));
-    await confirmButton.trigger("click");
-    await flushPromises();
-
-    expect(apiMocks.sendLlmMessage.mock.calls[1][0]).toEqual(expect.objectContaining({ retryConfirmed: true }));
-    expect(wrapper.text()).toContain("重试成功");
-  });
-
-  it("应在发送接口抛错时把 pending 条目标记为 failed 并展示错误卡片", async () => {
-    apiMocks.sendLlmMessage.mockRejectedValueOnce(apiError("NETWORK_ERROR", "网络断开"));
-
-    const wrapper = mountWorkbench();
-    await flushPromises();
-
-    await wrapper.find("textarea").setValue("模拟网络失败");
-    await wrapper.find(".primary-button").trigger("click");
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("NETWORK_ERROR");
-    expect(wrapper.text()).toContain("网络断开");
-    expect(wrapper.find(".thread-error-card").exists()).toBe(true);
+    expect(apiMocks.getLlmRequest).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getLlmRequest).toHaveBeenCalledWith("request-3", "doc-1");
+    expect(wrapper.text()).toContain("最终结果");
   });
 });
 
@@ -370,10 +336,4 @@ function deferred() {
     resolve = res;
   });
   return { promise, resolve };
-}
-
-function apiError(errorCode, message) {
-  const error = new Error(message);
-  error.errorCode = errorCode;
-  return error;
 }

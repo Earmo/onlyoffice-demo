@@ -2,19 +2,22 @@ package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.LlmProperties;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmMessageEntity;
-import com.earmo.onlyoffice.integration.service.llm.FakeOpenAiCompatibleProviderServer;
 import com.earmo.onlyoffice.integration.service.llm.LlmApiException;
+import com.earmo.onlyoffice.integration.service.llm.LlmErrorCodes;
 import com.earmo.onlyoffice.integration.service.llm.LlmPromptWindowBuilder;
-import com.earmo.onlyoffice.integration.service.llm.LlmProviderRequest;
-import com.earmo.onlyoffice.integration.service.llm.LlmProviderResponse;
-import com.earmo.onlyoffice.integration.service.llm.LlmProviderStrategy;
+import com.earmo.onlyoffice.integration.service.llm.LlmProviderMessage;
+import com.earmo.onlyoffice.integration.service.llm.LlmProviderUsage;
 import com.earmo.onlyoffice.integration.service.llm.LlmRequestExecutionRegistry;
-import com.earmo.onlyoffice.integration.service.llm.OpenAiCompatibleLlmProviderStrategy;
+import com.earmo.onlyoffice.integration.service.llm.LlmRuntimeRequest;
+import com.earmo.onlyoffice.integration.service.llm.SpringAiLlmProvider;
+import com.earmo.onlyoffice.integration.service.llm.SpringAiProviderChunk;
 import java.time.Instant;
-import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
+import org.springframework.http.HttpStatus;
+import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,28 +52,44 @@ class LlmConversationServiceTest {
   }
 
   @Test
-  void shouldFilterProviderResponseMetaAndMapBadRequestErrorCode() throws Exception {
-    LlmProviderResponse response = buildStrategyWithSuccess().sendChat(new LlmProviderRequest(
+  void shouldExposeProviderAndUsageMetaFromStreamChunk() {
+    SpringAiProviderChunk chunk = new StubProvider(true).stream(new LlmRuntimeRequest(
+        "stub-provider",
+        "http://127.0.0.1:18089",
+        "test-api-key",
         "fake-gpt",
-        List.of(new com.earmo.onlyoffice.integration.service.llm.LlmProviderMessage("user", "providerResponseMeta success"))
-    ));
+        60000L,
+        List.of(new LlmProviderMessage("user", "providerResponseMeta success"))
+    )).blockLast();
 
-    assertThat(response.providerResponseMeta()).containsKeys("model", "created", "usage");
-    assertThat(response.providerResponseMeta().toString()).doesNotContain("system_fingerprint");
+    assertThat(chunk).isNotNull();
+    assertThat(chunk.providerResponseMeta()).containsEntry("provider", "stub-provider");
+    assertThat(chunk.providerResponseMeta()).containsEntry("model", "fake-gpt");
+    assertThat(chunk.providerResponseMeta()).containsKey("usage");
+    assertThat(chunk.providerResponseMeta().toString()).doesNotContain("system_fingerprint");
+  }
 
-    OpenAiCompatibleLlmProviderStrategy badRequestStrategy = buildStrategyWithBadRequest();
-    assertThatThrownBy(() -> badRequestStrategy.sendChat(new LlmProviderRequest(
+  @Test
+  void shouldMapBadRequestToMachineReadableErrorCode() {
+    SpringAiLlmProvider provider = new StubProvider(false);
+    assertThatThrownBy(() -> provider.stream(new LlmRuntimeRequest(
+        "stub-provider",
+        "http://127.0.0.1:18089",
+        "test-api-key",
         "fake-gpt",
-        List.of(new com.earmo.onlyoffice.integration.service.llm.LlmProviderMessage("user", "BAD_REQUEST"))
-    )))
+        60000L,
+        List.of(new LlmProviderMessage("user", "BAD_REQUEST"))
+    )).blockLast())
         .isInstanceOf(LlmApiException.class)
-        .hasMessageContaining("模型请求参数无效");
+        .hasMessageContaining("模型请求参数无效")
+        .extracting(error -> ((LlmApiException) error).errorCode())
+        .isEqualTo(LlmErrorCodes.LLM_PROVIDER_BAD_REQUEST);
   }
 
   @Test
   void shouldDiscardLateSuccessAfterRequestMarkedCancelled() {
     LlmRequestExecutionRegistry registry = new LlmRequestExecutionRegistry();
-    registry.register("req-1", new NoopProviderStrategy());
+    registry.register("req-1", new StubProvider(true));
     registry.attachProviderRequestId("req-1", "upstream-1");
     registry.cancel("req-1");
 
@@ -88,18 +107,44 @@ class LlmConversationServiceTest {
     return entity;
   }
 
-  private static final class NoopProviderStrategy implements LlmProviderStrategy {
+  private static final class StubProvider implements SpringAiLlmProvider {
 
-    @Override
-    public String providerName() {
-      return "noop";
+    private final boolean success;
+
+    private StubProvider(boolean success) {
+      this.success = success;
     }
 
     @Override
-    public com.earmo.onlyoffice.integration.service.llm.LlmProviderResponse sendChat(
-        com.earmo.onlyoffice.integration.service.llm.LlmProviderRequest request
-    ) {
-      throw new UnsupportedOperationException();
+    public String providerName() {
+      return "stub-provider";
+    }
+
+    @Override
+    public Flux<SpringAiProviderChunk> stream(LlmRuntimeRequest request) {
+      if (!success) {
+        return Flux.error(new LlmApiException(
+            LlmErrorCodes.LLM_PROVIDER_BAD_REQUEST,
+            HttpStatus.BAD_REQUEST,
+            "模型请求参数无效。"
+        ));
+      }
+      Map<String, Object> usage = new LinkedHashMap<>();
+      usage.put("promptTokens", 16);
+      usage.put("completionTokens", 24);
+      usage.put("totalTokens", 40);
+      return Flux.just(new SpringAiProviderChunk(
+          "流式回复",
+          "provider-request-1",
+          new LlmProviderUsage(16, 24, 40),
+          "stop",
+          Map.of(
+              "provider", request.providerName(),
+              "model", request.model(),
+              "created", 1711000000,
+              "usage", usage
+          )
+      ));
     }
 
     @Override
@@ -110,27 +155,5 @@ class LlmConversationServiceTest {
     @Override
     public void cancelRequest(String providerRequestId) {
     }
-  }
-
-  private OpenAiCompatibleLlmProviderStrategy buildStrategyWithSuccess() {
-    RestClient.Builder builder = RestClient.builder();
-    FakeOpenAiCompatibleProviderServer fakeProvider = new FakeOpenAiCompatibleProviderServer(builder);
-    fakeProvider.enqueueSuccess("providerResponseMeta success");
-    return new OpenAiCompatibleLlmProviderStrategy(builder, baseProperties());
-  }
-
-  private OpenAiCompatibleLlmProviderStrategy buildStrategyWithBadRequest() {
-    RestClient.Builder builder = RestClient.builder();
-    FakeOpenAiCompatibleProviderServer fakeProvider = new FakeOpenAiCompatibleProviderServer(builder);
-    fakeProvider.enqueueBadRequest();
-    return new OpenAiCompatibleLlmProviderStrategy(builder, baseProperties());
-  }
-
-  private LlmProperties baseProperties() {
-    LlmProperties properties = new LlmProperties();
-    properties.setBaseUrl("http://fake-provider.test");
-    properties.setApiKey("test-key");
-    properties.setModel("fake-gpt");
-    return properties;
   }
 }

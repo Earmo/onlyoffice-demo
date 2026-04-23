@@ -46,8 +46,14 @@ packages/server/storage/
 .cursor/
 .planning/
 .windsurf/
+.codebuddy/
+.qwen/
+agents/
+get-shit-done/
 
 **/rebel.xml
 *.iml
 *.env
 node_modules
+/gsd-file-manifest.json
+/.clinerules

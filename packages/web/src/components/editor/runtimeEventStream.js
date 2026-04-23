@@ -2,6 +2,11 @@ import { buildApiUrl, createAccessContextHeaders } from "../../lib/api";
 
 const RUNTIME_EVENT_PATH = documentId => `/api/documents/${encodeURIComponent(documentId)}/runtime-events`;
 
+// Phase 14.1 不使用原生 EventSource，而是自己走 fetch + reader。
+// 这么做有三个明确原因：
+// 1. 原生 EventSource 不能带当前项目依赖的 access context 自定义请求头；
+// 2. 我们需要在文档切换、showConsole 关闭、组件卸载时精确 abort 当前流；
+// 3. 我们希望把“服务器正常关闭流”和“流异常失败”区分开，交给外层状态机分别处理。
 export function startRuntimeEventStream(options) {
   const {
     documentId,
@@ -26,6 +31,12 @@ export function startRuntimeEventStream(options) {
   });
 
   const streamPromise = (async () => {
+    // `buffer` 是这个解析器最关键的状态。
+    // fetch streaming 下，一次 read() 只保证返回“当前拿到的一块字节”，不保证对齐到 SSE frame：
+    // - 一个 JSON 可能被拆成两段；
+    // - `event:` 和 `data:` 甚至可能分开到两次 read()；
+    // - 多行 data 也可能跨 chunk。
+    // 所以只能持续把内容追加到 buffer，等看到空行分隔符后再切完整 frame。
     let buffer = "";
 
     try {
@@ -42,6 +53,13 @@ export function startRuntimeEventStream(options) {
       }
 
       reader = response.body.getReader();
+      // ready 只代表“链路已经建起来，可以开始读流”：
+      // - HTTP 返回 200；
+      // - response.body 可读；
+      // - reader 已经拿到。
+      // 它不等第一个 save-status 或 keepalive。
+      // 这样 EditorShell 一看到 ready，就能停掉 save-status polling，
+      // 不需要再等首帧到达才切换主通道。
       readyResolved = true;
       resolveReady();
 
@@ -98,6 +116,8 @@ export function startRuntimeEventStream(options) {
 }
 
 function extractCompleteFrames(buffer) {
+  // SSE 规范里，空行表示“一个 frame 结束”。
+  // 这里每次只切出已经完整结束的 frame，最后那个没遇到空行的尾巴继续留给下次 read()。
   const frames = [];
   let remaining = buffer;
   let separatorIndex = remaining.indexOf("\n\n");
@@ -116,6 +136,13 @@ function extractCompleteFrames(buffer) {
 }
 
 function dispatchFrame(frame, handlers) {
+  // 14.1 只关心四类命名事件：
+  // - save-status：真正驱动右侧保存状态卡片；
+  // - session-active：表示当前 actor 已经进入活跃编辑态；
+  // - keepalive：主要用于链路保活和调试；
+  // - runtime-error：流还没完全断时，服务端主动给出的失败原因。
+  //
+  // comment frame、空 frame、未知事件都直接忽略，让外层状态机保持最小表面积。
   if (!frame.trim()) {
     return;
   }
@@ -140,6 +167,11 @@ function dispatchFrame(frame, handlers) {
 }
 
 function parseSseFrame(frame) {
+  // 这里只实现 14.1 真正会用到的最小 SSE 子集：
+  // - `event:` 决定事件名；
+  // - `data:` 支持多行，最后按 `\n` 拼回；
+  // - 以 `:` 开头的 comment line 跳过。
+  // `id:` / `retry:` 当前前端状态机没有消费，所以不在这里额外建复杂度。
   const lines = frame.split("\n");
   let name = "message";
   const dataLines = [];

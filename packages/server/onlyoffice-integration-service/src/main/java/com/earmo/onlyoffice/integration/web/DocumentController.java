@@ -139,6 +139,17 @@ public class DocumentController {
       HttpServletRequest request
   ) {
     AccessContext accessContext = accessContextResolver.resolve(request);
+    // Phase 14.1 的后端入口流程：
+    // 1. 先从请求头里解析 access context，拿到当前 actor/tenant。
+    //    这里不能偷懒，因为后面的 editing session 续期依赖 actorUser。
+    // 2. 在真正打开 SSE 之前，先补一次 touchEditingSession。
+    //    原因是浏览器刚连上 runtime-events 时，前一轮 heartbeat 可能已经过去几秒，
+    //    如果此时 active timeout 很短，后端可能会在首帧刚发出时把会话误判成过期。
+    // 3. 再读取当前 save-status，作为 SSE 的首帧快照。
+    //    这样前端不需要先等下一次 callback/save 才知道当前文档状态。
+    // 4. 最后把 livenessTouch 交给 SSE service。
+    //    后续每次 keepalive tick 都会再 touch 一次 editing session，
+    //    让“流还活着”和“当前用户仍在编辑”这两个事实保持一致。
     documentStatusService.touchEditingSession(documentId, accessContext);
     DocumentSaveStatusResponse initialStatus = documentStatusService.getStatus(documentId);
     return runtimeEventStreamService.open(

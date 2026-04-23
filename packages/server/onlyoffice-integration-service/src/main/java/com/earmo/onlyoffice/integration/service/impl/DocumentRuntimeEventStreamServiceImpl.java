@@ -22,6 +22,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+/**
+ * 文档运行态 SSE 服务实现。
+ *
+ * <p>这里维护的是 Phase 14.1 的核心链路：
+ * 1. 以 documentId 为分桶管理订阅者；
+ * 2. 打开流时先发首帧 `save-status`，再发 `session-active`；
+ * 3. 用固定 keepalive 同时保活代理链路和编辑会话；
+ * 4. 任意发送失败都要走统一清理，避免 keepalive future 泄漏。
+ *
+ * <p>可以把这个类理解成“文档运行态广播中心”：
+ * - `DocumentController.runtimeEvents()` 负责把单个浏览器接进来；
+ * - `DocumentStatusServiceImpl.publishAndReturn()` 负责把后端状态变化推过来；
+ * - 这里把两边接起来，保证同一个 documentId 下的浏览器都收到一致的运行态事实。
+ */
 @Service
 public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEventStreamService {
 
@@ -81,6 +95,24 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
         livenessTouch == null ? () -> {
         } : livenessTouch
     );
+    // 打开订阅的顺序不能打乱，原因如下：
+    //
+    // 第一步：先 register。
+    // - 这样 emitter 一旦 completion/timeout/error，就能立刻进入统一 cleanup。
+    // - 如果还没 register 就先 send，某些容器/代理已经断流时会让失败路径失控。
+    //
+    // 第二步：立刻创建并登记 keepalive future。
+    // - 14.1 的 WR-01 就出在这里：如果先发首帧、后登记 future，
+    //   那么首帧发送失败时 cleanup 看不到 future，定时任务就会泄漏。
+    //
+    // 第三步：发送首帧 save-status。
+    // - 这让前端一连上就能拿到当前真实状态，而不是“先空白、再等下一次事件”。
+    //
+    // 第四步：检查 cleanupStarted。
+    // - 首帧 send 过程中如果已经触发失败清理，就不应该继续发送 session-active。
+    //
+    // 第五步：再发 session-active。
+    // - 到这里说明连接至少已经成功活过首帧，可以把“当前用户处于活跃编辑态”发给前端。
     registerSubscriber(subscriber);
     assignKeepaliveFuture(subscriber, keepaliveScheduler.scheduleAtFixedRate(
         () -> sendKeepalive(subscriber),
@@ -116,6 +148,12 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
   }
 
   private void registerSubscriber(RuntimeSubscriber subscriber) {
+    // subscriber 的生命周期全部收口到 cleanupSubscriber，理由是：
+    // - completion：浏览器正常断开；
+    // - timeout：服务端 emitter 到时；
+    // - error：send 失败或底层连接异常。
+    // 这三条路径如果分开各写一套逻辑，很容易出现“删了 subscriber 但没停 future”、
+    // 或“停了 future 但 bucket 里还残留一个空引用”的半清理状态。
     subscribersByDocumentId.computeIfAbsent(subscriber.documentId, ignored -> new CopyOnWriteArrayList<>())
         .add(subscriber);
     subscriber.emitter.onCompletion(() -> cleanupSubscriber(subscriber));
@@ -170,6 +208,10 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
   }
 
   private void handleSendFailure(RuntimeSubscriber subscriber, Exception exception) {
+    // 失败路径的处理目标不是“尽量继续发”，而是“尽快收口”：
+    // 1. 先 best-effort 发一条 runtime-error，给仍然可读的前端一个明确原因；
+    // 2. 如果连这条都发不出去，说明连接已经彻底坏了，直接忽略；
+    // 3. completeWithError + cleanup，停止 keepalive 并移出 registry。
     try {
       subscriber.emitter.send(
           SseEmitter.event()
@@ -187,10 +229,17 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
   }
 
   private void cleanupSubscriber(RuntimeSubscriber subscriber) {
+    // 这里先 cancelKeepalive、再 compareAndSet，是专门为竞态兜底：
+    // - 场景 A：sendSaveStatus 刚失败，cleanup 已被别处调用；
+    // - 场景 B：scheduleAtFixedRate 返回值稍后才写进 subscriber.keepaliveFuture。
+    // 如果先 compareAndSet，A 场景会让 B 场景的 future 永远失去取消机会。
+    // 先 cancel 再 compareAndSet，哪怕 cleanupStarted 已经为 true，也还能补停 future。
     cancelKeepalive(subscriber);
     if (!subscriber.cleanupStarted.compareAndSet(false, true)) {
       return;
     }
+    // bucket 里最后一个 subscriber 被移除后，连 documentId 键一起删掉。
+    // 否则长时间运行后，map 会积累很多“空 bucket”，属于典型的慢性泄漏。
     subscribersByDocumentId.computeIfPresent(subscriber.documentId, (documentId, subscribers) -> {
       subscribers.remove(subscriber);
       return subscribers.isEmpty() ? null : subscribers;
@@ -198,6 +247,9 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
   }
 
   private void assignKeepaliveFuture(RuntimeSubscriber subscriber, ScheduledFuture<?> keepaliveFuture) {
+    // 这里兜的是“future 刚写进去，cleanup 已经先完成”的反向竞态。
+    // 如果 cleanupStarted 已经是 true，就说明前面某个 send 过程已经认定连接失效，
+    // 那么这个 future 不能再留着跑，必须立刻 cancel。
     subscriber.keepaliveFuture = keepaliveFuture;
     if (subscriber.cleanupStarted.get()) {
       keepaliveFuture.cancel(true);

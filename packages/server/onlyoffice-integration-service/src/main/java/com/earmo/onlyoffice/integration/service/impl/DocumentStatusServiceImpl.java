@@ -240,6 +240,19 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
   }
 
   private DocumentSaveStatusResponse publishAndReturn(DocumentSaveStatusResponse status) {
+    // 14.1 这里故意不做任何 DTO 转换：
+    // - REST `save-status` 接口返回的就是这个对象；
+    // - SSE `save-status` 事件发的也是这个对象；
+    // - controller 调用链拿到的还是这个对象。
+    //
+    // 这样做的目的，是把“当前文档保存状态”的事实源收束成一份。
+    // 否则最容易出现三种漂移：
+    // 1. 轮询接口字段改了，SSE 忘了改；
+    // 2. controller 手拼 message，SSE 还是旧文案；
+    // 3. 某个 mutation 返回 editing，但 SSE 推的是 saved。
+    //
+    // publishAndReturn 的意思就是：
+    // “先把这个最终状态广播出去，再把同一个对象原样还给调用方”。
     runtimeEventStreamService.publishSaveStatus(status.documentId(), status);
     return status;
   }

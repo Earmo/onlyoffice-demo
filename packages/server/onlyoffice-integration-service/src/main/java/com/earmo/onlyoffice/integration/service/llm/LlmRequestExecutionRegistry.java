@@ -11,7 +11,7 @@ public class LlmRequestExecutionRegistry {
 
   private final Map<String, ExecutionState> executions = new ConcurrentHashMap<>();
 
-  public void register(String requestId, LlmProviderStrategy strategy) {
+  public void register(String requestId, SpringAiLlmProvider strategy) {
     executions.put(requestId, new ExecutionState(strategy));
   }
 
@@ -80,10 +80,10 @@ public class LlmRequestExecutionRegistry {
 
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
     private final AtomicReference<String> terminalStatus = new AtomicReference<>(null);
-    private final LlmProviderStrategy strategy;
+    private final SpringAiLlmProvider strategy;
     private volatile String providerRequestId;
 
-    private ExecutionState(LlmProviderStrategy strategy) {
+    private ExecutionState(SpringAiLlmProvider strategy) {
       this.strategy = strategy;
     }
   }

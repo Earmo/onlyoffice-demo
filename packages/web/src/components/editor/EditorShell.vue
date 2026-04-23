@@ -480,6 +480,11 @@ function clearRuntimeStreamRetry() {
 }
 
 function stopRuntimeEventStream() {
+  // 这里故意先“逻辑断开”，再“物理 abort”：
+  // 1. 先把 runtimeStreamHandle 置空，声明当前页面不再认这个流；
+  // 2. 再去 abort 旧连接。
+  // 这样旧流即使稍后异步触发 onError/onComplete，也会因为 handle 不匹配而被 guard 掉，
+  // 不会把旧文档或旧状态的失败事件反向污染当前页面。
   const handle = runtimeStreamHandle;
   runtimeStreamHandle = null;
   isRuntimeStreamHealthy.value = false;
@@ -487,6 +492,12 @@ function stopRuntimeEventStream() {
 }
 
 function isRuntimeStreamEligibleFor(documentId) {
+  // 14.1 的产品语义是：只有“这个页面现在真的需要编辑运行态流”时，SSE 才是主通道。
+  // 这里四个条件缺一不可：
+  // - 不是 readonly；
+  // - 工作台没被显式隐藏；
+  // - editing session 还开着；
+  // - 流对应的 documentId 仍然是当前页面这份文档。
   return !props.readonly
     && props.showConsole !== false
     && editingSessionOpened.value
@@ -499,6 +510,9 @@ function scheduleRuntimeStreamRetry(documentId) {
     return;
   }
 
+  // 每次进入这里都先清空旧 timer，保证同一时刻只有一个重连时钟。
+  // 这样即使 `runtime-error`、reader error、ready reject 连续到来，
+  // 最后也只会留下一个有效的 retry 任务。
   clearRuntimeStreamRetry();
   const delay = runtimeStreamRetryDelayMs;
   runtimeStreamRetryTimer = window.setTimeout(() => {
@@ -512,6 +526,11 @@ function scheduleRuntimeStreamRetry(documentId) {
 }
 
 function activateRuntimePollingFallback(documentId) {
+  // fallback 是 14.1 的兜底态，不是失败后的“空窗期”。
+  // 一旦进入这里，页面马上恢复两条旧链路：
+  // 1. `loadSaveStatus()`：继续拿保存状态；
+  // 2. `touchEditingSession()`：继续给编辑会话续期。
+  // 然后再看当前条件是否仍允许 SSE，如果允许，就挂一个退避重连把主通道拉回来。
   if (props.readonly || documentId !== props.documentId || !editingSessionOpened.value) {
     stopSaveStatusPolling();
     stopSessionHeartbeatPolling();
@@ -544,6 +563,12 @@ function updateSaveStatusFromRuntime(payload, streamDocumentId) {
 }
 
 function handleRuntimeStreamFailure(streamDocumentId) {
+  // 失败并不总意味着“当前页面这条流坏了”。
+  // 也可能只是：
+  // - 旧文档的流在切页后晚到一个错误；
+  // - 旧 handle 在 stopRuntimeEventStream 之后又回调了一次；
+  // - 页面已经切成 readonly 或 session 已关闭。
+  // 这些都不应该再驱动当前页面进入 fallback。
   if (runtimeStreamHandle === null && streamDocumentId !== props.documentId) {
     return;
   }
@@ -555,6 +580,24 @@ function handleRuntimeStreamFailure(streamDocumentId) {
 }
 
 function startRuntimeEventStreamForDocument(documentId) {
+  // 这里把“建流”和“页面状态机切换”绑在一起。
+  //
+  // 正常路径：
+  // 1. startRuntimeEventStream 建出 handle；
+  // 2. ready resolve；
+  // 3. 页面把 save-status 主通道切到 SSE；
+  // 4. heartbeat 继续保留，专门负责 editing session 续期；
+  // 5. 后续 save-status 事件不断覆盖本地状态。
+  //
+  // 异常路径：
+  // 1. runtime-error / onError 进入 fallback；
+  // 2. fallback 恢复 REST polling；
+  // 3. retry timer 按退避策略重连。
+  //
+  // clean completion 路径：
+  // 1. 不进入 fallback；
+  // 2. 直接尝试重新 activateRuntimeStream；
+  // 3. 避免服务端正常超时关闭流时，前端短暂恢复旧轮询造成状态抖动。
   const streamHandle = startRuntimeEventStream({
     documentId,
     onSaveStatus(payload) {
@@ -605,6 +648,10 @@ function startRuntimeEventStreamForDocument(documentId) {
       runtimeStreamRetryDelayMs = 1000;
       isRuntimeStreamHealthy.value = true;
       stopSaveStatusPolling();
+      // WR-02 修复后的最终语义：
+      // - save-status 由 SSE 承担，旧轮询可以停；
+      // - heartbeat 不能停，它负责把“用户仍在编辑”这个事实稳定续给后端。
+      // 否则 active timeout 比 keepalive 更短时，仍会把活跃用户误判成离线。
       startSessionHeartbeatPolling();
     })
     .catch(() => {
@@ -616,6 +663,13 @@ function startRuntimeEventStreamForDocument(documentId) {
 }
 
 function activateRuntimeStream(documentId = props.documentId) {
+  // activateRuntimeStream 是“切主通道”的动作，不是简单 start：
+  // 1. 先停掉旧 save-status polling；
+  // 2. 再停掉旧 heartbeat polling；
+  // 3. 清空旧 retry timer；
+  // 4. abort 旧 stream；
+  // 5. 最后再为当前 documentId 建一条新的 SSE 流。
+  // 这样能保证页面任意时刻只认一条主链路，不会出现 SSE 和轮询同时写状态。
   if (!isRuntimeStreamEligibleFor(documentId)) {
     stopRuntimeEventStream();
     clearRuntimeStreamRetry();
@@ -661,6 +715,12 @@ function startSessionHeartbeatPolling() {
     return;
   }
 
+  // heartbeat 的职责在 14.1 里被重新收窄成“编辑会话续期”，而不是“拿保存状态”。
+  // 也就是说：
+  // - save-status 交给 SSE；
+  // - editing session 活跃性仍由浏览器每 5 秒续期。
+  // 这样服务端 active timeout 无论配成 5 秒、10 秒还是 30 秒，
+  // 都不会因为 keepalive 只有 25 秒一次而把用户错误踢出 active。
   sessionHeartbeatTimer = window.setInterval(() => {
     void touchEditingSession({ suppressErrors: true });
   }, 5000);

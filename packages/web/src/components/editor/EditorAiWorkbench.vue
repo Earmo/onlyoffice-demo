@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { Plus, Menu, ArrowDown, Crop, List, Picture, Close, Position, Collection, CopyDocument, DocumentCopy, Refresh, Delete } from "@element-plus/icons-vue";
+import { Plus, Menu, Crop, List, Picture, Close, Position, Collection, DocumentCopy, Refresh, Delete } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   cancelLlmRequest,
@@ -9,28 +9,28 @@ import {
   getLlmRequest,
   getLlmSession,
   listLlmSessions,
-  sendLlmMessage
+  startLlmMessageStream
 } from "./editorAiApi";
-
 import markdownit from "markdown-it";
 import hljs from "highlight.js";
 import "highlight.js/styles/github.css";
 
 const md = markdownit({
   html: true,
-  linkिफाई: true,
+  linkify: true,
   typographer: true,
-  highlight: function (str, lang) {
+  highlight(str, lang) {
     if (lang && hljs.getLanguage(lang)) {
       try {
         return hljs.highlight(str, { language: lang }).value;
-      } catch (__) {}
+      } catch {
+        return "";
+      }
     }
-    return '';
+    return "";
   }
 });
 
-const drawerVisible = ref(false);
 const props = defineProps({
   documentTitle: {
     type: String,
@@ -52,41 +52,36 @@ const props = defineProps({
 
 const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "insert-image"]);
 
-const pollIntervalMs = 1500;
-// 工作台内部状态机分成 4 层：
-// 1. capabilityStatus：LLM 功能是否可用
-// 2. snapshotState：bridge/选区快照是否就绪
-// 3. currentRequest*：当前发送中的请求生命周期
-// 4. conversationEntries：线程里已经固化的问答条目
+const drawerVisible = ref(false);
 const capabilityStatus = ref("bridge-pending");
 const capability = ref(null);
 const disabledReason = ref("");
 const sessions = ref([]);
-const showAllSessions = ref(false);
 const currentSessionId = ref("");
-const currentSessionTitle = ref("");
+const currentSessionTitle = ref("新会话");
 const currentSessionContextSignature = ref("");
 const conversationEntries = ref([]);
 const currentRequestId = ref("");
 const currentRequestState = ref("");
 const lastCancelled = ref(false);
 const draftQuestion = ref("");
-const imageUrl = ref("https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png");
-const isInsertingImage = ref(false);
 const threadError = ref(null);
 const retryEntry = ref(null);
 const showRetryDialog = ref(false);
-const pendingSendMode = ref(null);
 const showSnapshotDecision = ref(false);
-const bootstrapRequestDocumentId = ref("");
+const isExcludedSelection = ref(false);
+const selectedProvider = ref("");
+const selectedModel = ref("");
+const activeStream = ref(null);
 
 let bootstrapToken = 0;
 let sessionLoadToken = 0;
 let sessionLoadRequestedId = "";
-let pollTimer = null;
 
-const displayedSessions = computed(() => (showAllSessions.value ? sessions.value : sessions.value.slice(0, 10)));
-const canShowAllSessions = computed(() => sessions.value.length > 10 && !showAllSessions.value);
+const providerOptions = computed(() => capability.value?.availableProviders || []);
+const availableModels = computed(() => {
+  return providerOptions.value.find(option => option.provider === selectedProvider.value)?.availableModels || [];
+});
 const snapshotState = computed(() => {
   if (!props.runtimeContext.bridgeReady) {
     return "bridge-pending";
@@ -99,57 +94,45 @@ const liveContextSignature = computed(() => {
   return buildContextSignature({
     text: selectionText,
     emptySelection: isEmpty,
-    headingText: props.runtimeContext.activeHeadingNode?.text || props.runtimeContext.activeHeadingNode?.label || props.runtimeContext.activeHeadingNode?.headingText || ""
+    headingText: props.runtimeContext.activeHeadingNode?.text || props.runtimeContext.activeHeadingNode?.label || ""
   });
 });
+const currentHeadingText = computed(() => props.runtimeContext.activeHeadingNode?.text || props.runtimeContext.activeHeadingNode?.label || "");
 const topStatusText = computed(() => {
-  if (capabilityStatus.value === "capability-disabled") {
-    return "模型暂不可用";
-  }
-  if (snapshotState.value === "bridge-pending") {
-    return "正在准备上下文";
-  }
-  if (currentRequestState.value === "cancelling") {
-    return "正在取消请求";
-  }
-  if (currentRequestState.value === "in_progress") {
-    return "正在请求模型";
-  }
-  if (lastCancelled.value) {
-    return "请求已取消";
-  }
+  if (capabilityStatus.value === "capability-disabled") return "模型暂不可用";
+  if (snapshotState.value === "bridge-pending") return "正在准备上下文";
+  if (currentRequestState.value === "cancelling") return "正在取消请求";
+  if (currentRequestState.value === "in_progress") return "正在接收流式响应";
+  if (lastCancelled.value) return "请求已取消";
   return props.runtimeContext.bridgeStatusMessage || "等待上下文准备完成。";
 });
-const shortTopStatusText = computed(() => {
-  if (capabilityStatus.value === "capability-disabled") return "模型不可用";
-  if (snapshotState.value === "bridge-pending") return "准备上下文...";
-  if (currentRequestState.value === "cancelling") return "取消中...";
-  if (currentRequestState.value === "in_progress") return "请求中...";
-  if (lastCancelled.value) return "已取消";
-  if (isExcludedSelection.value) return "AI 对话已就绪";
-  if (snapshotState.value === "snapshot-ready") return "已获取选中文本";
-  return "AI 对话已就绪";
+const canSend = computed(() => {
+  return !props.loading
+    && !props.closing
+    && capabilityStatus.value === "capability-enabled"
+    && !currentRequestId.value
+    && Boolean(draftQuestion.value.trim());
 });
-
-const isExcludedSelection = ref(false); // Controls if the user manually deleted the selected context
-
-function handleRemoveSelection() {
-  isExcludedSelection.value = true;
-}
-
-function handleManualCapture() {
-  isExcludedSelection.value = false;
-  emit('capture-selection');
-}
+const flatOutlineItems = computed(() => {
+  const result = [];
+  function flatten(nodes, depth = 0) {
+    for (const node of nodes || []) {
+      result.push({ ...node, depth });
+      if (node.children?.length) {
+        flatten(node.children, depth + 1);
+      }
+    }
+  }
+  flatten(props.runtimeContext.outlineTreeData || []);
+  return result;
+});
 
 watch(
   () => props.runtimeContext.selectedText,
   () => {
-    // any change from the document auto-resets the exclusion
     isExcludedSelection.value = false;
   }
 );
-const currentHeadingText = computed(() => props.runtimeContext.activeHeadingNode?.text || props.runtimeContext.activeHeadingNode?.label || "");
 
 watch(
   () => props.runtimeContext.documentId,
@@ -163,21 +146,42 @@ watch(
   { immediate: true }
 );
 
+watch(providerOptions, options => {
+  if (!options.length) {
+    selectedProvider.value = "";
+    selectedModel.value = "";
+    return;
+  }
+  if (!options.some(option => option.provider === selectedProvider.value)) {
+    selectedProvider.value = capability.value?.defaultProvider || options[0].provider;
+  }
+  const models = options.find(option => option.provider === selectedProvider.value)?.availableModels || [];
+  if (!models.includes(selectedModel.value)) {
+    selectedModel.value = capability.value?.defaultModel || models[0] || "";
+  }
+});
+
+watch(selectedProvider, provider => {
+  const option = providerOptions.value.find(item => item.provider === provider);
+  const models = option?.availableModels || [];
+  if (!models.includes(selectedModel.value)) {
+    selectedModel.value = option?.defaultModel || models[0] || "";
+  }
+});
+
 onBeforeUnmount(() => {
-  clearPolling();
+  abortActiveStream();
 });
 
 function resetWorkbench() {
-  clearPolling();
+  abortActiveStream();
   capabilityStatus.value = props.runtimeContext.bridgeReady ? "capability-loading" : "bridge-pending";
   capability.value = null;
   disabledReason.value = "";
   sessions.value = [];
-  showAllSessions.value = false;
   currentSessionId.value = "";
-  currentSessionTitle.value = "";
+  currentSessionTitle.value = "新会话";
   currentSessionContextSignature.value = "";
-  sessionLoadRequestedId = "";
   conversationEntries.value = [];
   currentRequestId.value = "";
   currentRequestState.value = "";
@@ -186,21 +190,32 @@ function resetWorkbench() {
   threadError.value = null;
   retryEntry.value = null;
   showRetryDialog.value = false;
-  pendingSendMode.value = null;
   showSnapshotDecision.value = false;
+  selectedProvider.value = "";
+  selectedModel.value = "";
+}
+
+function abortActiveStream() {
+  activeStream.value?.abort?.();
+  activeStream.value = null;
+  currentRequestId.value = "";
+  currentRequestState.value = "";
 }
 
 async function loadCapabilityAndBootstrap(documentId) {
+  // 先拿 capability，再决定是否自动恢复/创建会话。
+  // bootstrapToken 用来丢弃切文档过程中的晚到响应，避免旧文档状态污染当前工作台。
   const token = ++bootstrapToken;
   capabilityStatus.value = props.runtimeContext.bridgeReady ? "capability-loading" : "bridge-pending";
   threadError.value = null;
-
   try {
     const capabilityPayload = await getLlmCapability(documentId);
     if (isBootstrapStale(token, documentId)) {
       return;
     }
     capability.value = capabilityPayload;
+    selectedProvider.value = capabilityPayload.defaultProvider || capabilityPayload.provider || "";
+    selectedModel.value = capabilityPayload.defaultModel || capabilityPayload.model || "";
     if (!capabilityPayload.llmAvailable) {
       capabilityStatus.value = "capability-disabled";
       disabledReason.value = capabilityPayload.disabledReason || "LLM_DISABLED";
@@ -218,28 +233,6 @@ async function loadCapabilityAndBootstrap(documentId) {
   }
 }
 
-async function bootstrapSession(documentId, token) {
-  bootstrapRequestDocumentId.value = documentId;
-  const sessionList = await listLlmSessions(documentId);
-  if (isBootstrapStale(token, documentId)) {
-    return;
-  }
-  
-  if (Array.isArray(sessionList) && sessionList.length > 0) {
-    const lastSession = sessionList[0];
-    await selectSession(lastSession.sessionId);
-    sessions.value = sessionList;
-  } else {
-    const session = await createLlmSession(documentId);
-    if (isBootstrapStale(token, documentId) || session.documentId !== props.runtimeContext.documentId || bootstrapRequestDocumentId.value !== documentId) {
-      // stale response：文档已切换或 bootstrapRequestDocumentId 已失效，丢弃旧 documentId 的自动建会话结果。
-      return;
-    }
-    applySessionSummary(session);
-    await refreshSessions(documentId, token);
-  }
-}
-
 async function refreshSessions(documentId, token = bootstrapToken) {
   try {
     const sessionList = await listLlmSessions(documentId);
@@ -254,11 +247,31 @@ async function refreshSessions(documentId, token = bootstrapToken) {
   }
 }
 
+async function bootstrapSession(documentId, token) {
+  // Phase 14.2 默认优先复用最近会话；没有历史会话时才创建新的空线程。
+  const sessionList = await listLlmSessions(documentId);
+  if (isBootstrapStale(token, documentId)) {
+    return;
+  }
+  if (Array.isArray(sessionList) && sessionList.length > 0) {
+    sessions.value = sessionList;
+    await selectSession(sessionList[0].sessionId);
+    return;
+  }
+  const session = await createLlmSession(documentId);
+  if (isBootstrapStale(token, documentId) || session.documentId !== props.runtimeContext.documentId) {
+    return;
+  }
+  applySessionSummary(session);
+  await refreshSessions(documentId, token);
+}
+
 async function selectSession(sessionId) {
   const documentId = props.runtimeContext.documentId;
   if (!sessionId || !documentId) {
     return;
   }
+  abortActiveStream();
   const token = ++sessionLoadToken;
   sessionLoadRequestedId = sessionId;
   threadError.value = null;
@@ -314,11 +327,11 @@ function buildConversationEntries(messages) {
           headingId: message.headingId || "",
           headingText: message.headingText || ""
         },
-        userCreatedTime: message.createdTime,
         assistantMessageId: "",
         requestId: "",
         status: "completed",
         assistantText: "",
+        streamingText: "",
         usage: null,
         finishReason: "",
         providerResponseMeta: {},
@@ -327,52 +340,51 @@ function buildConversationEntries(messages) {
       });
       continue;
     }
-
     const lastEntry = entries.at(-1);
     if (lastEntry && !lastEntry.assistantMessageId) {
       lastEntry.assistantMessageId = message.messageId;
       lastEntry.status = message.status || "completed";
       lastEntry.assistantText = message.assistantText || "";
+      lastEntry.streamingText = "";
       lastEntry.usage = message.usage || null;
       lastEntry.finishReason = message.finishReason || "";
       lastEntry.providerResponseMeta = message.providerResponseMeta || {};
       lastEntry.errorCode = message.errorCode || "";
       lastEntry.responseMessage = humanizeResponseState(message);
-    } else {
-      entries.push({
-        key: message.messageId,
-        question: "",
-        selectionSnapshot: {
-          text: message.snapshotText || "",
-          emptySelection: Boolean(message.snapshotEmptySelection)
-        },
-        headingContext: {
-          includeHeading: Boolean(message.includeHeading),
-          headingId: message.headingId || "",
-          headingText: message.headingText || ""
-        },
-        userCreatedTime: message.createdTime,
-        assistantMessageId: message.messageId,
-        requestId: "",
-        status: message.status || "completed",
-        assistantText: message.assistantText || "",
-        usage: message.usage || null,
-        finishReason: message.finishReason || "",
-        providerResponseMeta: message.providerResponseMeta || {},
-        errorCode: message.errorCode || "",
-        responseMessage: humanizeResponseState(message)
-      });
+      continue;
     }
+    entries.push({
+      key: message.messageId,
+      question: "",
+      selectionSnapshot: {
+        text: message.snapshotText || "",
+        emptySelection: Boolean(message.snapshotEmptySelection)
+      },
+      headingContext: {
+        includeHeading: Boolean(message.includeHeading),
+        headingId: message.headingId || "",
+        headingText: message.headingText || ""
+      },
+      assistantMessageId: message.messageId,
+      requestId: "",
+      status: message.status || "completed",
+      assistantText: message.assistantText || "",
+      streamingText: "",
+      usage: message.usage || null,
+      finishReason: message.finishReason || "",
+      providerResponseMeta: message.providerResponseMeta || {},
+      errorCode: message.errorCode || "",
+      responseMessage: humanizeResponseState(message)
+    });
   }
   return entries;
 }
 
 async function handleSendClick() {
-  if (!draftQuestion.value.trim() || currentRequestId.value || capabilityStatus.value !== "capability-enabled") {
+  if (!canSend.value) {
     return;
   }
   if (conversationEntries.value.length > 0 && currentSessionContextSignature.value && currentSessionContextSignature.value !== liveContextSignature.value) {
-    pendingSendMode.value = "new-or-continue";
     showSnapshotDecision.value = true;
     return;
   }
@@ -388,7 +400,7 @@ async function sendCurrentQuestion(options) {
     return;
   }
 
-  isExcludedSelection.value = false;
+  abortActiveStream();
   lastCancelled.value = false;
   threadError.value = null;
 
@@ -407,6 +419,8 @@ async function sendCurrentQuestion(options) {
     const payload = retryPayload ? {
       documentId,
       sessionId: targetSessionId,
+      provider: selectedProvider.value,
+      model: selectedModel.value,
       question: retryPayload.question,
       selectionSnapshot: retryPayload.selectionSnapshot,
       headingContext: retryPayload.headingContext,
@@ -414,10 +428,12 @@ async function sendCurrentQuestion(options) {
     } : {
       documentId,
       sessionId: targetSessionId,
+      provider: selectedProvider.value,
+      model: selectedModel.value,
       question,
       selectionSnapshot: {
-        text: props.runtimeContext.selectedText || "",
-        emptySelection: Boolean(props.runtimeContext.hasEmptySelection || !props.runtimeContext.selectedText)
+        text: isExcludedSelection.value ? "" : props.runtimeContext.selectedText || "",
+        emptySelection: isExcludedSelection.value || Boolean(props.runtimeContext.hasEmptySelection || !props.runtimeContext.selectedText)
       },
       headingContext: {
         includeHeading: Boolean(currentHeadingText.value),
@@ -432,17 +448,21 @@ async function sendCurrentQuestion(options) {
       question: payload.question,
       selectionSnapshot: payload.selectionSnapshot,
       headingContext: payload.headingContext,
-      userCreatedTime: new Date().toISOString(),
       assistantMessageId: "",
       requestId: "",
-      status: "pending",
+      status: "in_progress",
       assistantText: "",
+      streamingText: "",
       usage: null,
       finishReason: "",
-      providerResponseMeta: {},
+      providerResponseMeta: {
+        provider: payload.provider,
+        model: payload.model
+      },
       errorCode: "",
       responseMessage: "等待模型返回..."
     };
+    // UI 先插入一个本地 pending 条目，后面再用 request-started 补齐 requestId/assistantMessageId。
     conversationEntries.value = [...conversationEntries.value, pendingEntry];
     currentSessionContextSignature.value = buildContextSignature({
       text: payload.selectionSnapshot.text,
@@ -450,66 +470,118 @@ async function sendCurrentQuestion(options) {
       headingText: payload.headingContext.headingText
     });
 
-    let result;
-    try {
-      result = await sendLlmMessage(payload);
-    } catch (error) {
-      markPendingEntryFailed(pendingEntry, error);
-      return;
-    }
+    const stream = startLlmMessageStream(payload, {
+      onStarted(event) {
+        if (!isActiveStreamTarget(documentId, targetSessionId)) {
+          return;
+        }
+        pendingEntry.assistantMessageId = event.assistantMessageId || pendingEntry.assistantMessageId;
+        pendingEntry.requestId = event.requestId || pendingEntry.requestId;
+        pendingEntry.providerResponseMeta = {
+          ...(pendingEntry.providerResponseMeta || {}),
+          ...(event.providerResponseMeta || {}),
+          provider: event.provider || pendingEntry.providerResponseMeta?.provider,
+          model: event.model || pendingEntry.providerResponseMeta?.model
+        };
+        currentRequestId.value = event.requestId || "";
+        currentRequestState.value = "in_progress";
+        conversationEntries.value = [...conversationEntries.value];
+      },
+      onDelta(event) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+          return;
+        }
+        pendingEntry.status = "in_progress";
+        pendingEntry.streamingText = `${pendingEntry.streamingText || ""}${event?.delta || ""}`;
+        pendingEntry.responseMessage = "正在请求模型";
+        conversationEntries.value = [...conversationEntries.value];
+      },
+      onMeta(event) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+          return;
+        }
+        pendingEntry.usage = event?.usage || pendingEntry.usage;
+        pendingEntry.finishReason = event?.finishReason || pendingEntry.finishReason;
+        pendingEntry.providerResponseMeta = {
+          ...(pendingEntry.providerResponseMeta || {}),
+          ...(event?.providerResponseMeta || {})
+        };
+        conversationEntries.value = [...conversationEntries.value];
+      },
+      onCompleted(event) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+          return;
+        }
+        applyStreamTerminalResult(pendingEntry, {
+          ...event,
+          status: "completed",
+          assistantText: event?.assistantText || pendingEntry.streamingText
+        });
+      },
+      onCancelled(event) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+          return;
+        }
+        applyStreamTerminalResult(pendingEntry, {
+          ...event,
+          status: "cancelled",
+          errorCode: event?.errorCode || "LLM_REQUEST_CANCELLED"
+        });
+        lastCancelled.value = true;
+      },
+      async onError(eventOrError) {
+        if (isTerminalStreamPayload(eventOrError)) {
+          applyStreamTerminalResult(pendingEntry, {
+            ...eventOrError,
+            status: "failed"
+          });
+          return;
+        }
+        // 网络中断或页面切换导致的非终态异常，只允许做一次 request 查询补偿。
+        await reconcileRequestOnce(pendingEntry, targetSessionId, documentId, eventOrError);
+      },
+      async onComplete() {
+        if (pendingEntry.status === "in_progress") {
+          // 某些代理层会直接结束连接而不补 terminal event，这里也做一次最终态对账。
+          await reconcileRequestOnce(pendingEntry, targetSessionId, documentId, null);
+        }
+      }
+    });
 
-    if (documentId !== props.runtimeContext.documentId || targetSessionId !== currentSessionId.value) {
-      // stale response：文档或线程已切换时，旧请求只能静默丢弃，不能回写到当前 UI。
-      return;
-    }
-
-    pendingEntry.assistantMessageId = result.assistantMessageId || pendingEntry.assistantMessageId;
-    pendingEntry.requestId = result.requestId || "";
-    applyRequestResult(pendingEntry, result);
-    await refreshSessions(documentId);
-
-    if (result.status === "in_progress") {
-      currentRequestId.value = result.requestId;
-      currentRequestState.value = "in_progress";
-      startPolling(result.requestId, targetSessionId, pendingEntry);
-    } else {
-      currentRequestId.value = "";
-      currentRequestState.value = "";
-    }
-
+    activeStream.value = stream;
+    currentRequestState.value = "in_progress";
+    await stream.ready;
     if (!retryPayload) {
       draftQuestion.value = "";
     }
   } catch (error) {
-    threadError.value = toThreadError(error);
+    markPendingEntryFailed(conversationEntries.value.at(-1), error);
   }
 }
 
-function startPolling(requestId, sessionId, pendingEntry) {
-  clearPolling();
-  currentRequestId.value = requestId;
-  currentRequestState.value = "in_progress";
-  pollTimer = window.setInterval(async () => {
-    const documentId = props.runtimeContext.documentId;
-    try {
-      const result = await getLlmRequest(requestId, documentId);
-      if (documentId !== props.runtimeContext.documentId || sessionId !== currentSessionId.value || requestId !== currentRequestId.value) {
-        // stale response：documentId/sessionId/requestId 任一不匹配就直接丢弃。
-        return;
-      }
-      applyRequestResult(pendingEntry, result);
-      if (["completed", "failed", "cancelled"].includes(result.status)) {
-        clearPolling();
-        currentRequestId.value = "";
-        currentRequestState.value = "";
-      }
-    } catch (error) {
-      clearPolling();
-      currentRequestId.value = "";
-      currentRequestState.value = "";
-      threadError.value = toThreadError(error);
+async function reconcileRequestOnce(entry, sessionId, documentId, originalError) {
+  // 流式通道异常时，只做一次最终态回查，避免浏览器和服务端反复轮询同一 request。
+  if (!entry || entry.reconciled) {
+    return;
+  }
+  entry.reconciled = true;
+  if (!entry.requestId) {
+    markPendingEntryFailed(entry, originalError || apiLikeError("STREAM_INTERRUPTED", "流式请求中断"));
+    return;
+  }
+  try {
+    const result = await getLlmRequest(entry.requestId, documentId);
+    if (!isCurrentRequestTarget(documentId, sessionId, entry.requestId)) {
+      return;
     }
-  }, pollIntervalMs);
+    if (["completed", "failed", "cancelled"].includes(result.status)) {
+      applyRequestResult(entry, result);
+      return;
+    }
+    markPendingEntryFailed(entry, originalError || apiLikeError("STREAM_INTERRUPTED", "流式请求中断"));
+  } catch (error) {
+    markPendingEntryFailed(entry, error);
+  }
 }
 
 async function cancelSending() {
@@ -518,12 +590,10 @@ async function cancelSending() {
   }
   currentRequestState.value = "cancelling";
   try {
+    activeStream.value?.abort?.();
     const result = await cancelLlmRequest(currentRequestId.value, props.runtimeContext.documentId);
     const currentEntry = conversationEntries.value.find(entry => entry.requestId === result.requestId) || conversationEntries.value.at(-1);
     applyRequestResult(currentEntry, result);
-    clearPolling();
-    currentRequestId.value = "";
-    currentRequestState.value = "";
     lastCancelled.value = true;
   } catch (error) {
     currentRequestState.value = "in_progress";
@@ -531,31 +601,74 @@ async function cancelSending() {
   }
 }
 
-function markPendingEntryFailed(entry, error) {
-  entry.status = "failed";
-  entry.errorCode = error?.errorCode || "NETWORK_ERROR";
-  entry.responseMessage = error?.message || "请求失败";
-  conversationEntries.value = [...conversationEntries.value];
-  threadError.value = toThreadError(error);
+function applyStreamTerminalResult(entry, event) {
+  // 把 SSE terminal event 规范化成与 GET /requests/{id} 相同的结构，后续统一复用 applyRequestResult。
+  applyRequestResult(entry, {
+    documentId: props.runtimeContext.documentId,
+    requestId: event.requestId || entry.requestId,
+    sessionId: event.sessionId || currentSessionId.value,
+    assistantMessageId: event.assistantMessageId || entry.assistantMessageId,
+    status: event.status,
+    assistantText: event.assistantText || "",
+    usage: event.usage || null,
+    finishReason: event.finishReason || "",
+    providerResponseMeta: event.providerResponseMeta || entry.providerResponseMeta || {},
+    errorCode: event.errorCode || "",
+    startedTime: event.startedTime || "",
+    finishedTime: event.finishedTime || ""
+  });
 }
 
 function applyRequestResult(entry, result) {
   if (!entry) {
     return;
   }
+  // 不论结果来自流式终态、取消接口还是最终态回查，UI 收口都在这里，避免三套状态机。
   entry.assistantMessageId = result.assistantMessageId || entry.assistantMessageId;
   entry.requestId = result.requestId || entry.requestId;
   entry.status = result.status;
   entry.assistantText = result.assistantText || "";
+  entry.streamingText = "";
   entry.usage = result.usage || null;
   entry.finishReason = result.finishReason || "";
-  entry.providerResponseMeta = result.providerResponseMeta || {};
+  entry.providerResponseMeta = result.providerResponseMeta || entry.providerResponseMeta || {};
   entry.errorCode = result.errorCode || "";
   entry.responseMessage = humanizeResult(result);
   conversationEntries.value = [...conversationEntries.value];
-  if (result.status === "cancelled") {
-    lastCancelled.value = true;
+  if (["completed", "failed", "cancelled"].includes(result.status) && currentRequestId.value === entry.requestId) {
+    currentRequestId.value = "";
+    currentRequestState.value = "";
+    activeStream.value = null;
   }
+}
+
+function markPendingEntryFailed(entry, error) {
+  if (!entry) {
+    return;
+  }
+  entry.status = "failed";
+  entry.errorCode = error?.errorCode || "NETWORK_ERROR";
+  entry.responseMessage = error?.message || "请求失败";
+  entry.streamingText = "";
+  conversationEntries.value = [...conversationEntries.value];
+  currentRequestId.value = "";
+  currentRequestState.value = "";
+  activeStream.value = null;
+  threadError.value = toThreadError(error);
+}
+
+function isTerminalStreamPayload(value) {
+  return Boolean(value && typeof value === "object" && ("errorCode" in value || "requestId" in value));
+}
+
+function isActiveStreamTarget(documentId, sessionId) {
+  return documentId === props.runtimeContext.documentId && sessionId === currentSessionId.value;
+}
+
+function isCurrentRequestTarget(documentId, sessionId, requestId) {
+  return documentId === props.runtimeContext.documentId
+    && sessionId === currentSessionId.value
+    && (!currentRequestId.value || requestId === currentRequestId.value || !requestId);
 }
 
 function humanizeResult(result) {
@@ -581,21 +694,31 @@ function humanizeResponseState(message) {
   return message.status || "completed";
 }
 
-function clearPolling() {
-  if (pollTimer !== null) {
-    window.clearInterval(pollTimer);
-    pollTimer = null;
-  }
+function handleRemoveSelection() {
+  isExcludedSelection.value = true;
+}
+
+function handleManualCapture() {
+  isExcludedSelection.value = false;
+  emit("capture-selection");
+}
+
+function buildContextSignature(context) {
+  return JSON.stringify([
+    context?.text || "",
+    Boolean(context?.emptySelection),
+    context?.headingText || ""
+  ]);
 }
 
 function isBootstrapStale(token, documentId) {
+  // 切文档后的 capability/session 晚到响应必须直接丢弃。
   return token !== bootstrapToken || documentId !== props.runtimeContext.documentId;
 }
 
 function isSessionLoadStale(token, sessionId, documentId) {
-  return token !== sessionLoadToken
-    || sessionId !== sessionLoadRequestedId
-    || documentId !== props.runtimeContext.documentId;
+  // 切线程后的详情请求也需要同样的 stale guard，避免旧线程消息覆盖当前线程。
+  return token !== sessionLoadToken || sessionId !== sessionLoadRequestedId || documentId !== props.runtimeContext.documentId;
 }
 
 function toThreadError(error) {
@@ -605,12 +728,10 @@ function toThreadError(error) {
   };
 }
 
-function buildContextSignature(context) {
-  return JSON.stringify([
-    context?.text || "",
-    Boolean(context?.emptySelection),
-    context?.headingText || ""
-  ]);
+function apiLikeError(errorCode, message) {
+  const error = new Error(message);
+  error.errorCode = errorCode;
+  return error;
 }
 
 function openRetryDialog(entry) {
@@ -639,6 +760,7 @@ function confirmSnapshotDecision(createNewSessionFirst) {
 }
 
 async function startNewChat() {
+  abortActiveStream();
   currentSessionId.value = "";
   currentSessionTitle.value = "新会话";
   currentSessionContextSignature.value = "";
@@ -649,8 +771,8 @@ async function startNewChat() {
       const session = await createLlmSession(props.runtimeContext.documentId);
       applySessionSummary(session);
       await refreshSessions(props.runtimeContext.documentId);
-    } catch(err) {
-      threadError.value = toThreadError(err);
+    } catch (error) {
+      threadError.value = toThreadError(error);
     }
   }
 }
@@ -663,21 +785,18 @@ async function submitInsertImage() {
       inputPattern: /^https?:\/\/.+/,
       inputErrorMessage: "格式不正确，必须以 http:// 或 https:// 开头。"
     });
-    
     if (result.value && result.value.trim()) {
-      isInsertingImage.value = true;
-      try {
-        await emit("insert-image", result.value.trim());
-      } finally {
-        isInsertingImage.value = false;
-      }
+      await emit("insert-image", result.value.trim());
     }
-  } catch (cancel) {
-    // cancelled
+  } catch {
+    // ignore cancel
   }
 }
 
 function handleCopy(text) {
+  if (!text) {
+    return;
+  }
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).then(() => {
       ElMessage.success("已复制到剪贴板");
@@ -689,9 +808,10 @@ function handleCopy(text) {
 
 function handleRegenerate(entryIndex) {
   const entry = conversationEntries.value[entryIndex];
-  if (!entry) return;
-  // Automatically re-send the question from the targeted entry
-  sendCurrentQuestion({
+  if (!entry) {
+    return;
+  }
+  void sendCurrentQuestion({
     retryConfirmed: true,
     retryPayload: {
       question: entry.question,
@@ -701,22 +821,6 @@ function handleRegenerate(entryIndex) {
   });
 }
 
-function handleOutlineCommand(node) {
-  emit('jump-to-heading', node);
-}
-
-const flatOutlineItems = computed(() => {
-  const result = [];
-  function flatten(nodes, depth = 0) {
-    for (const node of nodes || []) {
-      result.push({ ...node, depth });
-      if (node.children?.length) flatten(node.children, depth + 1);
-    }
-  }
-  flatten(props.runtimeContext.outlineTreeData || []);
-  return result;
-});
-
 function handleDeleteMessage(entryIndex) {
   ElMessageBox.confirm("确定删除这条问答?", "删除确认", {
     confirmButtonText: "删除",
@@ -724,211 +828,213 @@ function handleDeleteMessage(entryIndex) {
     type: "warning"
   }).then(() => {
     conversationEntries.value.splice(entryIndex, 1);
+    conversationEntries.value = [...conversationEntries.value];
   }).catch(() => {});
+}
+
+function handleOutlineCommand(node) {
+  emit("jump-to-heading", node);
+}
+
+function renderAssistantText(entry) {
+  return entry.assistantText || entry.streamingText || "";
 }
 </script>
 
 <template>
   <div class="ai-workbench-shell">
-    <div class="workbench-top-bar" style="display: flex; align-items: center; padding: 12px 16px; min-height: 48px; border-bottom: 1px solid var(--el-border-color-lighter);">
-      <div style="flex: 1; display: flex; gap: 8px; align-items: center;">
+    <div class="workbench-top-bar">
+      <div class="top-actions">
         <el-tooltip content="历史会话" placement="bottom">
-          <el-button text @click="drawerVisible = true" style="padding: 4px; margin: 0;">
-            <el-icon :size="18"><Menu /></el-icon>
+          <el-button text @click="drawerVisible = true">
+            <el-icon><Menu /></el-icon>
           </el-button>
         </el-tooltip>
         <el-tooltip content="新建对话" placement="bottom">
-          <el-button text @click="startNewChat" style="padding: 4px; margin: 0;">
-            <el-icon :size="18"><Plus /></el-icon>
+          <el-button text @click="startNewChat">
+            <el-icon><Plus /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip :content="topStatusText" placement="bottom">
-          <div class="top-status workbench-header-status" :class="[capabilityStatus, snapshotState]" style="margin: 0; align-self: auto; text-align: left; cursor: default;">
-            {{ shortTopStatusText }}
-          </div>
-        </el-tooltip>
+        <div class="workbench-status">{{ topStatusText }}</div>
       </div>
-      <div style="max-width: 40%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-        <span class="eyebrow" style="margin: 0; text-transform: none; color: var(--el-text-color-secondary);">{{ currentSessionTitle || "新会话" }}</span>
-      </div>
+      <div class="session-title">当前会话：{{ currentSessionTitle }}</div>
     </div>
 
-    <div v-if="capabilityStatus === 'capability-disabled'" class="capability-disabled" style="margin: 0 16px;">
+    <div v-if="capabilityStatus === 'capability-disabled'" class="capability-disabled">
       <p>llmAvailable=false</p>
       <p>disabledReason: {{ disabledReason }}</p>
       <p>输入区已禁用，请先打开后端 LLM 配置。</p>
     </div>
 
-      <el-drawer
-        v-model="drawerVisible"
-        title="历史会话"
-        direction="ltr"
-        size="300px"
-      >
-        <div class="session-list">
-          <el-button
-            v-for="session in sessions"
-            :key="session.sessionId"
-            class="session-item"
-            :class="{ active: session.sessionId === currentSessionId }"
-            @click="selectSession(session.sessionId); drawerVisible = false"
-            plain
-          >
-            <div class="session-info">
-              <strong>{{ session.title }}</strong>
-              <span>{{ session.updatedTime || session.documentId }}</span>
-            </div>
+    <el-drawer v-model="drawerVisible" title="历史会话" direction="ltr" size="300px">
+      <div class="session-list">
+        <el-button
+          v-for="session in sessions"
+          :key="session.sessionId"
+          class="session-item"
+          :class="{ active: session.sessionId === currentSessionId }"
+          plain
+          @click="selectSession(session.sessionId); drawerVisible = false"
+        >
+          <div class="session-info">
+            <strong>{{ session.title }}</strong>
+            <span>{{ session.updatedTime || session.documentId }}</span>
+          </div>
+        </el-button>
+      </div>
+    </el-drawer>
+
+    <main class="thread-panel">
+      <div v-if="threadError" class="thread-error-card">
+        <strong>{{ threadError.errorCode || "ERROR" }}</strong>
+        <span>{{ threadError.message }}</span>
+      </div>
+
+      <div class="toolbox">
+        <div class="toolbox-actions">
+          <el-button size="small" @click="submitInsertImage">
+            <el-icon><Picture /></el-icon>
+            <span>插入网图</span>
           </el-button>
+          <el-button size="small" @click="handleManualCapture" :type="snapshotState === 'snapshot-ready' && !isExcludedSelection ? 'success' : 'default'">
+            <el-icon><Crop /></el-icon>
+            <span>{{ snapshotState === 'snapshot-ready' && !isExcludedSelection ? '已选择文本' : '选中文本' }}</span>
+          </el-button>
+          <el-button size="small" @click="emit('refresh-outline')">
+            <el-icon><List /></el-icon>
+            <span>刷新目录</span>
+          </el-button>
+          <el-dropdown @command="handleOutlineCommand" trigger="click">
+            <el-button size="small">
+              <span>跳转章节</span>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu style="max-height: calc(100vh - 280px); overflow-y: auto;">
+                <el-dropdown-item
+                  v-for="node in flatOutlineItems"
+                  :key="node.id"
+                  :command="node"
+                  :style="{ paddingLeft: (12 + node.depth * 12) + 'px' }"
+                >
+                  <span class="outline-level-tag">H{{ node.level }}</span>{{ node.label || node.text }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
-      </el-drawer>
+      </div>
 
-      <main class="thread-panel" style="padding-top: 16px;">
-        <div v-if="threadError" class="thread-error-card" style="margin: 0 16px 12px;">
-          <strong>{{ threadError.errorCode || "ERROR" }}</strong>
-          <span>{{ threadError.message }}</span>
-        </div>
+      <div class="thread-list">
+        <div v-for="(entry, index) in conversationEntries" :key="entry.key" class="thread-entry">
+          <div class="bubble user-bubble">
+            <p>{{ entry.question }}</p>
+          </div>
 
-        <div style="margin: 0 16px 12px; border: 1px solid var(--el-border-color); border-radius: 8px; overflow: hidden; padding: 0 12px; background: var(--el-bg-color);">
-          <el-collapse style="border-top: none; border-bottom: none;">
-            <el-collapse-item title="文档工具箱" name="1">
-              <div class="action-tools" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <el-tooltip content="插入网络图片" placement="top">
-                  <el-button size="small" :disabled="isInsertingImage" @click="submitInsertImage">
-                    <el-icon><Picture /></el-icon> 插入网图
-                  </el-button>
-                </el-tooltip>
-
-                <el-tooltip :content="snapshotState === 'snapshot-ready' && !isExcludedSelection ? '已选择文本' : '选中文本'" placement="top">
-                  <el-button size="small" @click="handleManualCapture" :type="snapshotState === 'snapshot-ready' && !isExcludedSelection ? 'success' : 'default'">
-                    <el-icon><Crop /></el-icon> {{ snapshotState === 'snapshot-ready' && !isExcludedSelection ? '已选择文本' : '选中文本' }}
-                  </el-button>
-                </el-tooltip>
-                
-                <el-tooltip content="刷新文档目录" placement="top">
-                  <el-button size="small" @click="emit('refresh-outline')">
-                    <el-icon><List /></el-icon> 刷新目录
-                  </el-button>
-                </el-tooltip>
-
-                <el-tooltip content="跳转到指定文档章节" placement="top">
-                  <el-dropdown @command="handleOutlineCommand" trigger="click">
-                    <el-button size="small">
-                      跳转到章节<el-icon class="el-icon--right"><arrow-down /></el-icon>
-                    </el-button>
-                    <template #dropdown>
-                    <el-dropdown-menu style="max-height: calc(100vh - 280px); overflow-y: auto;">
-                      <el-dropdown-item
-                        v-for="node in flatOutlineItems"
-                        :key="node.id"
-                        :command="node"
-                        :style="{ paddingLeft: (12 + node.depth * 12) + 'px' }"
-                      >
-                        <span class="outline-level-tag" style="font-size: 10px; margin-right: 6px; display: inline-block; min-width: 22px; text-align: center;">H{{ node.level }}</span>{{ node.label || node.text }}
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-                </el-tooltip>
-              </div>
-            </el-collapse-item>
-          </el-collapse>
-        </div>
-
-        <div class="thread-list" style="padding: 0 16px;">
-          <div v-for="(entry, index) in conversationEntries" :key="entry.key" class="thread-entry" style="margin-bottom: 24px; display: flex; flex-direction: column;">
-            <div class="bubble user-bubble" style="background: var(--el-color-primary-light-9); color: var(--el-text-color-primary); align-self: flex-end; border-radius: 12px 12px 0 12px; max-width: 85%; border: none;">
-              <p style="margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.6;">{{ entry.question }}</p>
+          <div class="bubble assistant-bubble" :class="entry.status">
+            <div class="panel-title-row" v-if="entry.status === 'failed'">
+              <p class="bubble-label">请求失败</p>
+              <el-button size="small" circle plain @click="openRetryDialog(entry)">
+                <el-icon><Refresh /></el-icon>
+              </el-button>
             </div>
 
-            <div class="bubble assistant-bubble" :class="entry.status" style="background: transparent; border: none; padding: 4px 0 8px 0; align-self: flex-start; width: 100%;">
-              <div class="panel-title-row" v-if="entry.status === 'failed'">
-                <p class="bubble-label" style="color: var(--el-color-danger); margin: 0;">请求失败</p>
-                <el-tooltip content="重试" placement="top">
-                  <el-button size="small" circle plain @click="openRetryDialog(entry)">
-                    <el-icon><Refresh /></el-icon>
-                  </el-button>
-                </el-tooltip>
-              </div>
-              
-              <div v-if="entry.assistantText" class="markdown-body" style="line-height: 1.6;" v-html="md.render(entry.assistantText)"></div>
-              <p v-else style="margin: 0; color: var(--el-text-color-secondary);">{{ entry.responseMessage }}</p>
-              
-              <div class="message-actions" style="margin-top: 6px; display: flex; gap: 2px;" v-if="entry.status !== 'failed'">
-                <el-tooltip content="复制内容" placement="top">
-                  <el-button size="small" text @click="handleCopy(entry.assistantText)"><el-icon size="16"><DocumentCopy /></el-icon></el-button>
-                </el-tooltip>
-                <el-tooltip content="重新生成回复" placement="top">
-                  <el-button size="small" text @click="handleRegenerate(index)"><el-icon size="16"><Refresh /></el-icon></el-button>
-                </el-tooltip>
-                <el-tooltip content="删除此对话" placement="top">
-                  <el-button size="small" text @click="handleDeleteMessage(index)" type="danger"><el-icon size="16"><Delete /></el-icon></el-button>
-                </el-tooltip>
-              </div>
+            <div v-if="renderAssistantText(entry)" class="markdown-body" v-html="md.render(renderAssistantText(entry))"></div>
+            <p v-else class="assistant-placeholder">{{ entry.responseMessage }}</p>
 
-              <div class="meta-line" style="margin-top: 8px; opacity: 0.7;" v-if="entry.status !== 'failed'">
-                <span>errorCode: {{ entry.errorCode || "-" }}</span>
-                <span>finishReason: {{ entry.finishReason || "-" }}</span>
-                <span>model: {{ entry.providerResponseMeta?.model || "-" }}</span>
-              </div>
-              <div class="meta-line" style="opacity: 0.7;" v-if="entry.status !== 'failed' && entry.usage?.totalTokens">
-                <span>promptTokens: {{ entry.usage?.promptTokens ?? "-" }}</span>
-                <span>completionTokens: {{ entry.usage?.completionTokens ?? "-" }}</span>
-                <span>totalTokens: {{ entry.usage?.totalTokens ?? "-" }}</span>
-              </div>
+            <div class="message-actions" v-if="entry.status !== 'failed'">
+              <el-button size="small" text @click="handleCopy(renderAssistantText(entry))">
+                <el-icon><DocumentCopy /></el-icon>
+              </el-button>
+              <el-button size="small" text @click="handleRegenerate(index)">
+                <el-icon><Refresh /></el-icon>
+              </el-button>
+              <el-button size="small" text type="danger" @click="handleDeleteMessage(index)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
             </div>
-          </div>
-        </div>
-      </main>
 
-      <div class="composer-footer">
-        <div class="composer" style="border: 1px solid var(--el-border-color); border-radius: 12px; padding: 12px; background: var(--el-bg-color);">
-          <div class="context-chips" style="display: flex; gap: 8px; font-size: 12px; color: var(--el-text-color-regular); margin-bottom: 8px;" v-if="runtimeContext.activeHeadingNode || (snapshotState === 'snapshot-ready' && !isExcludedSelection)">
-            <el-tag size="small" type="info" v-if="runtimeContext.activeHeadingNode"><el-icon><Collection /></el-icon> {{ runtimeContext.activeHeadingNode.text || runtimeContext.activeHeadingNode.label }}</el-tag>
-            
-            <el-tooltip content="取消选中" placement="top" v-if="snapshotState === 'snapshot-ready' && !isExcludedSelection">
-              <el-tag size="small" type="info" closable @close="handleRemoveSelection" style="cursor: pointer;">
-                <el-icon><CopyDocument /></el-icon> 已获取选中文本片段
-              </el-tag>
-            </el-tooltip>
-          </div>
-          
-          <el-input
-            v-model="draftQuestion"
-            type="textarea"
-            :rows="1"
-            :autosize="{ minRows: 1, maxRows: 6 }"
-            placeholder="围绕当前选中文本提问..."
-            :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
-            resize="none"
-            style="--el-input-bg-color: transparent; --el-input-border-color: transparent; --el-input-hover-border-color: transparent; --el-input-focus-border-color: transparent; box-shadow: none;"
-          />
-          
-          <div class="composer-actions" style="display: flex; justify-content: flex-end; align-items: center; margin-top: 8px;">
-            <div>
-              <el-button
-                v-if="currentRequestId"
-                size="small"
-                circle
-                @click="cancelSending"
-                title="取消发送"
-              >
-                <el-icon><Close /></el-icon>
-              </el-button>
-              <el-button
-                type="primary"
-                size="small"
-                circle
-                :disabled="loading || closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId) || !draftQuestion.trim()"
-                @click="handleSendClick"
-                title="发送问题"
-                style="margin-left: 8px;"
-              >
-                <el-icon><Position /></el-icon>
-              </el-button>
+            <div class="meta-line">
+              <span>errorCode: {{ entry.errorCode || "-" }}</span>
+              <span>finishReason: {{ entry.finishReason || "-" }}</span>
+              <span>provider: {{ entry.providerResponseMeta?.provider || "-" }}</span>
+              <span>model: {{ entry.providerResponseMeta?.model || "-" }}</span>
+            </div>
+            <div class="meta-line" v-if="entry.usage?.totalTokens">
+              <span>promptTokens: {{ entry.usage?.promptTokens ?? "-" }}</span>
+              <span>completionTokens: {{ entry.usage?.completionTokens ?? "-" }}</span>
+              <span>totalTokens: {{ entry.usage?.totalTokens ?? "-" }}</span>
             </div>
           </div>
         </div>
       </div>
+    </main>
+
+    <div class="composer-footer">
+      <div class="composer">
+        <div class="context-chips" v-if="runtimeContext.activeHeadingNode || (snapshotState === 'snapshot-ready' && !isExcludedSelection)">
+          <el-tag size="small" type="info" v-if="runtimeContext.activeHeadingNode">
+            <el-icon><Collection /></el-icon>
+            {{ runtimeContext.activeHeadingNode.text || runtimeContext.activeHeadingNode.label }}
+          </el-tag>
+          <el-tag size="small" type="info" closable @close="handleRemoveSelection" v-if="snapshotState === 'snapshot-ready' && !isExcludedSelection">
+            已获取选中文本片段
+          </el-tag>
+        </div>
+
+        <div class="provider-row" v-if="providerOptions.length">
+          <el-select v-model="selectedProvider" size="small" style="width: 180px;">
+            <el-option
+              v-for="option in providerOptions"
+              :key="option.provider"
+              :label="option.label || option.provider"
+              :value="option.provider"
+            />
+          </el-select>
+          <el-select v-model="selectedModel" size="small" style="width: 220px;">
+            <el-option
+              v-for="model in availableModels"
+              :key="model"
+              :label="model"
+              :value="model"
+            />
+          </el-select>
+        </div>
+
+        <el-input
+          v-model="draftQuestion"
+          type="textarea"
+          :rows="1"
+          :autosize="{ minRows: 1, maxRows: 6 }"
+          placeholder="围绕当前选中文本提问..."
+          :disabled="props.loading || props.closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
+          resize="none"
+        />
+
+        <div class="composer-actions">
+          <div>
+            <el-button
+              v-if="currentRequestId"
+              size="small"
+              circle
+              @click="cancelSending"
+              title="取消发送"
+            >
+              <el-icon><Close /></el-icon>
+            </el-button>
+            <el-button
+              type="primary"
+              size="small"
+              circle
+              :disabled="!canSend"
+              @click="handleSendClick"
+              title="发送问题"
+            >
+              <el-icon><Position /></el-icon>
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div v-if="showRetryDialog" class="dialog-mask">
       <div class="dialog-card">
@@ -960,161 +1066,77 @@ function handleDeleteMessage(entryIndex) {
 </template>
 
 <style scoped>
-.action-tools .el-button {
-  margin-right: 8px;
-}
-.action-tools .el-input {
-  margin-left: 0;
-}
 .ai-workbench-shell {
   width: 800px;
   max-width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  height: 100%;
 }
 
-@media (max-width: 1439px) {
-  .ai-workbench-shell {
-    width: min(70vw, 800px);
-  }
-}
-
-@media (max-width: 1023px) {
-  .ai-workbench-shell {
-    width: 100vw;
-  }
-}
-
-.workbench-header,
-.panel-title-row,
+.workbench-top-bar,
+.top-actions,
+.toolbox-actions,
 .composer-actions,
-.dialog-actions {
+.dialog-actions,
+.panel-title-row,
+.message-actions,
+.meta-line,
+.provider-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.workbench-grid {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 16px;
-  min-height: 0;
-  flex: 1;
-}
-
-@media (max-width: 1023px) {
-  .workbench-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.session-panel,
-.context-card,
-.capability-disabled,
-.dialog-card,
-.image-panel {
-  border: 1px solid var(--el-border-color);
-  border-radius: 12px;
-  background: var(--el-bg-color);
-}
-
-.session-panel,
-.capability-disabled,
-.dialog-card,
-.image-panel {
-  padding: 16px;
-}
-
-.thread-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  padding-bottom: 8px;
-}
-
-.composer-footer {
-  flex-shrink: 0;
-  padding: 0 16px 16px;
-  background: var(--el-bg-color);
-  border-top: 1px solid var(--el-border-color-lighter);
-  padding-top: 8px;
-}
-
-.context-toolbar {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-@media (max-width: 1023px) {
-  .context-toolbar {
-    grid-template-columns: 1fr;
-  }
-}
-
-.context-card {
-  padding: 12px;
-}
-
-.eyebrow,
-.bubble-label,
-.snapshot-badge,
-.meta-line,
-.session-item span {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.title {
-  margin: 4px 0 0;
-  font-size: 20px;
-}
-
-.top-status {
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: var(--el-fill-color);
-  font-size: 12px;
-}
-
-.capability-disabled {
-  color: var(--el-color-danger);
-}
-
-.session-list,
-.thread-list,
-.outline-list {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
 }
 
-.session-item,
-.outline-item,
-.ghost-button,
-.primary-button {
-  border-radius: 10px;
+.workbench-top-bar,
+.toolbox,
+.composer,
+.capability-disabled,
+.thread-error-card,
+.dialog-card {
   border: 1px solid var(--el-border-color);
   background: var(--el-bg-color);
-  padding: 10px 12px;
-  cursor: pointer;
-  text-align: left;
+  border-radius: 8px;
 }
 
-.session-item.active,
-.primary-button {
-  border-color: var(--el-color-primary);
-  background: rgba(64, 158, 255, 0.08);
+.workbench-top-bar {
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.workbench-status {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.session-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
+
+.thread-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toolbox,
+.thread-error-card,
+.capability-disabled {
+  padding: 12px 16px;
 }
 
 .thread-list {
-  flex: 1;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0 16px 16px;
 }
 
 .thread-entry {
@@ -1124,90 +1146,134 @@ function handleDeleteMessage(entryIndex) {
 }
 
 .bubble {
-  border-radius: 12px;
+  max-width: 100%;
+}
+
+.user-bubble {
+  align-self: flex-end;
+  background: var(--el-color-primary-light-9);
+  border-radius: 8px 8px 0 8px;
   padding: 12px;
-  background: var(--el-fill-color-light);
 }
 
-.assistant-bubble.failed {
-  border: 1px solid var(--el-color-danger);
-}
-
-.assistant-bubble.cancelled {
-  border: 1px solid var(--el-color-warning);
-}
-
-.selection-preview {
-  white-space: pre-wrap;
+.user-bubble p {
   margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.assistant-bubble {
+  padding: 0;
+}
+
+.assistant-placeholder {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+}
+
+.composer-footer {
+  padding: 12px 16px 0;
 }
 
 .composer {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  padding: 12px;
 }
 
-.composer-input,
-.image-input {
+.composer-actions {
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-item {
+  justify-content: flex-start;
   width: 100%;
-  min-height: 96px;
-  border-radius: 10px;
-  border: 1px solid var(--el-border-color);
-  padding: 12px;
-  resize: vertical;
-  font: inherit;
-}
-
-.image-input {
-  min-height: 0;
-}
-
-.thread-error-card {
-  border: 1px solid var(--el-color-danger);
-  border-radius: 10px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.dialog-mask {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dialog-card {
-  width: min(520px, calc(100vw - 32px));
-}
-.workbench-header-status {
-  text-align: center;
-  margin-bottom: 12px;
-  align-self: center;
 }
 
 .session-info {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-}
-
-.session-item {
   width: 100%;
-  height: auto;
-  padding: 12px;
-  justify-content: flex-start;
-  margin-bottom: 8px;
-  margin-left: 0;
+  min-width: 0;
 }
 
-.action-tools {
+.session-info span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.outline-level-tag {
+  display: inline-block;
+  min-width: 22px;
+  margin-right: 6px;
+  font-size: 10px;
+  text-align: center;
+}
+
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+.dialog-card {
+  width: min(520px, calc(100vw - 32px));
+  padding: 20px;
+}
+
+.dialog-card h3,
+.dialog-card p {
+  margin-top: 0;
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+}
+
+.primary-button,
+.ghost-button {
+  border-radius: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  cursor: pointer;
+}
+
+.primary-button {
+  background: var(--el-color-primary);
+  color: #fff;
+  border-color: var(--el-color-primary);
+}
+
+@media (max-width: 1023px) {
+  .ai-workbench-shell {
+    width: 100vw;
+  }
+
+  .workbench-top-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .session-title {
+    max-width: 100%;
+  }
 }
 </style>

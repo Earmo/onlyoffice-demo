@@ -4,11 +4,15 @@
 
 ## 配置映射
 
+> Phase 14.2 开始，主链路已经切到 `Spring AI + Spring AI Alibaba + 独立 AI SSE`。旧的 `llm.provider / llm.base-url / llm.api-key / llm.model` 仍保留兼容映射，但推荐使用新的 `llm.default-provider / llm.default-model / llm.providers.*`。
+
 | 环境变量 | Spring 配置键 | 默认值 | 说明 |
 |---|---|---|---|
 | `LLM_ENABLED` | `llm.enabled` | `false` | 是否允许服务端真正发起模型调用 |
 | `LLM_FEATURE_ENABLED` | `llm.feature-enabled` | `true` | 是否向前端暴露 AI 工作台能力 |
-| `LLM_PROVIDER` | `llm.provider` | `openai-compatible` | 当前 provider 策略名 |
+| `LLM_DEFAULT_PROVIDER` | `llm.default-provider` | `alibaba-dashscope` | 默认运行时 provider |
+| `LLM_DEFAULT_MODEL` | `llm.default-model` | provider 默认模型 | 默认运行时 model |
+| `LLM_PROVIDER` | `llm.provider` | 兼容映射 | 旧单 provider 配置兜底键 |
 | `LLM_BASE_URL` | `llm.base-url` | 空 | 上游模型服务 base URL |
 | `LLM_API_KEY` | `llm.api-key` | 空 | 上游模型 API Key，只允许保留在服务端 |
 | `LLM_MODEL` | `llm.model` | 空 | 默认模型名 |
@@ -22,6 +26,31 @@
 - `LLM_ALLOW_HEADING_CONTEXT -> llm.allow-heading-context`
 - `LLM_DEFAULT_SYSTEM_PROMPT -> llm.default-system-prompt`
 
+DashScope starter 对应的 Spring AI 配置：
+
+- `spring.ai.model.chat=dashscope`
+- `spring.ai.dashscope.api-key`
+- `spring.ai.dashscope.base-url`
+- `spring.ai.dashscope.chat.options.model`
+
+推荐 provider 形态：
+
+```yaml
+llm:
+  default-provider: alibaba-dashscope
+  default-model: qwen-plus
+  providers:
+    alibaba-dashscope:
+      label: Alibaba DashScope
+      spring-ai-provider: dashscope
+      api-key: ${LLM_PROVIDER_ALIBABA_API_KEY}
+      base-url: ${LLM_PROVIDER_ALIBABA_BASE_URL:https://dashscope.aliyuncs.com}
+      default-model: ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:qwen-plus}
+      models:
+        - qwen-plus
+        - qwen-max
+```
+
 ## 验证分层
 
 - 自动化验证：使用 fake provider 集成测试，覆盖成功、4xx、5xx、超时、取消后晚到成功等场景。
@@ -30,7 +59,7 @@
 
 当前分层原则：
 
-- fake provider 负责固定 DTO、错误码、访问控制、轮询、取消仲裁和晚到结果丢弃。
+- fake provider 负责固定 DTO、错误码、访问控制、流式事件、取消仲裁和晚到结果丢弃。
 - 真实 provider 只负责确认联通性、实际提示词效果和模型侧限流/风控差异。
 
 ## 自动化范围
@@ -39,6 +68,7 @@
 
 - `GET /api/llm/capability`
 - `POST /api/llm/sessions`
+- `POST /api/llm/messages/stream`
 - `POST /api/llm/messages`
 - `GET /api/llm/requests/{requestId}`
 - `POST /api/llm/requests/{requestId}/cancel`
@@ -52,7 +82,8 @@
 
 - capability disabled
 - stale response 忽略
-- `in_progress -> completed`
+- stream started / delta / completed
+- 断流后单次最终态回查
 - `in_progress -> cancelled`
 - `LLM_SESSION_NOT_FOUND` / `LLM_SESSION_FORBIDDEN` 回退新会话
 - 错误卡片展示 `errorCode`
@@ -79,6 +110,8 @@
    触发一次 provider 失败，确认线程卡片展示 `errorCode`，点击重试后会先展示待复用上下文，再由用户确认发送。
 4. 请求中取消
    让请求进入 `in_progress` 后点击取消，确认顶部状态变为已取消，线程最终停在 `cancelled`。
+5. 流中断后回查终态
+   发送请求后主动断开浏览器网络或中断当前页面请求，确认前端只自动回查一次 `GET /api/llm/requests/{requestId}`，并在服务端已完成时正确显示最终结果。
 5. 重新打开文档默认新空会话但可切回旧线程
    关闭并重新进入同一文档，确认会创建新的空会话，同时旧线程仍可在会话列表切回查看。
 6. Network 面板无 `apiKey` / `Authorization`
@@ -104,7 +137,7 @@ Phase 14 的取消规则固定如下：
 这条规则同时适用于：
 
 - `/api/llm/requests/{requestId}/cancel`
-- 前端轮询中的终态合并
+- 前端流式会话中的终态合并
 - 服务端执行注册表对进行中请求的仲裁
 
 ## 安全边界
@@ -122,6 +155,7 @@ Phase 14 的取消规则固定如下：
 
 允许出现在 `providerResponseMeta` 的字段只保留白名单：
 
+- `provider`
 - `model`
 - `created`
 - `usage.promptTokens`
@@ -155,30 +189,65 @@ Phase 15 写回能力必须直接复用现有线程字段，不重新发起模�
 ### 服务端主流程
 
 1. `LlmController` 接收 `/api/llm/*` 请求，并从 `AccessContextResolver` 解析当前 `tenantId` / `actorUser`。
-2. `LlmConversationService.sendMessage()` 先校验 capability，再通过 `LlmConversationAccessGuard` 确认当前用户确实能访问该 `documentId + sessionId`。
+2. `LlmConversationService.streamMessage()` / `sendMessage()` 先校验 provider/model，再通过 `LlmConversationAccessGuard` 确认当前用户确实能访问该 `documentId + sessionId`。
 3. 服务端先落库 `user message`，再预插 `assistant message(status=pending)`，最后创建 `document_llm_request(status=in_progress)`。
 4. `LlmPromptWindowBuilder` 根据 `historyBudgetTokens` 和 `chars_div_4` 规则裁剪历史窗口，始终保留 system prompt、当前问题和当前快照。
-5. `OpenAiCompatibleLlmProviderStrategy` 把 prompt window 归一化成 openai-compatible `messages`，调用 `/chat/completions`。
-6. provider 返回后，`LlmRequestExecutionRegistry` 先仲裁终态所有权：
+5. `SpringAiProviderRegistry` 解析逻辑 provider，`AlibabaDashScopeSpringAiLlmProvider` 通过 Spring AI `ChatClient` 发起流式对话。
+   `OpenAiCompatibleSpringAiLlmProvider` 则负责标准 OpenAI-compatible `/v1/chat/completions` 流式协议，例如 SiliconFlow。
+6. 流式增量只写到 `text/event-stream`，正式 `assistantText` 只在 terminal path 一次性落库。
+7. provider 返回后，`LlmRequestExecutionRegistry` 先仲裁终态所有权：
    - 若取消先赢，晚到成功直接丢弃
    - 若完成先赢，取消不能再反向覆盖 completed
-7. 服务端将终态写回 `document_llm_request` 和 `document_llm_message`，前端通过 `GET /api/llm/requests/{requestId}` 轮询读取稳定 DTO。
+8. 服务端将终态写回 `document_llm_request` 和 `document_llm_message`，前端只在流中断后用 `GET /api/llm/requests/{requestId}` 做一次最终态回查。
 
 ### 前端主流程
 
 1. `EditorShell` 只维护编辑器生命周期、bridge 和右侧工作台显隐，把聚合后的 `runtimeContext` 传给 `EditorAiWorkbench`。
 2. `EditorAiWorkbench` 首先请求 `getLlmCapability(documentId)`，决定当前是 `capability-enabled` 还是 `capability-disabled`。
 3. capability 可用后，工作台自动 `createLlmSession(documentId)` 建立新空线程，并拉取最近会话列表。
-4. 用户发送问题时，工作台会把当前 `selectionSnapshot`、`headingContext` 和 `retryConfirmed` 一起发给后端。
-5. 若后端在 `requestSyncWaitMillis` 内没完成，前端把请求切到 `in_progress`，每 1500ms 调一次 `getLlmRequest(requestId, documentId)`。
-6. 所有异步响应都要经过 `documentId/sessionId/requestId` 三重 stale guard，不匹配就丢弃，避免切文档或切线程后串线。
-7. 如果发送失败或取消失败，工作台会把错误固化成线程卡片和顶部错误状态，而不是让 pending 条目永远挂住。
+4. 工作台从 capability 读取 `defaultProvider/defaultModel/availableProviders`，允许用户在发送前切换 provider/model。
+5. 用户发送问题时，工作台会把当前 `selectionSnapshot`、`headingContext`、`provider`、`model` 和 `retryConfirmed` 一起发给后端，并直接打开 `POST /api/llm/messages/stream`。
+6. `assistant-delta` 只更新当前 pending 条目的临时显示态；`assistant-completed / assistant-cancelled / assistant-error` 负责终态收口。
+7. 如果流异常结束但没有明确 terminal event，前端只调用一次 `getLlmRequest(requestId, documentId)` 做最终态确认。
+8. 所有异步响应都要经过 `documentId/sessionId/requestId` stale guard，不匹配就丢弃，避免切文档或切线程后串线。
 
 ### 关键代码入口
 
 - 服务端配置入口：`packages/server/onlyoffice-integration-service/src/main/resources/application.yml`
 - 服务端主服务：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/LlmConversationService.java`
-- provider 适配：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/OpenAiCompatibleLlmProviderStrategy.java`
+- provider 适配：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/AlibabaDashScopeSpringAiLlmProvider.java`
+- OpenAI-compatible provider 适配：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/OpenAiCompatibleSpringAiLlmProvider.java`
 - 终态仲裁：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/LlmRequestExecutionRegistry.java`
 - 前端工作台：`packages/web/src/components/editor/EditorAiWorkbench.vue`
 - 前端 API 封装：`packages/web/src/components/editor/editorAiApi.js`
+- 前端 AI SSE helper：`packages/web/src/components/editor/llmMessageStream.js`
+
+## Phase 14.2 阅读顺序
+
+建议按下面顺序读代码，能最快把链路串起来：
+
+1. `application.yml`
+   先确认逻辑 provider、默认模型、`spring-ai-provider` 映射和 base URL。
+2. `LlmConversationService`
+   看 `beginRequest()`、`streamMessage()`、`executeProviderStream()`，理解预落库、流式执行和终态收口。
+3. `LlmRequestExecutionRegistry`
+   看 completed / cancelled / failed 的仲裁规则，理解为什么晚到成功不会覆盖 cancelled。
+4. `AlibabaDashScopeSpringAiLlmProvider` / `OpenAiCompatibleSpringAiLlmProvider`
+   看不同上游协议如何归一化成 `SpringAiProviderChunk`。
+5. `EditorAiWorkbench.vue`
+   看 `loadCapabilityAndBootstrap()`、`sendCurrentQuestion()`、`reconcileRequestOnce()`，理解前端如何接流和防串线。
+6. `llmMessageStream.js`
+   最后看浏览器侧 POST SSE 的拆帧逻辑，确认 terminal event 和断流补偿是怎么进入工作台的。
+
+## Phase 14.2 调试步骤
+
+1. 先看浏览器 Network 里的 `POST /api/llm/messages/stream`
+   确认响应类型是 `text/event-stream`，并且第一帧是 `request-started`。
+2. 再看服务端日志里的 `requestId`
+   用同一个 `requestId` 串起 `document_llm_request`、`document_llm_message` 和 provider 错误日志。
+3. 如果前端停在 `in_progress`
+   先确认是否收到了 `assistant-completed / assistant-error / assistant-cancelled`，没有的话再看 `reconcileRequestOnce()` 是否成功回查。
+4. 如果 provider 返回 404/4xx
+   先检查对应 provider 的 `base-url` 和 `spring-ai-provider` 映射是否正确，再检查模型名是否在 allowlist 中。
+5. 如果切文档后出现串线
+   直接检查 `isBootstrapStale()`、`isSessionLoadStale()` 和 `isCurrentRequestTarget()` 三个 guard 是否命中。

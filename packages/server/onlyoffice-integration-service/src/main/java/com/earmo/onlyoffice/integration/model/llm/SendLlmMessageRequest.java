@@ -12,6 +12,10 @@ public record SendLlmMessageRequest(
     @NotBlank
     @Size(max = 256)
     String sessionId,
+    @Size(max = 128)
+    String provider,
+    @Size(max = 256)
+    String model,
     @NotBlank
     @Size(max = 4000, message = "问题长度不能超过 4000 字符")
     String question,
