@@ -17,9 +17,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
+  private static final long DEFAULT_ASYNC_TIMEOUT_MILLIS = 300000L;
+
   @Override
   public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
-    configurer.setDefaultTimeout(180000L);
+    // 默认 async 超时要显著大于 LLM provider timeout，避免业务层还没来得及收口失败态，
+    // 容器就先把请求判成 AsyncRequestTimeoutException。
+    configurer.setDefaultTimeout(DEFAULT_ASYNC_TIMEOUT_MILLIS);
     configurer.setTaskExecutor(runtimeSseTaskExecutor());
   }
 

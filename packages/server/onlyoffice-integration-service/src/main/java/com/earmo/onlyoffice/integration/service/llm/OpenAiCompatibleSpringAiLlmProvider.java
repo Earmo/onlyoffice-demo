@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -82,6 +83,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
         .bodyValue(payload)
         .retrieve()
         .bodyToFlux(SSE_STRING_TYPE)
+        // Reactor Netty 的 responseTimeout 更偏底层 HTTP 读超时；这里再加一层 Flux timeout，
+        // 覆盖“响应头已返回，但后续 SSE 数据长时间没有任何帧”的场景。
+        .timeout(Duration.ofMillis(request.timeoutMillis()))
         .mapNotNull(ServerSentEvent::data)
         .filter(data -> !data.isBlank())
         // OpenAI-compatible SSE 以 [DONE] 作为终止帧；真正的终态落库由上层服务统一负责。
@@ -180,6 +184,13 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
       );
     }
     if (throwable instanceof WebClientRequestException) {
+      return new LlmApiException(
+          LlmErrorCodes.LLM_PROVIDER_TIMEOUT,
+          HttpStatus.GATEWAY_TIMEOUT,
+          "模型上游服务响应超时。"
+      );
+    }
+    if (throwable instanceof TimeoutException) {
       return new LlmApiException(
           LlmErrorCodes.LLM_PROVIDER_TIMEOUT,
           HttpStatus.GATEWAY_TIMEOUT,

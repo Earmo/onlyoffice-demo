@@ -22,6 +22,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -32,14 +33,18 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.Disposable;
 
 /**
  * Phase 14.2 的会话主服务。
@@ -57,9 +62,11 @@ public class LlmConversationService {
   private static final String STATUS_COMPLETED = "completed";
   private static final String STATUS_FAILED = "failed";
   private static final String STATUS_CANCELLED = "cancelled";
-  // LLM 首 token 可能显著晚于 request-started，流式链路的真正上限由 provider timeout 决定，
-  // 这里关闭 servlet async 超时，避免浏览器已经连上 SSE 后又被容器的固定时钟提前切断。
-  private static final long DEFAULT_STREAM_TIMEOUT_MILLIS = 0L;
+  private static final String CANCEL_SOURCE_USER = "user";
+  private static final String CANCEL_SOURCE_CLIENT_DISCONNECT = "client_disconnect";
+  // 流式链路需要给上游 provider timeout 留收口余量，避免“上游已超时但 servlet 先把请求砍掉”。
+  private static final long STREAM_TIMEOUT_BUFFER_MILLIS = 30000L;
+  private static final long MIN_STREAM_TIMEOUT_MILLIS = 300000L;
   private static final DateTimeFormatter SESSION_TITLE_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
       .withZone(ZoneId.of("Asia/Shanghai"));
 
@@ -238,6 +245,7 @@ public class LlmConversationService {
     // 兼容旧同步接口：内部仍走同一套流式执行逻辑，只做一个很短的同步等待窗口。
     // 若窗口内未完成，就返回 in_progress，由客户端继续通过 request 查询最终态。
     PreparedRequest preparedRequest = beginRequest(request, accessContext);
+    executionRegistry.register(preparedRequest.requestEntity().getRequestId(), preparedRequest.runtimeSelection().provider());
     CompletableFuture<Void> execution = CompletableFuture.runAsync(
         () -> executeProviderStream(preparedRequest, StreamEventSink.noop()),
         llmExecutor
@@ -257,11 +265,24 @@ public class LlmConversationService {
    */
   public SseEmitter streamMessage(SendLlmMessageRequest request, AccessContext accessContext) {
     PreparedRequest preparedRequest = beginRequest(request, accessContext);
-    SseEmitter emitter = new SseEmitter(DEFAULT_STREAM_TIMEOUT_MILLIS);
-    EmitterStreamEventSink sink = new EmitterStreamEventSink(emitter);
+    executionRegistry.register(preparedRequest.requestEntity().getRequestId(), preparedRequest.runtimeSelection().provider());
+    long streamTimeoutMillis = resolveStreamTimeoutMillis(preparedRequest.runtimeSelection().timeoutMillis());
+    SseEmitter emitter = new SseEmitter(streamTimeoutMillis);
+    EmitterStreamEventSink sink = new EmitterStreamEventSink(
+        emitter,
+        () -> cancelPreparedRequest(preparedRequest, CANCEL_SOURCE_CLIENT_DISCONNECT)
+    );
     // request-started 必须先发，前端据此拿到 requestId / assistantMessageId，
     // 后续 delta、取消和断流回查都依赖这两个标识。
     sink.send("request-started", startedEvent(preparedRequest));
+    log.info(
+        "Opened llm stream, requestId={}, provider={}, model={}, providerTimeoutMs={}, streamTimeoutMs={}",
+        preparedRequest.requestEntity().getRequestId(),
+        preparedRequest.runtimeSelection().providerName(),
+        preparedRequest.runtimeSelection().model(),
+        preparedRequest.runtimeSelection().timeoutMillis(),
+        streamTimeoutMillis
+    );
     CompletableFuture.runAsync(() -> executeProviderStream(preparedRequest, sink), llmExecutor);
     return emitter;
   }
@@ -299,14 +320,6 @@ public class LlmConversationService {
     if (!cancelClaimed && executionRegistry.hasExecution(requestId)) {
       return getRequest(documentId, requestId, accessContext);
     }
-    documentLlmRequestRepository.markCancelRequested(requestId, accessContext.tenantId(), accessContext.actorUser(), "user");
-
-    requestEntity.setCancelRequested(true);
-    requestEntity.setCancelSource("user");
-    requestEntity.setStatus(STATUS_CANCELLED);
-    requestEntity.setFinishedTime(Instant.now());
-    documentLlmRequestRepository.update(requestEntity);
-
     DocumentLlmMessageEntity assistantMessage = documentLlmMessageRepository.findMessageByScope(
             requestEntity.getAssistantMessageId(),
             documentId,
@@ -314,11 +327,7 @@ public class LlmConversationService {
             accessContext.actorUser()
         )
         .orElseThrow(() -> new LlmApiException(LlmErrorCodes.LLM_SESSION_NOT_FOUND, HttpStatus.NOT_FOUND, "assistant 消息不存在。"));
-    assistantMessage.setStatus(STATUS_CANCELLED);
-    assistantMessage.setAssistantText(null);
-    assistantMessage.setErrorCode(LlmErrorCodes.LLM_REQUEST_CANCELLED);
-    assistantMessage.setFinishReason(null);
-    documentLlmMessageRepository.update(assistantMessage);
+    persistCancelledRequest(requestEntity, assistantMessage, accessContext, CANCEL_SOURCE_USER);
     return toRequestStatusResponse(requestEntity, assistantMessage);
   }
 
@@ -446,14 +455,46 @@ public class LlmConversationService {
    */
   private void executeProviderStream(PreparedRequest preparedRequest, StreamEventSink sink) {
     String requestId = preparedRequest.requestEntity().getRequestId();
-    executionRegistry.register(requestId, preparedRequest.runtimeSelection().provider());
     StreamAccumulator accumulator = new StreamAccumulator(preparedRequest.runtimeSelection().providerName(), preparedRequest.runtimeSelection().model());
     try {
+      if (executionRegistry.isCancelled(requestId)) {
+        sink.send("assistant-cancelled", cancelledEvent(preparedRequest));
+        sink.complete();
+        return;
+      }
       // 流式增量只进内存累加器和 SSE，不在每个 chunk 时落库。
       // 这样可以避免高频 update 把数据库变成 token 级日志，同时保证 terminal path 一次性写入最终 assistantText。
-      preparedRequest.runtimeSelection().provider().stream(preparedRequest.runtimeRequest())
-          .doOnNext(chunk -> handleProviderChunk(preparedRequest, sink, accumulator, chunk))
-          .blockLast();
+      CountDownLatch streamFinished = new CountDownLatch(1);
+      AtomicReference<Throwable> streamFailure = new AtomicReference<>();
+      Disposable subscription = preparedRequest.runtimeSelection().provider().stream(preparedRequest.runtimeRequest())
+          .timeout(Duration.ofMillis(preparedRequest.runtimeSelection().timeoutMillis()))
+          .doFinally(signalType -> streamFinished.countDown())
+          .subscribe(
+              chunk -> handleProviderChunk(preparedRequest, sink, accumulator, chunk),
+              streamFailure::set
+          );
+      executionRegistry.attachStreamSubscription(requestId, subscription);
+      streamFinished.await();
+
+      if (executionRegistry.isCancelled(requestId)) {
+        sink.send("assistant-cancelled", cancelledEvent(preparedRequest));
+        sink.complete();
+        return;
+      }
+
+      Throwable streamException = streamFailure.get();
+      if (streamException != null) {
+        if (streamException instanceof LlmApiException llmApiException) {
+          throw llmApiException;
+        }
+        if (streamException instanceof RuntimeException runtimeException) {
+          throw runtimeException;
+        }
+        if (streamException instanceof Exception exception) {
+          throw exception;
+        }
+        throw new IllegalStateException("Unexpected throwable in llm provider stream", streamException);
+      }
 
       // completed / cancelled / failed 只能有一个赢家。
       // 如果本地取消先抢到终态，这里的成功结果要被直接丢弃，不能覆盖 cancelled。
@@ -488,6 +529,18 @@ public class LlmConversationService {
       sink.complete();
     } catch (LlmApiException exception) {
       handleProviderFailure(preparedRequest, sink, exception.errorCode(), exception);
+    } catch (RuntimeException exception) {
+      if (isProviderTimeoutException(exception)) {
+        handleProviderFailure(
+            preparedRequest,
+            sink,
+            LlmErrorCodes.LLM_PROVIDER_TIMEOUT,
+            new LlmApiException(LlmErrorCodes.LLM_PROVIDER_TIMEOUT, HttpStatus.GATEWAY_TIMEOUT, "模型上游服务响应超时。")
+        );
+        return;
+      }
+      log.error("Unexpected runtime error in llm provider stream, requestId={}", requestId, exception);
+      handleProviderFailure(preparedRequest, sink, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR, exception);
     } catch (Exception exception) {
       log.error("Unexpected error in llm provider stream, requestId={}", requestId, exception);
       handleProviderFailure(preparedRequest, sink, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR, exception);
@@ -546,6 +599,49 @@ public class LlmConversationService {
     // 错误信息已经通过 SSE 显式返回给前端，这里只需要正常结束流，
     // 避免 response 已经切到 text/event-stream 后又被 Spring 当成 JSON 异常响应二次处理。
     sink.complete();
+  }
+
+  private void cancelPreparedRequest(PreparedRequest preparedRequest, String cancelSource) {
+    DocumentLlmRequestEntity requestEntity = preparedRequest.requestEntity();
+    if (!STATUS_IN_PROGRESS.equals(requestEntity.getStatus())) {
+      return;
+    }
+    String requestId = requestEntity.getRequestId();
+    boolean cancelClaimed = executionRegistry.tryMarkCancelled(requestId);
+    if (!cancelClaimed && executionRegistry.hasExecution(requestId)) {
+      return;
+    }
+    persistCancelledRequest(
+        requestEntity,
+        preparedRequest.assistantMessage(),
+        preparedRequest.accessContext(),
+        cancelSource
+    );
+  }
+
+  private void persistCancelledRequest(
+      DocumentLlmRequestEntity requestEntity,
+      DocumentLlmMessageEntity assistantMessage,
+      AccessContext accessContext,
+      String cancelSource
+  ) {
+    documentLlmRequestRepository.markCancelRequested(
+        requestEntity.getRequestId(),
+        accessContext.tenantId(),
+        accessContext.actorUser(),
+        cancelSource
+    );
+    requestEntity.setCancelRequested(true);
+    requestEntity.setCancelSource(cancelSource);
+    requestEntity.setStatus(STATUS_CANCELLED);
+    requestEntity.setFinishedTime(Instant.now());
+    documentLlmRequestRepository.update(requestEntity);
+
+    assistantMessage.setStatus(STATUS_CANCELLED);
+    assistantMessage.setAssistantText(null);
+    assistantMessage.setErrorCode(LlmErrorCodes.LLM_REQUEST_CANCELLED);
+    assistantMessage.setFinishReason(null);
+    documentLlmMessageRepository.update(assistantMessage);
   }
 
   /**
@@ -968,6 +1064,24 @@ public class LlmConversationService {
     return value instanceof Number number ? number.intValue() : null;
   }
 
+  private long resolveStreamTimeoutMillis(long providerTimeoutMillis) {
+    if (providerTimeoutMillis <= 0) {
+      return MIN_STREAM_TIMEOUT_MILLIS;
+    }
+    return Math.max(providerTimeoutMillis + STREAM_TIMEOUT_BUFFER_MILLIS, MIN_STREAM_TIMEOUT_MILLIS);
+  }
+
+  private boolean isProviderTimeoutException(RuntimeException exception) {
+    Throwable current = exception;
+    while (current != null) {
+      if (current instanceof TimeoutException) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
+  }
+
   /**
    * 选定后的 provider 运行参数。
    */
@@ -1062,16 +1176,20 @@ public class LlmConversationService {
   private static final class EmitterStreamEventSink implements StreamEventSink {
 
     private final SseEmitter emitter;
+    private final Runnable onClosed;
+    private final AtomicBoolean closeHandled = new AtomicBoolean(false);
     private volatile boolean closed;
 
     /**
      * 绑定 emitter 并在 completion / timeout / error 时关闭本地状态。
      */
-    private EmitterStreamEventSink(SseEmitter emitter) {
+    private EmitterStreamEventSink(SseEmitter emitter, Runnable onClosed) {
       this.emitter = emitter;
-      this.emitter.onCompletion(() -> closed = true);
-      this.emitter.onTimeout(() -> closed = true);
-      this.emitter.onError(error -> closed = true);
+      this.onClosed = onClosed == null ? () -> {
+      } : onClosed;
+      this.emitter.onCompletion(this::markClosed);
+      this.emitter.onTimeout(this::markClosed);
+      this.emitter.onError(error -> markClosed());
     }
 
     /**
@@ -1085,7 +1203,7 @@ public class LlmConversationService {
       try {
         emitter.send(SseEmitter.event().name(name).data(event));
       } catch (IOException | IllegalStateException exception) {
-        closed = true;
+        markClosed();
       }
     }
 
@@ -1097,7 +1215,7 @@ public class LlmConversationService {
       if (closed) {
         return;
       }
-      closed = true;
+      markClosed();
       emitter.complete();
     }
 
@@ -1109,8 +1227,15 @@ public class LlmConversationService {
       if (closed) {
         return;
       }
-      closed = true;
+      markClosed();
       emitter.completeWithError(exception);
+    }
+
+    private void markClosed() {
+      closed = true;
+      if (closeHandled.compareAndSet(false, true)) {
+        onClosed.run();
+      }
     }
   }
 }

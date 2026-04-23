@@ -6,13 +6,17 @@ import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
 import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
 import com.earmo.onlyoffice.integration.service.llm.LlmApiException;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.util.DisconnectedClientHelper;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 /**
@@ -23,6 +27,8 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 public class GlobalExceptionHandler {
 
   private static final String MAX_UPLOAD_MESSAGE = "上传文件超过大小限制，当前最大允许 50MB。";
+  private static final String WINDOWS_CONNECTION_ABORTED_ZH = "中止了一个已建立的连接";
+  private static final String WINDOWS_CONNECTION_RESET_ZH = "强迫关闭了一个现有的连接";
 
   @ExceptionHandler(MaxUploadSizeExceededException.class)
   public ResponseEntity<?> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException exception, HttpServletResponse response) {
@@ -66,6 +72,16 @@ public class GlobalExceptionHandler {
     return errorResponse(HttpStatus.SERVICE_UNAVAILABLE, "流式响应超时，请稍后重试。", null, response);
   }
 
+  @ExceptionHandler({AsyncRequestNotUsableException.class, IOException.class})
+  public ResponseEntity<?> handleIoException(IOException exception, HttpServletResponse response) {
+    if (isClientDisconnected(exception)) {
+      log.warn("Client disconnected during response streaming: {}", exception.getMessage());
+      return errorResponse(HttpStatus.NO_CONTENT, null, null, response);
+    }
+    log.error("I/O exception while writing response", exception);
+    return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "服务端处理失败，请稍后重试。", null, response);
+  }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<?> handleGenericException(Exception exception, HttpServletResponse response) {
     log.error("Unhandled server exception", exception);
@@ -76,10 +92,31 @@ public class GlobalExceptionHandler {
     if (response != null && response.isCommitted()) {
       return ResponseEntity.status(status).build();
     }
+    if (message == null || message.isBlank()) {
+      return ResponseEntity.status(status).build();
+    }
     ApiErrorResponse body = errorCode == null ? new ApiErrorResponse(message) : new ApiErrorResponse(message, errorCode);
     return ResponseEntity.status(status)
         .contentType(MediaType.APPLICATION_JSON)
         .body(body);
+  }
+
+  private boolean isClientDisconnected(IOException exception) {
+    if (DisconnectedClientHelper.isClientDisconnectedException(exception)) {
+      return true;
+    }
+    Throwable current = exception;
+    while (current != null) {
+      String message = current.getMessage();
+      if (message != null) {
+        String text = message.toLowerCase(Locale.ROOT);
+        if (text.contains(WINDOWS_CONNECTION_ABORTED_ZH) || text.contains(WINDOWS_CONNECTION_RESET_ZH)) {
+          return true;
+        }
+      }
+      current = current.getCause();
+    }
+    return false;
   }
 }
 

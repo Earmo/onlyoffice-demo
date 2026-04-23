@@ -202,6 +202,38 @@ function abortActiveStream() {
   currentRequestState.value = "";
 }
 
+function hasActiveRequestState() {
+  return Boolean(activeStream.value || currentRequestId.value || currentRequestState.value === "in_progress");
+}
+
+async function confirmSessionSwitch(targetSessionId) {
+  if (!shouldConfirmSessionSwitch(targetSessionId)) {
+    return true;
+  }
+  try {
+    await ElMessageBox.confirm(
+      "当前回答仍在生成中，切换会话会停止本次回复。是否继续切换？",
+      "切换会话",
+      {
+        confirmButtonText: "继续切换",
+        cancelButtonText: "留在当前会话",
+        type: "warning"
+      }
+    );
+    ElMessage.info("已停止当前回复，正在切换会话");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function shouldConfirmSessionSwitch(targetSessionId) {
+  if (!targetSessionId || targetSessionId === currentSessionId.value) {
+    return false;
+  }
+  return hasActiveRequestState();
+}
+
 async function loadCapabilityAndBootstrap(documentId) {
   // 先拿 capability，再决定是否自动恢复/创建会话。
   // bootstrapToken 用来丢弃切文档过程中的晚到响应，避免旧文档状态污染当前工作台。
@@ -267,24 +299,37 @@ async function bootstrapSession(documentId, token) {
 }
 
 async function selectSession(sessionId) {
+  return selectSessionWithOptions(sessionId, { confirmAbort: false });
+}
+
+async function selectSessionWithOptions(sessionId, options = {}) {
   const documentId = props.runtimeContext.documentId;
   if (!sessionId || !documentId) {
-    return;
+    return false;
   }
-  abortActiveStream();
+  if (options.confirmAbort && !await confirmSessionSwitch(sessionId)) {
+    return false;
+  }
+  if (hasActiveRequestState()) {
+    const cancelled = await cancelActiveRequest();
+    if (!cancelled) {
+      return false;
+    }
+  }
   const token = ++sessionLoadToken;
   sessionLoadRequestedId = sessionId;
   threadError.value = null;
   try {
     const session = await getLlmSession(sessionId, documentId);
     if (isSessionLoadStale(token, sessionId, documentId)) {
-      return;
+      return false;
     }
     applySessionSummary(session);
     conversationEntries.value = buildConversationEntries(session.messages || []);
+    return true;
   } catch (error) {
     if (isSessionLoadStale(token, sessionId, documentId)) {
-      return;
+      return false;
     }
     threadError.value = toThreadError(error);
     if (error.errorCode === "LLM_SESSION_NOT_FOUND" || error.errorCode === "LLM_SESSION_FORBIDDEN") {
@@ -294,10 +339,19 @@ async function selectSession(sessionId) {
         const fallbackSession = await createLlmSession(documentId);
         applySessionSummary(fallbackSession);
         await refreshSessions(documentId);
+        return true;
       } catch (fallbackError) {
         threadError.value = toThreadError(fallbackError);
       }
     }
+    return false;
+  }
+}
+
+async function handleSessionClick(sessionId) {
+  const switched = await selectSessionWithOptions(sessionId, { confirmAbort: true });
+  if (switched) {
+    drawerVisible.value = false;
   }
 }
 
@@ -585,20 +639,10 @@ async function reconcileRequestOnce(entry, sessionId, documentId, originalError)
 }
 
 async function cancelSending() {
-  if (!currentRequestId.value) {
+  if (!hasActiveRequestState()) {
     return;
   }
-  currentRequestState.value = "cancelling";
-  try {
-    activeStream.value?.abort?.();
-    const result = await cancelLlmRequest(currentRequestId.value, props.runtimeContext.documentId);
-    const currentEntry = conversationEntries.value.find(entry => entry.requestId === result.requestId) || conversationEntries.value.at(-1);
-    applyRequestResult(currentEntry, result);
-    lastCancelled.value = true;
-  } catch (error) {
-    currentRequestState.value = "in_progress";
-    threadError.value = toThreadError(error);
-  }
+  await cancelActiveRequest();
 }
 
 function applyStreamTerminalResult(entry, event) {
@@ -640,6 +684,57 @@ function applyRequestResult(entry, result) {
     currentRequestState.value = "";
     activeStream.value = null;
   }
+}
+
+async function cancelActiveRequest() {
+  const currentEntry = findActiveConversationEntry();
+  if (!currentEntry) {
+    abortActiveStream();
+    return true;
+  }
+
+  currentRequestState.value = "cancelling";
+  try {
+    if (currentRequestId.value) {
+      const result = await cancelLlmRequest(currentRequestId.value, props.runtimeContext.documentId);
+      activeStream.value?.abort?.();
+      const resultEntry = conversationEntries.value.find(entry => entry.requestId === result.requestId) || currentEntry;
+      applyRequestResult(resultEntry, result);
+    } else {
+      activeStream.value?.abort?.();
+      applyRequestResult(currentEntry, buildLocalCancelledResult(currentEntry));
+    }
+    lastCancelled.value = true;
+    return true;
+  } catch (error) {
+    currentRequestState.value = "in_progress";
+    threadError.value = toThreadError(error);
+    return false;
+  }
+}
+
+function findActiveConversationEntry() {
+  if (currentRequestId.value) {
+    return conversationEntries.value.find(entry => entry.requestId === currentRequestId.value) || conversationEntries.value.at(-1) || null;
+  }
+  return [...conversationEntries.value].reverse().find(entry => entry.status === "in_progress") || null;
+}
+
+function buildLocalCancelledResult(entry) {
+  return {
+    documentId: props.runtimeContext.documentId,
+    requestId: entry.requestId || "",
+    sessionId: currentSessionId.value,
+    assistantMessageId: entry.assistantMessageId || "",
+    status: "cancelled",
+    assistantText: "",
+    usage: null,
+    finishReason: "",
+    providerResponseMeta: entry.providerResponseMeta || {},
+    errorCode: "LLM_REQUEST_CANCELLED",
+    startedTime: "",
+    finishedTime: ""
+  };
 }
 
 function markPendingEntryFailed(entry, error) {
@@ -874,7 +969,7 @@ function renderAssistantText(entry) {
           class="session-item"
           :class="{ active: session.sessionId === currentSessionId }"
           plain
-          @click="selectSession(session.sessionId); drawerVisible = false"
+          @click="handleSessionClick(session.sessionId)"
         >
           <div class="session-info">
             <strong>{{ session.title }}</strong>

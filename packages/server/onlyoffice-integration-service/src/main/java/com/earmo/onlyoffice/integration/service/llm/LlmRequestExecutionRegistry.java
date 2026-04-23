@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
+import reactor.core.Disposable;
 
 /**
  * 请求执行注册表。
@@ -33,6 +34,25 @@ public class LlmRequestExecutionRegistry {
     ExecutionState state = executions.get(requestId);
     if (state != null) {
       state.providerRequestId = providerRequestId;
+      if (state.cancelled.get()) {
+        cancelUpstreamIfPossible(state);
+      }
+    }
+  }
+
+  /**
+   * 绑定当前流式请求的本地订阅，便于取消时立刻停止继续接收上游响应。
+   */
+  public void attachStreamSubscription(String requestId, Disposable subscription) {
+    ExecutionState state = executions.get(requestId);
+    if (state == null) {
+      subscription.dispose();
+      return;
+    }
+    state.subscription = subscription;
+    if (state.cancelled.get()) {
+      subscription.dispose();
+      cancelUpstreamIfPossible(state);
     }
   }
 
@@ -47,10 +67,8 @@ public class LlmRequestExecutionRegistry {
       return;
     }
     state.cancelled.set(true);
-    if (state.providerRequestId != null && state.strategy.supportsUpstreamCancel()) {
-      // 本地 cancelled 才是真正硬保证；上游取消只做 best effort。
-      state.strategy.cancelRequest(state.providerRequestId);
-    }
+    disposeSubscription(state);
+    cancelUpstreamIfPossible(state);
   }
 
   /**
@@ -101,10 +119,8 @@ public class LlmRequestExecutionRegistry {
       return false;
     }
     state.cancelled.set(true);
-    if (state.providerRequestId != null && state.strategy.supportsUpstreamCancel()) {
-      // 本地 cancelled 才是真正硬保证；上游取消只做 best effort。
-      state.strategy.cancelRequest(state.providerRequestId);
-    }
+    disposeSubscription(state);
+    cancelUpstreamIfPossible(state);
     return true;
   }
 
@@ -124,9 +140,24 @@ public class LlmRequestExecutionRegistry {
     private final AtomicReference<String> terminalStatus = new AtomicReference<>(null);
     private final SpringAiLlmProvider strategy;
     private volatile String providerRequestId;
+    private volatile Disposable subscription;
 
     private ExecutionState(SpringAiLlmProvider strategy) {
       this.strategy = strategy;
+    }
+  }
+
+  private void disposeSubscription(ExecutionState state) {
+    Disposable subscription = state.subscription;
+    if (subscription != null && !subscription.isDisposed()) {
+      subscription.dispose();
+    }
+  }
+
+  private void cancelUpstreamIfPossible(ExecutionState state) {
+    if (state.providerRequestId != null && state.strategy.supportsUpstreamCancel()) {
+      // 本地 cancelled 是硬保证；如果 provider 支持取消，则继续把信号传给上游。
+      state.strategy.cancelRequest(state.providerRequestId);
     }
   }
 }

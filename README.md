@@ -157,6 +157,7 @@ corepack pnpm dev
 
 - [最小接入说明](docs/minimal-integration.md)
 - [交付总览](docs/delivery-overview.md)
+- [开发规范](docs/development-guidelines.md)
 - [独立部署说明](docs/standalone-deployment.md)
 - [微服务接入说明](docs/microservice-integration.md)
 - [配置矩阵](docs/configuration-matrix.md)

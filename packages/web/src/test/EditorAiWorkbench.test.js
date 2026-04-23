@@ -2,6 +2,14 @@ import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises } from "./helpers";
 
+const elementPlusMocks = vi.hoisted(() => ({
+  confirm: vi.fn(),
+  prompt: vi.fn(),
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn()
+}));
+
 const apiMocks = vi.hoisted(() => ({
   getLlmCapability: vi.fn(),
   listLlmSessions: vi.fn(),
@@ -13,12 +21,29 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../components/editor/editorAiApi.js", () => apiMocks);
+vi.mock("element-plus", async importOriginal => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    ElMessage: {
+      success: elementPlusMocks.success,
+      error: elementPlusMocks.error,
+      info: elementPlusMocks.info
+    },
+    ElMessageBox: {
+      confirm: elementPlusMocks.confirm,
+      prompt: elementPlusMocks.prompt
+    }
+  };
+});
 
 import EditorAiWorkbench from "../components/editor/EditorAiWorkbench.vue";
 
 describe("EditorAiWorkbench", () => {
   beforeEach(() => {
     Object.values(apiMocks).forEach(mock => mock.mockReset());
+    Object.values(elementPlusMocks).forEach(mock => mock.mockReset());
+    elementPlusMocks.confirm.mockResolvedValue("confirm");
     apiMocks.getLlmCapability.mockResolvedValue({
       documentId: "doc-1",
       llmAvailable: true,
@@ -300,6 +325,89 @@ describe("EditorAiWorkbench", () => {
     expect(apiMocks.getLlmRequest).toHaveBeenCalledTimes(1);
     expect(apiMocks.getLlmRequest).toHaveBeenCalledWith("request-3", "doc-1");
     expect(wrapper.text()).toContain("最终结果");
+  });
+
+  it("应在切换会话时提示当前流式回复会被中断", async () => {
+    const abort = vi.fn(() => Promise.resolve());
+    apiMocks.listLlmSessions.mockResolvedValue([
+      {
+        sessionId: "session-1",
+        documentId: "doc-1",
+        title: "当前会话",
+        updatedTime: "2026-04-23T10:00:00Z"
+      },
+      {
+        sessionId: "session-2",
+        documentId: "doc-1",
+        title: "目标会话",
+        updatedTime: "2026-04-23T10:01:00Z"
+      }
+    ]);
+    apiMocks.getLlmSession.mockImplementation(sessionId => Promise.resolve({
+      sessionId,
+      documentId: "doc-1",
+      title: sessionId === "session-1" ? "当前会话" : "目标会话",
+      lastSnapshotText: "",
+      lastSnapshotIsEmpty: true,
+      lastHeadingId: "",
+      lastHeadingText: "",
+      messages: []
+    }));
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-4",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-4",
+          provider: "stub-provider",
+          model: "fake-gpt"
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort
+      };
+    });
+    apiMocks.cancelLlmRequest.mockResolvedValue({
+      documentId: "doc-1",
+      requestId: "request-4",
+      sessionId: "session-1",
+      assistantMessageId: "assistant-4",
+      status: "cancelled",
+      assistantText: "",
+      usage: null,
+      finishReason: "",
+      providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" },
+      errorCode: "LLM_REQUEST_CANCELLED",
+      startedTime: "",
+      finishedTime: ""
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("切换前先发一条");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    await wrapper.vm.handleSessionClick("session-2");
+    await flushPromises();
+
+    expect(elementPlusMocks.confirm).toHaveBeenCalledWith(
+      "当前回答仍在生成中，切换会话会停止本次回复。是否继续切换？",
+      "切换会话",
+      expect.objectContaining({
+        confirmButtonText: "继续切换",
+        cancelButtonText: "留在当前会话",
+        type: "warning"
+      })
+    );
+    expect(abort).toHaveBeenCalled();
+    expect(apiMocks.cancelLlmRequest).toHaveBeenCalledWith("request-4", "doc-1");
+    expect(elementPlusMocks.info).toHaveBeenCalledWith("已停止当前回复，正在切换会话");
+    expect(wrapper.text()).toContain("当前会话：目标会话");
   });
 });
 

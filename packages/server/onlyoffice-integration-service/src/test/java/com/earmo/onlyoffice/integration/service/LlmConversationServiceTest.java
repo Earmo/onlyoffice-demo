@@ -15,8 +15,10 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -94,6 +96,30 @@ class LlmConversationServiceTest {
     registry.cancel("req-1");
 
     assertThat(registry.isCancelled("req-1")).isTrue();
+  }
+
+  @Test
+  void shouldDisposeStreamSubscriptionWhenRequestCancelled() {
+    LlmRequestExecutionRegistry registry = new LlmRequestExecutionRegistry();
+    AtomicBoolean disposed = new AtomicBoolean(false);
+
+    registry.register("req-2", new StubProvider(true));
+    registry.attachStreamSubscription("req-2", new Disposable() {
+      @Override
+      public void dispose() {
+        disposed.set(true);
+      }
+
+      @Override
+      public boolean isDisposed() {
+        return disposed.get();
+      }
+    });
+
+    registry.cancel("req-2");
+
+    assertThat(disposed.get()).isTrue();
+    assertThat(registry.isCancelled("req-2")).isTrue();
   }
 
   private static DocumentLlmMessageEntity message(String role, String content) {
