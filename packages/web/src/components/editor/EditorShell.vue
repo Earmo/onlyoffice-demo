@@ -648,11 +648,10 @@ function startRuntimeEventStreamForDocument(documentId) {
       runtimeStreamRetryDelayMs = 1000;
       isRuntimeStreamHealthy.value = true;
       stopSaveStatusPolling();
-      // WR-02 修复后的最终语义：
-      // - save-status 由 SSE 承担，旧轮询可以停；
-      // - heartbeat 不能停，它负责把“用户仍在编辑”这个事实稳定续给后端。
-      // 否则 active timeout 比 keepalive 更短时，仍会把活跃用户误判成离线。
-      startSessionHeartbeatPolling();
+      stopSessionHeartbeatPolling();
+      // SSE 健康时，服务端 keepalive（默认 25s）在每次 tick 已经调用 touchEditingSession。
+      // 活跃会话超时默认 30s > 25s，SSE keepalive 足以续期，无需额外轮询。
+      // SSE 断流后 activateRuntimePollingFallback 会立刻恢复两条轮询（save-status + heartbeat）。
     })
     .catch(() => {
       if (runtimeStreamHandle !== streamHandle) {

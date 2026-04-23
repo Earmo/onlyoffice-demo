@@ -46,7 +46,9 @@ class LlmControllerTest {
         java.util.Map.of("edit", true),
         "header"
     ));
-    mockMvc = MockMvcBuilders.standaloneSetup(new LlmController(llmConversationService, accessContextResolver)).build();
+    mockMvc = MockMvcBuilders.standaloneSetup(new LlmController(llmConversationService, accessContextResolver))
+        .setControllerAdvice(new GlobalExceptionHandler())
+        .build();
   }
 
   @Test
@@ -133,5 +135,31 @@ class LlmControllerTest {
         .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
         .andExpect(content().string(containsString("event:request-started")))
         .andExpect(content().string(containsString("alibaba-dashscope")));
+  }
+
+  @Test
+  void shouldReturnJsonWhenStreamRequestFailsBeforeSseStarts() throws Exception {
+    when(llmConversationService.streamMessage(any(), any())).thenThrow(new IllegalArgumentException("请求参数不合法"));
+
+    mockMvc.perform(
+            post("/api/llm/messages/stream")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .content("""
+                    {
+                      "documentId":"doc-1",
+                      "sessionId":"session-1",
+                      "provider":"alibaba-dashscope",
+                      "model":"qwen-plus",
+                      "question":"流式发送",
+                      "selectionSnapshot":{"text":"选区内容","emptySelection":false},
+                      "headingContext":{"includeHeading":true,"headingId":"heading-1","headingText":"第一章"},
+                      "retryConfirmed":false
+                    }
+                    """)
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.message").value("请求参数不合法"));
   }
 }

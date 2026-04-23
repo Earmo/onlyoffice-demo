@@ -261,6 +261,63 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.sessionId").value(sessionId));
   }
 
+  @Test
+  void shouldStreamAssistantErrorAndPersistFailedStatus() throws Exception {
+    stubStreamingProvider.enqueueBadRequest();
+    String documentId = createDocument("failed-user", "Failed User");
+
+    MvcResult createSessionResult = mockMvc.perform(
+            post("/api/llm/sessions")
+                .headers(TestAccessHeaders.headers("failed-user", "Failed User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s"}
+                    """.formatted(documentId))
+        )
+        .andExpect(status().isOk())
+        .andReturn();
+    String sessionId = jsonValue(createSessionResult, "sessionId");
+
+    MvcResult streamResult = mockMvc.perform(
+            post("/api/llm/messages/stream")
+                .headers(TestAccessHeaders.headers("failed-user", "Failed User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .content("""
+                    {
+                      "documentId":"%s",
+                      "sessionId":"%s",
+                      "provider":"stub-provider",
+                      "model":"fake-gpt",
+                      "question":"模拟 provider 失败",
+                      "selectionSnapshot":{"text":"失败选区","emptySelection":false},
+                      "headingContext":{"includeHeading":true,"headingId":"heading-1","headingText":"第一章"},
+                      "retryConfirmed":false
+                    }
+                    """.formatted(documentId, sessionId))
+        )
+        .andExpect(request().asyncStarted())
+        .andReturn();
+
+    Thread.sleep(120L);
+    String streamBody = streamResult.getResponse().getContentAsString();
+    assertThat(streamBody).contains("event:request-started");
+    assertThat(streamBody).contains("event:assistant-error");
+
+    String requestId = jsonFieldFromSse(streamBody, "requestId");
+    assertThat(requestId).isNotBlank();
+
+    mockMvc.perform(
+            get("/api/llm/requests/{requestId}", requestId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("failed-user", "Failed User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("failed"))
+        .andExpect(jsonPath("$.assistantText").isEmpty())
+        .andExpect(jsonPath("$.errorCode").value("LLM_PROVIDER_BAD_REQUEST"));
+  }
+
   private String createDocument(String actorUser, String actorName) throws Exception {
     MvcResult result = mockMvc.perform(
             post("/api/documents")
@@ -300,6 +357,10 @@ class LlmConversationFlowTest {
 
     void enqueueSuccess(String assistantText, Duration delay) {
       scenarios.add(new Scenario(assistantText, delay, false));
+    }
+
+    void enqueueBadRequest() {
+      scenarios.add(new Scenario("", Duration.ZERO, true));
     }
 
     void reset() {

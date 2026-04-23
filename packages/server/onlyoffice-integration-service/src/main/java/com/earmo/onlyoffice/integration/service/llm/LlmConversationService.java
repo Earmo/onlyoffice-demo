@@ -57,7 +57,9 @@ public class LlmConversationService {
   private static final String STATUS_COMPLETED = "completed";
   private static final String STATUS_FAILED = "failed";
   private static final String STATUS_CANCELLED = "cancelled";
-  private static final long DEFAULT_STREAM_TIMEOUT_MILLIS = 180000L;
+  // LLM 首 token 可能显著晚于 request-started，流式链路的真正上限由 provider timeout 决定，
+  // 这里关闭 servlet async 超时，避免浏览器已经连上 SSE 后又被容器的固定时钟提前切断。
+  private static final long DEFAULT_STREAM_TIMEOUT_MILLIS = 0L;
   private static final DateTimeFormatter SESSION_TITLE_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
       .withZone(ZoneId.of("Asia/Shanghai"));
 
@@ -470,7 +472,9 @@ public class LlmConversationService {
     }
     markRequestFailed(preparedRequest.requestEntity(), preparedRequest.assistantMessage(), errorCode);
     sink.send("assistant-error", errorEvent(preparedRequest, errorCode));
-    sink.completeWithError(exception);
+    // 错误信息已经通过 SSE 显式返回给前端，这里只需要正常结束流，
+    // 避免 response 已经切到 text/event-stream 后又被 Spring 当成 JSON 异常响应二次处理。
+    sink.complete();
   }
 
   private void markRequestFailed(
