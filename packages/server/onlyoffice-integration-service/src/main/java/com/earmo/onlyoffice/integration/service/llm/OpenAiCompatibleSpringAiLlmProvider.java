@@ -96,7 +96,7 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
             .build()
     );
     log.info(
-        "Calling upstream llm provider, provider={}, model={}, baseUrl={}, timeoutMs={}, messageCount={}",
+        "开始调用上游 LLM provider，provider={}, model={}, baseUrl={}, timeoutMs={}, messageCount={}",
         request.providerName(),
         request.model(),
         request.baseUrl(),
@@ -106,11 +106,16 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
     return chatModel.stream(prompt)
         .map(response -> {
           Object metadata = response.getMetadata();
+          Object output = response.getResult() == null ? null : response.getResult().getOutput();
           Map<String, Object> providerMeta = new LinkedHashMap<>();
           providerMeta.put("model", valueAsString(invokeIfPresent(metadata, "getModel")));
           Object created = readMetadataValue(metadata, "created");
           if (created != null) {
             providerMeta.put("created", created);
+          }
+          String reasoningContent = readReasoningContent(output);
+          if (reasoningContent != null && !reasoningContent.isBlank()) {
+            providerMeta.put("reasoningContent", reasoningContent);
           }
           Map<String, Object> usageMap = usageMap(invokeIfPresent(metadata, "getUsage"));
           if (!usageMap.isEmpty()) {
@@ -127,7 +132,7 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
         .doOnNext(chunk -> {
           if (firstChunkLogged.compareAndSet(false, true)) {
             log.info(
-                "Received first upstream llm chunk, provider={}, model={}, upstreamRequestId={}, hasDelta={}, finishReason={}",
+                "收到首个上游 LLM 响应片段，provider={}, model={}, upstreamRequestId={}, hasDelta={}, finishReason={}",
                 request.providerName(),
                 request.model(),
                 chunk.providerRequestId(),
@@ -137,12 +142,12 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
           }
         })
         .doOnComplete(() -> log.info(
-            "Upstream llm stream completed, provider={}, model={}",
+            "上游 LLM 流已完成，provider={}, model={}",
             request.providerName(),
             request.model()
         ))
         .doOnError(exception -> log.info(
-            "Upstream llm stream failed, provider={}, model={}, exceptionType={}, message={}",
+            "上游 LLM 流失败，provider={}, model={}, exceptionType={}, message={}",
             request.providerName(),
             request.model(),
             exception.getClass().getSimpleName(),
@@ -303,6 +308,27 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
       text = invokeIfPresent(output, "getContent");
     }
     return text == null ? "" : String.valueOf(text);
+  }
+
+  /**
+   * 从 AssistantMessage 元数据中提取推理内容。
+   *
+   * <p>Spring AI 会把 OpenAI-compatible 的 `reasoning_content` 映射成
+   * AssistantMessage metadata 上的 `reasoningContent` 字段，这里统一做兼容读取。
+   */
+  private String readReasoningContent(Object output) {
+    if (output == null) {
+      return null;
+    }
+    Object metadata = invokeIfPresent(output, "getMetadata");
+    Object reasoningContent = metadata instanceof Map<?, ?> metadataMap
+        ? metadataMap.get("reasoningContent")
+        : invokeIfPresent(metadata, "getReasoningContent");
+    if (reasoningContent == null) {
+      return null;
+    }
+    String value = String.valueOf(reasoningContent).trim();
+    return value.isEmpty() ? null : value;
   }
 
   /**

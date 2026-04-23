@@ -60,6 +60,7 @@ llm:
     - provider
     - model
     - created
+    - reasoningContent
     - usage.promptTokens
     - usage.completionTokens
     - usage.totalTokens

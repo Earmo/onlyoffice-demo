@@ -187,6 +187,7 @@ llm:
     - provider
     - model
     - created
+    - reasoningContent
     - usage.promptTokens
     - usage.completionTokens
     - usage.totalTokens
@@ -211,6 +212,10 @@ llm:
       default-model: ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
       models:
         - ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
+        - Pro/moonshotai/Kimi-K2.6
+        - Pro/zai-org/GLM-5.1
+        - Pro/MiniMaxAI/MiniMax-M2.5
+        - Pro/deepseek-ai/DeepSeek-V3.2
       streaming-enabled: ${LLM_PROVIDER_SILICONFLOW_STREAMING_ENABLED:true}
       timeout-millis: ${LLM_PROVIDER_SILICONFLOW_TIMEOUT_MILLIS:60000}
   session:

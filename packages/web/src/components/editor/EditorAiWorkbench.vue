@@ -934,6 +934,14 @@ function handleOutlineCommand(node) {
 function renderAssistantText(entry) {
   return entry.assistantText || entry.streamingText || "";
 }
+
+function renderReasoningText(entry) {
+  const reasoningContent = entry?.providerResponseMeta?.reasoningContent;
+  if (typeof reasoningContent === "string") {
+    return reasoningContent.trim();
+  }
+  return "";
+}
 </script>
 
 <template>
@@ -1035,6 +1043,11 @@ function renderAssistantText(entry) {
 
             <div v-if="renderAssistantText(entry)" class="markdown-body" v-html="md.render(renderAssistantText(entry))"></div>
             <p v-else class="assistant-placeholder">{{ entry.responseMessage }}</p>
+
+            <div v-if="renderReasoningText(entry)" class="reasoning-panel">
+              <p class="reasoning-label">深度思考</p>
+              <pre class="reasoning-content">{{ renderReasoningText(entry) }}</pre>
+            </div>
 
             <div class="message-actions" v-if="entry.status !== 'failed'">
               <el-button size="small" text @click="handleCopy(renderAssistantText(entry))">
@@ -1238,6 +1251,29 @@ function renderAssistantText(entry) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.reasoning-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+}
+
+.reasoning-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+
+.reasoning-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  color: var(--el-text-color-primary);
 }
 
 .bubble {

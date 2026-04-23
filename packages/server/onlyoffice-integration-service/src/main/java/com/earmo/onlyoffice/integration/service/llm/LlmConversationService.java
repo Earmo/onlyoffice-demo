@@ -276,7 +276,7 @@ public class LlmConversationService {
     // 后续 delta、取消和断流回查都依赖这两个标识。
     sink.send("request-started", startedEvent(preparedRequest));
     log.info(
-        "Opened llm stream, requestId={}, provider={}, model={}, providerTimeoutMs={}, streamTimeoutMs={}",
+        "已打开 LLM 流，requestId={}, provider={}, model={}, providerTimeoutMs={}, streamTimeoutMs={}",
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
@@ -432,7 +432,7 @@ public class LlmConversationService {
     );
 
     log.info(
-        "Prepared llm request, documentId={}, sessionId={}, provider={}, springAiProvider={}, model={}, timeoutMs={}, messageCount={}, selectionEmpty={}, includeHeading={}",
+        "已准备 LLM 请求，documentId={}, sessionId={}, provider={}, springAiProvider={}, model={}, timeoutMs={}, messageCount={}, selectionEmpty={}, includeHeading={}",
         request.documentId(),
         session.getSessionId(),
         runtimeSelection.providerName(),
@@ -472,7 +472,7 @@ public class LlmConversationService {
     try {
       if (executionRegistry.isCancelled(requestId)) {
         log.info(
-            "Skipped llm execution because request was already cancelled, requestId={}, documentId={}, sessionId={}",
+            "请求已取消，跳过 LLM 执行，requestId={}, documentId={}, sessionId={}",
             requestId,
             preparedRequest.request().documentId(),
             preparedRequest.request().sessionId()
@@ -482,7 +482,7 @@ public class LlmConversationService {
         return;
       }
       log.info(
-          "Starting llm provider stream, requestId={}, documentId={}, sessionId={}, provider={}, model={}, timeoutMs={}",
+          "开始执行 LLM provider 流式请求，requestId={}, documentId={}, sessionId={}, provider={}, model={}, timeoutMs={}",
           requestId,
           preparedRequest.request().documentId(),
           preparedRequest.request().sessionId(),
@@ -506,7 +506,7 @@ public class LlmConversationService {
 
       if (executionRegistry.isCancelled(requestId)) {
         log.info(
-            "Llm request was cancelled after stream finished, requestId={}, provider={}, model={}, chunkCount={}",
+            "LLM 流结束后请求已被取消，requestId={}, provider={}, model={}, chunkCount={}",
             requestId,
             preparedRequest.runtimeSelection().providerName(),
             preparedRequest.runtimeSelection().model(),
@@ -536,7 +536,7 @@ public class LlmConversationService {
       if (!executionRegistry.tryMarkCompleted(requestId)) {
         if (executionRegistry.isCancelled(requestId)) {
           log.info(
-              "Dropped llm completion because cancel won the race, requestId={}, provider={}, model={}, chunkCount={}",
+              "取消请求先完成，丢弃本次 LLM 完成结果，requestId={}, provider={}, model={}, chunkCount={}",
               requestId,
               preparedRequest.runtimeSelection().providerName(),
               preparedRequest.runtimeSelection().model(),
@@ -567,7 +567,7 @@ public class LlmConversationService {
       documentLlmSessionRepository.update(preparedRequest.session());
 
       log.info(
-          "Completed llm request, requestId={}, documentId={}, sessionId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, responseChars={}, finishReason={}, usage={}",
+          "LLM 请求已完成，requestId={}, documentId={}, sessionId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, responseChars={}, finishReason={}, usage={}",
           requestId,
           preparedRequest.request().documentId(),
           preparedRequest.request().sessionId(),
@@ -595,10 +595,10 @@ public class LlmConversationService {
         );
         return;
       }
-      log.error("Unexpected runtime error in llm provider stream, requestId={}", requestId, exception);
+      log.error("LLM provider 流执行时出现未预期的运行时异常，requestId={}", requestId, exception);
       handleProviderFailure(preparedRequest, sink, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR, exception);
     } catch (Exception exception) {
-      log.error("Unexpected error in llm provider stream, requestId={}", requestId, exception);
+      log.error("LLM provider 流执行时出现未预期异常，requestId={}", requestId, exception);
       handleProviderFailure(preparedRequest, sink, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR, exception);
     } finally {
       executionRegistry.unregister(requestId);
@@ -635,7 +635,7 @@ public class LlmConversationService {
       if (!accumulator.firstDeltaLogged) {
         accumulator.firstDeltaLogged = true;
         log.info(
-            "Received first llm delta, requestId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, deltaChars={}",
+            "收到首个 LLM 增量片段，requestId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, deltaChars={}",
             preparedRequest.requestEntity().getRequestId(),
             preparedRequest.runtimeSelection().providerName(),
             preparedRequest.runtimeSelection().model(),
@@ -664,7 +664,7 @@ public class LlmConversationService {
       return;
     }
     log.info(
-        "Llm request failed, requestId={}, documentId={}, sessionId={}, provider={}, model={}, errorCode={}, message={}",
+        "LLM 请求失败，requestId={}, documentId={}, sessionId={}, provider={}, model={}, errorCode={}, message={}",
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.request().documentId(),
         preparedRequest.request().sessionId(),
@@ -691,7 +691,7 @@ public class LlmConversationService {
       return;
     }
     log.info(
-        "Cancelling llm request, requestId={}, documentId={}, sessionId={}, provider={}, model={}, cancelSource={}",
+        "开始取消 LLM 请求，requestId={}, documentId={}, sessionId={}, provider={}, model={}, cancelSource={}",
         requestId,
         requestEntity.getDocumentId(),
         requestEntity.getSessionId(),
@@ -770,7 +770,7 @@ public class LlmConversationService {
     SpringAiLlmProvider provider = providerRegistry.findProvider(providerProperties.getSpringAiProvider())
         .orElseThrow(() -> new LlmApiException(LlmErrorCodes.LLM_UNAVAILABLE, HttpStatus.SERVICE_UNAVAILABLE, "未找到匹配的 Spring AI provider。"));
     log.info(
-        "Resolved llm runtime selection, requestedProvider={}, resolvedProvider={}, springAiProvider={}, requestedModel={}, resolvedModel={}, timeoutMs={}",
+        "已解析 LLM 运行时选择，requestedProvider={}, resolvedProvider={}, springAiProvider={}, requestedModel={}, resolvedModel={}, timeoutMs={}",
         request.provider(),
         providerName,
         provider.providerName(),
@@ -1086,6 +1086,9 @@ public class LlmConversationService {
       if ("created".equals(key) && providerResponseMeta.containsKey("created")) {
         filtered.put("created", providerResponseMeta.get("created"));
       }
+      if ("reasoningContent".equals(key) && providerResponseMeta.containsKey("reasoningContent")) {
+        filtered.put("reasoningContent", providerResponseMeta.get("reasoningContent"));
+      }
       if (key.startsWith("usage.") && providerResponseMeta.get("usage") instanceof Map<?, ?> usageMap) {
         filtered.putIfAbsent("usage", new LinkedHashMap<String, Object>());
         @SuppressWarnings("unchecked")
@@ -1107,7 +1110,7 @@ public class LlmConversationService {
     try {
       return objectMapper.writeValueAsString(payload);
     } catch (JsonProcessingException exception) {
-      log.warn("Failed to serialize llm metadata, payloadType={}", payload.getClass().getSimpleName(), exception);
+      log.warn("序列化 LLM 元数据失败，payloadType={}", payload.getClass().getSimpleName(), exception);
       return null;
     }
   }

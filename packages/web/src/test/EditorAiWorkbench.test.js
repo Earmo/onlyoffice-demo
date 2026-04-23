@@ -103,7 +103,11 @@ describe("EditorAiWorkbench", () => {
           requestId: "request-1",
           usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
           finishReason: "stop",
-          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+          providerResponseMeta: {
+            provider: "stub-provider",
+            model: "fake-gpt",
+            reasoningContent: "先结合选区识别主题，再给出结构化建议。"
+          }
         });
         handlers.onCompleted?.({
           requestId: "request-1",
@@ -112,7 +116,11 @@ describe("EditorAiWorkbench", () => {
           assistantText: "流式回复",
           usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
           finishReason: "stop",
-          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+          providerResponseMeta: {
+            provider: "stub-provider",
+            model: "fake-gpt",
+            reasoningContent: "先结合选区识别主题，再给出结构化建议。"
+          }
         });
       });
       return {
@@ -205,6 +213,8 @@ describe("EditorAiWorkbench", () => {
       expect.any(Object)
     );
     expect(wrapper.text()).toContain("流式回复");
+    expect(wrapper.text()).toContain("思考方式");
+    expect(wrapper.text()).toContain("先结合选区识别主题，再给出结构化建议。");
     expect(wrapper.text()).toContain("promptTokens: 10");
     expect(wrapper.text()).toContain("provider: stub-provider");
   });

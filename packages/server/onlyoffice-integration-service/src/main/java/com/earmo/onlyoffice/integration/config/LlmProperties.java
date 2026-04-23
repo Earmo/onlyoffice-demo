@@ -50,6 +50,7 @@ public class LlmProperties {
       "provider",
       "model",
       "created",
+      "reasoningContent",
       "usage.promptTokens",
       "usage.completionTokens",
       "usage.totalTokens"

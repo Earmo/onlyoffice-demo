@@ -129,6 +129,7 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.assistantText").value("这是模型返回的建议。"))
         .andExpect(jsonPath("$.assistantMessageId").isNotEmpty())
         .andExpect(jsonPath("$.sessionId").value(sessionId))
+        .andExpect(jsonPath("$.providerResponseMeta.reasoningContent").value("先分析选区上下文，再组织最终建议。"))
         .andExpect(jsonPath("$.providerResponseMeta.provider").value("stub-provider"))
         .andExpect(jsonPath("$.providerResponseMeta.model").value("fake-gpt"));
   }
@@ -409,6 +410,7 @@ class LlmConversationFlowTest {
                   "provider", request.providerName(),
                   "model", request.model(),
                   "created", 1711000000,
+                  "reasoningContent", "先分析选区上下文，再组织最终建议。",
                   "usage", usage
               )
           ))
