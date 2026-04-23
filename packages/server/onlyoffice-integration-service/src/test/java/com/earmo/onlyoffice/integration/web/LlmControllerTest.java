@@ -58,15 +58,15 @@ class LlmControllerTest {
             "doc-1",
             true,
             null,
-            "alibaba-dashscope",
+            "dashscope",
             "qwen-plus",
             false,
             true,
-            "alibaba-dashscope",
+            "dashscope",
             "qwen-plus",
             List.of(new LlmProviderOptionResponse(
-                "alibaba-dashscope",
-                "Alibaba DashScope",
+                "dashscope",
+                "DashScope",
                 "qwen-plus",
                 List.of("qwen-plus", "qwen-max"),
                 false,
@@ -78,9 +78,9 @@ class LlmControllerTest {
     mockMvc.perform(get("/api/llm/capability").param("documentId", "doc-1"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.llmAvailable").value(true))
-        .andExpect(jsonPath("$.provider").value("alibaba-dashscope"))
+        .andExpect(jsonPath("$.provider").value("dashscope"))
         .andExpect(jsonPath("$.streamMode").value(true))
-        .andExpect(jsonPath("$.defaultProvider").value("alibaba-dashscope"))
+        .andExpect(jsonPath("$.defaultProvider").value("dashscope"))
         .andExpect(jsonPath("$.availableProviders[0].availableModels[1]").value("qwen-max"));
   }
 
@@ -95,13 +95,13 @@ class LlmControllerTest {
               "req-1",
               "session-1",
               "assistant-1",
-              "alibaba-dashscope",
+              "dashscope",
               "qwen-plus",
               null,
               null,
               null,
               null,
-              java.util.Map.of("provider", "alibaba-dashscope", "model", "qwen-plus"),
+              java.util.Map.of("provider", "dashscope", "model", "qwen-plus"),
               null,
               Instant.parse("2026-04-22T10:00:00Z"),
               null
@@ -118,7 +118,7 @@ class LlmControllerTest {
                     {
                       "documentId":"doc-1",
                       "sessionId":"session-1",
-                      "provider":"alibaba-dashscope",
+                      "provider":"dashscope",
                       "model":"qwen-plus",
                       "question":"流式发送",
                       "selectionSnapshot":{"text":"选区内容","emptySelection":false},
@@ -134,7 +134,7 @@ class LlmControllerTest {
         .andExpect(status().isOk())
         .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
         .andExpect(content().string(containsString("event:request-started")))
-        .andExpect(content().string(containsString("alibaba-dashscope")));
+        .andExpect(content().string(containsString("dashscope")));
   }
 
   @Test
@@ -149,7 +149,7 @@ class LlmControllerTest {
                     {
                       "documentId":"doc-1",
                       "sessionId":"session-1",
-                      "provider":"alibaba-dashscope",
+                      "provider":"dashscope",
                       "model":"qwen-plus",
                       "question":"流式发送",
                       "selectionSnapshot":{"text":"选区内容","emptySelection":false},

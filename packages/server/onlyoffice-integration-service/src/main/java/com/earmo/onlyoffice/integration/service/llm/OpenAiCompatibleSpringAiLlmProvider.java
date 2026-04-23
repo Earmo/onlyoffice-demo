@@ -1,48 +1,70 @@
 package com.earmo.onlyoffice.integration.service.llm;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Duration;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpHeaders;
+import java.util.concurrent.atomic.AtomicBoolean;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.DefaultToolExecutionEligibilityPredicate;
+import org.springframework.ai.model.tool.DefaultToolCallingManager;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionEligibilityPredicate;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.retry.RetryUtils;
+import org.springframework.ai.tool.execution.DefaultToolExecutionExceptionProcessor;
+import org.springframework.ai.tool.resolution.StaticToolCallbackResolver;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
-import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import reactor.core.publisher.Flux;
-import reactor.netty.http.client.HttpClient;
 
 /**
- * 适配标准 OpenAI-compatible chat completions 的 provider。
+ * 基于 Spring AI OpenAI 模型适配标准 OpenAI-compatible chat completions 的 provider。
  *
- * <p>Phase 14.2 中，SiliconFlow 这类兼容 OpenAI 协议的服务统一走这里，
- * 固定使用 /v1/chat/completions + stream=true，而不是任何厂商私有路径。
+ * <p>DashScope 兼容模式、SiliconFlow 这类兼容 OpenAI 协议的服务统一走这里，
+ * 由 Spring AI OpenAI 实现负责请求构造和流式响应解析。
  */
 @Component
+@Slf4j
 public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider {
 
-  private static final ParameterizedTypeReference<ServerSentEvent<String>> SSE_STRING_TYPE =
-      new ParameterizedTypeReference<>() {
-      };
-
-  private final WebClient.Builder webClientBuilder;
-  private final ObjectMapper objectMapper;
+  private final ObjectProvider<RestClient.Builder> restClientBuilderProvider;
+  private final ObjectProvider<WebClient.Builder> webClientBuilderProvider;
+  private final ObjectProvider<ObservationRegistry> observationRegistryProvider;
+  private final ObjectProvider<ToolCallingManager> toolCallingManagerProvider;
+  private final ObjectProvider<ToolExecutionEligibilityPredicate> toolExecutionEligibilityPredicateProvider;
+  private final ObjectProvider<RetryTemplate> retryTemplateProvider;
 
   /**
-   * 注入 WebClient 构建器与 JSON 解析器。
+   * 注入构建 Spring AI OpenAI ChatModel 所需的依赖。
    */
-  public OpenAiCompatibleSpringAiLlmProvider(WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
-    this.webClientBuilder = webClientBuilder;
-    this.objectMapper = objectMapper;
+  public OpenAiCompatibleSpringAiLlmProvider(
+      ObjectProvider<RestClient.Builder> restClientBuilderProvider,
+      ObjectProvider<WebClient.Builder> webClientBuilderProvider,
+      ObjectProvider<ObservationRegistry> observationRegistryProvider,
+      ObjectProvider<ToolCallingManager> toolCallingManagerProvider,
+      ObjectProvider<ToolExecutionEligibilityPredicate> toolExecutionEligibilityPredicateProvider,
+      ObjectProvider<RetryTemplate> retryTemplateProvider
+  ) {
+    this.restClientBuilderProvider = restClientBuilderProvider;
+    this.webClientBuilderProvider = webClientBuilderProvider;
+    this.observationRegistryProvider = observationRegistryProvider;
+    this.toolCallingManagerProvider = toolCallingManagerProvider;
+    this.toolExecutionEligibilityPredicateProvider = toolExecutionEligibilityPredicateProvider;
+    this.retryTemplateProvider = retryTemplateProvider;
   }
 
   /**
@@ -54,44 +76,78 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
   }
 
   /**
-   * 通过 OpenAI-compatible SSE 协议发起流式对话。
+   * 通过 Spring AI OpenAI ChatModel 发起流式对话。
    *
    * <p>处理步骤：
-   * 1. 仅构造最小必要 payload；
-   * 2. 调用 `/chat/completions` 并声明 `text/event-stream`；
-   * 3. 逐帧过滤空数据与 `[DONE]`；
-   * 4. 把每帧响应解析成统一 chunk；
-   * 5. 把底层客户端异常映射成稳定业务错误码。
+   * 1. 为当前请求构造 OpenAiApi 与 OpenAiChatModel；
+   * 2. 组装 Spring AI Prompt；
+   * 3. 逐帧读取文本、request id、usage 与 finish reason；
+   * 4. 把底层客户端异常映射成稳定业务错误码。
    */
   @Override
   public Flux<SpringAiProviderChunk> stream(LlmRuntimeRequest request) {
-    // 这里只构造 OpenAI-compatible 最小必要 payload：
-    // model + stream + messages。其余会话状态在领域层维护，不向上游透传内部字段。
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("model", request.model());
-    payload.put("stream", true);
-    payload.put("messages", request.messages().stream().map(message -> Map.of(
-        "role", message.role(),
-        "content", message.content()
-    )).toList());
-
-    return webClient(request)
-        .post()
-        .uri("/chat/completions")
-        .contentType(MediaType.APPLICATION_JSON)
-        .accept(MediaType.TEXT_EVENT_STREAM)
-        .bodyValue(payload)
-        .retrieve()
-        .bodyToFlux(SSE_STRING_TYPE)
-        // Reactor Netty 的 responseTimeout 更偏底层 HTTP 读超时；这里再加一层 Flux timeout，
-        // 覆盖“响应头已返回，但后续 SSE 数据长时间没有任何帧”的场景。
-        .timeout(Duration.ofMillis(request.timeoutMillis()))
-        .mapNotNull(ServerSentEvent::data)
-        .filter(data -> !data.isBlank())
-        // OpenAI-compatible SSE 以 [DONE] 作为终止帧；真正的终态落库由上层服务统一负责。
-        .takeUntil("[DONE]"::equals)
-        .filter(data -> !"[DONE]".equals(data))
-        .map(this::parseChunk)
+    OpenAiChatModel chatModel = buildChatModel(request);
+    AtomicBoolean firstChunkLogged = new AtomicBoolean(false);
+    Prompt prompt = new Prompt(
+        toSpringAiMessages(request.messages()),
+        OpenAiChatOptions.builder()
+            .model(request.model())
+            .streamUsage(true)
+            .build()
+    );
+    log.info(
+        "Calling upstream llm provider, provider={}, model={}, baseUrl={}, timeoutMs={}, messageCount={}",
+        request.providerName(),
+        request.model(),
+        request.baseUrl(),
+        request.timeoutMillis(),
+        request.messages().size()
+    );
+    return chatModel.stream(prompt)
+        .map(response -> {
+          Object metadata = response.getMetadata();
+          Map<String, Object> providerMeta = new LinkedHashMap<>();
+          providerMeta.put("model", valueAsString(invokeIfPresent(metadata, "getModel")));
+          Object created = readMetadataValue(metadata, "created");
+          if (created != null) {
+            providerMeta.put("created", created);
+          }
+          Map<String, Object> usageMap = usageMap(invokeIfPresent(metadata, "getUsage"));
+          if (!usageMap.isEmpty()) {
+            providerMeta.put("usage", usageMap);
+          }
+          return new SpringAiProviderChunk(
+              readAssistantText(response),
+              valueAsString(invokeIfPresent(metadata, "getId")),
+              usage(invokeIfPresent(metadata, "getUsage")),
+              valueAsString(invokeIfPresent(response.getResult() == null ? null : response.getResult().getMetadata(), "getFinishReason")),
+              providerMeta
+          );
+        })
+        .doOnNext(chunk -> {
+          if (firstChunkLogged.compareAndSet(false, true)) {
+            log.info(
+                "Received first upstream llm chunk, provider={}, model={}, upstreamRequestId={}, hasDelta={}, finishReason={}",
+                request.providerName(),
+                request.model(),
+                chunk.providerRequestId(),
+                chunk.delta() != null && !chunk.delta().isEmpty(),
+                chunk.finishReason()
+            );
+          }
+        })
+        .doOnComplete(() -> log.info(
+            "Upstream llm stream completed, provider={}, model={}",
+            request.providerName(),
+            request.model()
+        ))
+        .doOnError(exception -> log.info(
+            "Upstream llm stream failed, provider={}, model={}, exceptionType={}, message={}",
+            request.providerName(),
+            request.model(),
+            exception.getClass().getSimpleName(),
+            exception.getMessage()
+        ))
         .onErrorMap(this::mapException);
   }
 
@@ -111,54 +167,53 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
   }
 
   /**
-   * 构建当前请求专属的 WebClient。
+   * 为当前请求构造 OpenAI ChatModel。
    */
-  private WebClient webClient(LlmRuntimeRequest request) {
-    HttpClient httpClient = HttpClient.create().responseTimeout(Duration.ofMillis(request.timeoutMillis()));
-    return webClientBuilder.clone()
-        .clientConnector(new ReactorClientHttpConnector(httpClient))
-        .exchangeStrategies(ExchangeStrategies.withDefaults())
-        // 配置允许只写域名或根路径，这里统一补到 /v1，避免上层把实现细节散落到各处。
+  private OpenAiChatModel buildChatModel(LlmRuntimeRequest request) {
+    ObservationRegistry observationRegistry = observationRegistryProvider.getIfAvailable(() -> ObservationRegistry.NOOP);
+    ToolCallingManager toolCallingManager = toolCallingManagerProvider.getIfAvailable(() ->
+        new DefaultToolCallingManager(
+            observationRegistry,
+            new StaticToolCallbackResolver(List.of()),
+            new DefaultToolExecutionExceptionProcessor(false)
+        )
+    );
+    ToolExecutionEligibilityPredicate toolExecutionEligibilityPredicate =
+        toolExecutionEligibilityPredicateProvider.getIfAvailable(DefaultToolExecutionEligibilityPredicate::new);
+    RetryTemplate retryTemplate = retryTemplateProvider.getIfAvailable(() -> RetryUtils.DEFAULT_RETRY_TEMPLATE);
+
+    OpenAiApi openAiApi = OpenAiApi.builder()
         .baseUrl(normalizeBaseUrl(request.baseUrl()))
-        .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + request.apiKey())
+        .apiKey(request.apiKey())
+        .restClientBuilder(restClientBuilderProvider.getIfAvailable(RestClient::builder))
+        .webClientBuilder(webClientBuilderProvider.getIfAvailable(WebClient::builder))
+        .build();
+
+    return OpenAiChatModel.builder()
+        .openAiApi(openAiApi)
+        .defaultOptions(OpenAiChatOptions.builder()
+            .model(request.model())
+            .streamUsage(true)
+            .build())
+        .observationRegistry(observationRegistry)
+        .toolCallingManager(toolCallingManager)
+        .toolExecutionEligibilityPredicate(toolExecutionEligibilityPredicate)
+        .retryTemplate(retryTemplate)
         .build();
   }
 
   /**
-   * 解析单个 SSE 数据帧。
+   * 把领域层消息映射成 Spring AI 消息类型。
    */
-  private SpringAiProviderChunk parseChunk(String data) {
-    try {
-      Map<String, Object> response = objectMapper.readValue(data, new TypeReference<>() {
-      });
-      List<?> choices = response.get("choices") instanceof List<?> list ? list : List.of();
-      Map<?, ?> firstChoice = !choices.isEmpty() && choices.getFirst() instanceof Map<?, ?> choiceMap ? choiceMap : Map.of();
-      Map<?, ?> delta = firstChoice.get("delta") instanceof Map<?, ?> deltaMap ? deltaMap : Map.of();
-
-      Map<String, Object> providerMeta = new LinkedHashMap<>();
-      providerMeta.put("model", response.get("model"));
-      providerMeta.put("created", response.get("created"));
-      Map<String, Object> normalizedUsage = normalizeUsageMap(response.get("usage"));
-      if (!normalizedUsage.isEmpty()) {
-        providerMeta.put("usage", normalizedUsage);
-      }
-
-      // 统一映射成领域层约定的 chunk 结构：
-      // delta 负责增量展示，usage / finish_reason / providerMeta 留给 terminal path 汇总。
-      return new SpringAiProviderChunk(
-          stringValue(delta.get("content")),
-          stringValue(response.get("id")),
-          normalizeUsage(response.get("usage")),
-          stringValue(firstChoice.get("finish_reason")),
-          providerMeta
-      );
-    } catch (Exception exception) {
-      throw new LlmApiException(
-          LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR,
-          HttpStatus.BAD_GATEWAY,
-          "模型上游服务返回无法解析的响应。"
-      );
-    }
+  private List<org.springframework.ai.chat.messages.Message> toSpringAiMessages(List<LlmProviderMessage> messages) {
+    return messages.stream()
+        .map(message -> switch (message.role()) {
+          case "system" -> new SystemMessage(message.content());
+          case "assistant" -> new AssistantMessage(message.content());
+          default -> new UserMessage(message.content());
+        })
+        .map(message -> (org.springframework.ai.chat.messages.Message) message)
+        .toList();
   }
 
   /**
@@ -205,58 +260,110 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
   }
 
   /**
-   * 把 OpenAI-compatible usage 结构规范化为内部对象。
+   * 反射调用目标对象上可能存在的方法。
    */
-  private LlmProviderUsage normalizeUsage(Object usageObject) {
-    if (!(usageObject instanceof Map<?, ?> usageMap)) {
-      return new LlmProviderUsage(null, null, null);
+  private Object invokeIfPresent(Object target, String methodName) {
+    if (target == null) {
+      return null;
     }
+    try {
+      java.lang.reflect.Method method = target.getClass().getMethod(methodName);
+      return method.invoke(target);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  /**
+   * 从 ChatResponseMetadata 的 key-value 中读取指定值。
+   */
+  private Object readMetadataValue(Object metadata, String key) {
+    if (metadata == null || key == null || key.isBlank()) {
+      return null;
+    }
+    try {
+      java.lang.reflect.Method method = metadata.getClass().getMethod("get", String.class);
+      return method.invoke(metadata, key);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  /**
+   * 从响应中提取 assistant 增量文本。
+   */
+  private String readAssistantText(Object response) {
+    if (response == null) {
+      return "";
+    }
+    Object result = invokeIfPresent(response, "getResult");
+    Object output = invokeIfPresent(result, "getOutput");
+    Object text = invokeIfPresent(output, "getText");
+    if (text == null) {
+      text = invokeIfPresent(output, "getContent");
+    }
+    return text == null ? "" : String.valueOf(text);
+  }
+
+  /**
+   * 把 usage 信息转换为内部统一结构。
+   */
+  private LlmProviderUsage usage(Object usageObject) {
     return new LlmProviderUsage(
-        intValue(usageMap.get("prompt_tokens")),
-        intValue(usageMap.get("completion_tokens")),
-        intValue(usageMap.get("total_tokens"))
+        valueAsInteger(invokeIfPresent(usageObject, "getPromptTokens")),
+        valueAsInteger(invokeIfPresent(usageObject, "getCompletionTokens")),
+        valueAsInteger(invokeIfPresent(usageObject, "getTotalTokens"))
     );
   }
 
   /**
-   * 把 usage map 规范化成前端/数据库使用的 camelCase 键名。
+   * 把 usage 信息转换为可序列化元数据。
    */
-  private Map<String, Object> normalizeUsageMap(Object usageObject) {
-    if (!(usageObject instanceof Map<?, ?> usageMap)) {
-      return Map.of();
+  private Map<String, Object> usageMap(Object usageObject) {
+    Map<String, Object> usageMap = new LinkedHashMap<>();
+    Integer promptTokens = valueAsInteger(invokeIfPresent(usageObject, "getPromptTokens"));
+    Integer completionTokens = valueAsInteger(invokeIfPresent(usageObject, "getCompletionTokens"));
+    Integer totalTokens = valueAsInteger(invokeIfPresent(usageObject, "getTotalTokens"));
+    if (promptTokens != null) {
+      usageMap.put("promptTokens", promptTokens);
     }
-    Map<String, Object> normalized = new LinkedHashMap<>();
-    normalized.put("promptTokens", intValue(usageMap.get("prompt_tokens")));
-    normalized.put("completionTokens", intValue(usageMap.get("completion_tokens")));
-    normalized.put("totalTokens", intValue(usageMap.get("total_tokens")));
-    return normalized;
+    if (completionTokens != null) {
+      usageMap.put("completionTokens", completionTokens);
+    }
+    if (totalTokens != null) {
+      usageMap.put("totalTokens", totalTokens);
+    }
+    return usageMap;
   }
 
   /**
-   * 规范化 baseUrl，统一补到 `/v1` 根路径。
+   * 规范化 baseUrl，转换到 OpenAiApi 期望的根路径。
    */
   private String normalizeBaseUrl(String value) {
     if (value == null || value.isBlank()) {
       return "";
     }
     String trimmed = value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
-    if (trimmed.endsWith("/v1")) {
-      return trimmed;
+    if (trimmed.endsWith("/chat/completions")) {
+      trimmed = trimmed.substring(0, trimmed.length() - "/chat/completions".length());
     }
-    return trimmed + "/v1";
+    if (trimmed.endsWith("/v1")) {
+      trimmed = trimmed.substring(0, trimmed.length() - 3);
+    }
+    return trimmed;
   }
 
   /**
    * 安全地把任意值转成字符串。
    */
-  private String stringValue(Object value) {
-    return value == null ? "" : String.valueOf(value);
+  private String valueAsString(Object value) {
+    return value == null ? null : String.valueOf(value);
   }
 
   /**
    * 安全地把任意数字值转成整数。
    */
-  private Integer intValue(Object value) {
+  private Integer valueAsInteger(Object value) {
     return value instanceof Number number ? number.intValue() : null;
   }
 }

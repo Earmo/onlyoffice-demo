@@ -26,7 +26,7 @@ public class LlmProperties {
 
   private boolean featureEnabled = true;
 
-  private String defaultProvider = "alibaba-dashscope";
+  private String defaultProvider = "dashscope";
 
   private String defaultModel = "";
 
@@ -170,7 +170,7 @@ public class LlmProperties {
 
     private String label = "";
 
-    private String springAiProvider = "dashscope";
+    private String springAiProvider = "openai-compatible";
 
     private String baseUrl = "";
 

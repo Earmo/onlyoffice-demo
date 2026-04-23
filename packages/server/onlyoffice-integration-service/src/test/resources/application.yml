@@ -1,15 +1,19 @@
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   profiles:
     # 测试资源配置显式声明 test，避免把默认 dev profile 带入 SpringBootTest。
     active: test
   ai:
     model:
-      # 集成测试用 stub provider，不让 Spring AI starter尝试连真实模型。
+      # 集成测试用 stub provider，不让 Spring AI starter 绑定真实 chat model。
       chat: none
-    dashscope:
-      # 仅用于让自动配置通过；测试真正走的是 stub-provider。
-      api-key: test-dashscope-api-key
-      base-url: http://127.0.0.1:18089
 
   datasource:
     url: jdbc:h2:mem:onlyoffice-integration-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1

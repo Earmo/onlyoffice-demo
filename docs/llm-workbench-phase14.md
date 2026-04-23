@@ -4,13 +4,13 @@
 
 ## 配置映射
 
-> Phase 14.2 开始，主链路已经切到 `Spring AI + Spring AI Alibaba + 独立 AI SSE`。当前只保留 `llm.default-provider / llm.default-model / llm.providers.*` 这一套多 provider 配置入口。
+> Phase 14.2 开始，主链路已经切到 `Spring AI + 独立 AI SSE`。当前只保留 `llm.default-provider / llm.default-model / llm.providers.*` 这一套多 provider 配置入口。
 
 | 环境变量 | Spring 配置键 | 默认值 | 说明 |
 |---|---|---|---|
 | `LLM_ENABLED` | `llm.enabled` | `false` | 是否允许服务端真正发起模型调用 |
 | `LLM_FEATURE_ENABLED` | `llm.feature-enabled` | `true` | 是否向前端暴露 AI 工作台能力 |
-| `LLM_DEFAULT_PROVIDER` | `llm.default-provider` | `alibaba-dashscope` | 默认运行时 provider |
+| `LLM_DEFAULT_PROVIDER` | `llm.default-provider` | `dashscope` | 默认运行时 provider |
 | `LLM_DEFAULT_MODEL` | `llm.default-model` | provider 默认模型 | 默认运行时 model |
 | `LLM_TIMEOUT_MILLIS` | `llm.timeout-millis` | `60000` | 上游请求超时时间 |
 | `LLM_HISTORY_BUDGET_TOKENS` | `llm.history-budget-tokens` | `12000` | 历史窗口 token 预算 |
@@ -22,26 +22,23 @@
 - `LLM_ALLOW_HEADING_CONTEXT -> llm.allow-heading-context`
 - `LLM_DEFAULT_SYSTEM_PROMPT -> llm.default-system-prompt`
 
-DashScope starter 对应的 Spring AI 配置：
+DashScope 兼容模式对应的 Spring AI 配置：
 
-- `spring.ai.model.chat=dashscope`
-- `spring.ai.dashscope.api-key`
-- `spring.ai.dashscope.base-url`
-- `spring.ai.dashscope.chat.options.model`
+- `spring.ai.model.chat=none`
 
 推荐 provider 形态：
 
 ```yaml
 llm:
-  default-provider: alibaba-dashscope
+  default-provider: dashscope
   default-model: qwen-plus
   providers:
-    alibaba-dashscope:
-      label: Alibaba DashScope
-      spring-ai-provider: dashscope
-      api-key: ${LLM_PROVIDER_ALIBABA_API_KEY}
-      base-url: ${LLM_PROVIDER_ALIBABA_BASE_URL:https://dashscope.aliyuncs.com}
-      default-model: ${LLM_PROVIDER_ALIBABA_DEFAULT_MODEL:qwen-plus}
+    dashscope:
+      label: DashScope
+      spring-ai-provider: openai-compatible
+      api-key: ${LLM_PROVIDER_DASHSCOPE_API_KEY}
+      base-url: ${LLM_PROVIDER_DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      default-model: ${LLM_PROVIDER_DASHSCOPE_DEFAULT_MODEL:qwen-plus}
       models:
         - qwen-plus
         - qwen-max
@@ -188,8 +185,8 @@ Phase 15 写回能力必须直接复用现有线程字段，不重新发起模�
 2. `LlmConversationService.streamMessage()` / `sendMessage()` 先校验 provider/model，再通过 `LlmConversationAccessGuard` 确认当前用户确实能访问该 `documentId + sessionId`。
 3. 服务端先落库 `user message`，再预插 `assistant message(status=pending)`，最后创建 `document_llm_request(status=in_progress)`。
 4. `LlmPromptWindowBuilder` 根据 `historyBudgetTokens` 和 `chars_div_4` 规则裁剪历史窗口，始终保留 system prompt、当前问题和当前快照。
-5. `SpringAiProviderRegistry` 解析逻辑 provider，`AlibabaDashScopeSpringAiLlmProvider` 通过 Spring AI `ChatClient` 发起流式对话。
-   `OpenAiCompatibleSpringAiLlmProvider` 则负责标准 OpenAI-compatible `/v1/chat/completions` 流式协议，例如 SiliconFlow。
+5. `SpringAiProviderRegistry` 解析逻辑 provider，`OpenAiCompatibleSpringAiLlmProvider` 通过 Spring AI OpenAI model 发起流式对话。
+   DashScope 与 SiliconFlow 都通过 OpenAI-compatible 接口归一到同一实现。
 6. 流式增量只写到 `text/event-stream`，正式 `assistantText` 只在 terminal path 一次性落库。
 7. provider 返回后，`LlmRequestExecutionRegistry` 先仲裁终态所有权：
    - 若取消先赢，晚到成功直接丢弃
@@ -211,7 +208,6 @@ Phase 15 写回能力必须直接复用现有线程字段，不重新发起模�
 
 - 服务端配置入口：`packages/server/onlyoffice-integration-service/src/main/resources/application.yml`
 - 服务端主服务：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/LlmConversationService.java`
-- provider 适配：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/AlibabaDashScopeSpringAiLlmProvider.java`
 - OpenAI-compatible provider 适配：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/OpenAiCompatibleSpringAiLlmProvider.java`
 - 终态仲裁：`packages/server/onlyoffice-integration-service/src/main/java/com/earmo/onlyoffice/integration/service/llm/LlmRequestExecutionRegistry.java`
 - 前端工作台：`packages/web/src/components/editor/EditorAiWorkbench.vue`
@@ -228,8 +224,8 @@ Phase 15 写回能力必须直接复用现有线程字段，不重新发起模�
    看 `beginRequest()`、`streamMessage()`、`executeProviderStream()`，理解预落库、流式执行和终态收口。
 3. `LlmRequestExecutionRegistry`
    看 completed / cancelled / failed 的仲裁规则，理解为什么晚到成功不会覆盖 cancelled。
-4. `AlibabaDashScopeSpringAiLlmProvider` / `OpenAiCompatibleSpringAiLlmProvider`
-   看不同上游协议如何归一化成 `SpringAiProviderChunk`。
+4. `OpenAiCompatibleSpringAiLlmProvider`
+   看 DashScope / SiliconFlow 如何归一化成 `SpringAiProviderChunk`。
 5. `EditorAiWorkbench.vue`
    看 `loadCapabilityAndBootstrap()`、`sendCurrentQuestion()`、`reconcileRequestOnce()`，理解前端如何接流和防串线。
 6. `llmMessageStream.js`

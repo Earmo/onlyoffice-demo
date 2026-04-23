@@ -431,6 +431,19 @@ public class LlmConversationService {
         )
     );
 
+    log.info(
+        "Prepared llm request, documentId={}, sessionId={}, provider={}, springAiProvider={}, model={}, timeoutMs={}, messageCount={}, selectionEmpty={}, includeHeading={}",
+        request.documentId(),
+        session.getSessionId(),
+        runtimeSelection.providerName(),
+        runtimeSelection.provider().providerName(),
+        runtimeSelection.model(),
+        runtimeSelection.timeoutMillis(),
+        runtimeRequest.messages().size(),
+        request.selectionSnapshot().emptySelection(),
+        llmProperties.isAllowHeadingContext() && request.headingContext().includeHeading()
+    );
+
     return new PreparedRequest(
         session,
         userMessage,
@@ -458,10 +471,25 @@ public class LlmConversationService {
     StreamAccumulator accumulator = new StreamAccumulator(preparedRequest.runtimeSelection().providerName(), preparedRequest.runtimeSelection().model());
     try {
       if (executionRegistry.isCancelled(requestId)) {
+        log.info(
+            "Skipped llm execution because request was already cancelled, requestId={}, documentId={}, sessionId={}",
+            requestId,
+            preparedRequest.request().documentId(),
+            preparedRequest.request().sessionId()
+        );
         sink.send("assistant-cancelled", cancelledEvent(preparedRequest));
         sink.complete();
         return;
       }
+      log.info(
+          "Starting llm provider stream, requestId={}, documentId={}, sessionId={}, provider={}, model={}, timeoutMs={}",
+          requestId,
+          preparedRequest.request().documentId(),
+          preparedRequest.request().sessionId(),
+          preparedRequest.runtimeSelection().providerName(),
+          preparedRequest.runtimeSelection().model(),
+          preparedRequest.runtimeSelection().timeoutMillis()
+      );
       // 流式增量只进内存累加器和 SSE，不在每个 chunk 时落库。
       // 这样可以避免高频 update 把数据库变成 token 级日志，同时保证 terminal path 一次性写入最终 assistantText。
       CountDownLatch streamFinished = new CountDownLatch(1);
@@ -477,6 +505,13 @@ public class LlmConversationService {
       streamFinished.await();
 
       if (executionRegistry.isCancelled(requestId)) {
+        log.info(
+            "Llm request was cancelled after stream finished, requestId={}, provider={}, model={}, chunkCount={}",
+            requestId,
+            preparedRequest.runtimeSelection().providerName(),
+            preparedRequest.runtimeSelection().model(),
+            accumulator.chunkCount
+        );
         sink.send("assistant-cancelled", cancelledEvent(preparedRequest));
         sink.complete();
         return;
@@ -500,6 +535,13 @@ public class LlmConversationService {
       // 如果本地取消先抢到终态，这里的成功结果要被直接丢弃，不能覆盖 cancelled。
       if (!executionRegistry.tryMarkCompleted(requestId)) {
         if (executionRegistry.isCancelled(requestId)) {
+          log.info(
+              "Dropped llm completion because cancel won the race, requestId={}, provider={}, model={}, chunkCount={}",
+              requestId,
+              preparedRequest.runtimeSelection().providerName(),
+              preparedRequest.runtimeSelection().model(),
+              accumulator.chunkCount
+          );
           sink.send("assistant-cancelled", cancelledEvent(preparedRequest));
           sink.complete();
         }
@@ -523,6 +565,20 @@ public class LlmConversationService {
 
       preparedRequest.session().setUpdatedTime(Instant.now());
       documentLlmSessionRepository.update(preparedRequest.session());
+
+      log.info(
+          "Completed llm request, requestId={}, documentId={}, sessionId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, responseChars={}, finishReason={}, usage={}",
+          requestId,
+          preparedRequest.request().documentId(),
+          preparedRequest.request().sessionId(),
+          preparedRequest.runtimeSelection().providerName(),
+          preparedRequest.runtimeSelection().model(),
+          accumulator.providerRequestId,
+          accumulator.chunkCount,
+          accumulator.assistantText.length(),
+          accumulator.finishReason,
+          accumulator.usage
+      );
 
       sink.send("assistant-meta", metaEvent(preparedRequest, accumulator));
       sink.send("assistant-completed", completedEvent(preparedRequest, accumulator));
@@ -558,6 +614,7 @@ public class LlmConversationService {
       StreamAccumulator accumulator,
       SpringAiProviderChunk chunk
   ) {
+    accumulator.chunkCount++;
     // provider 的流式回包可能把 requestId、usage、finish_reason 分散在不同帧里，
     // 这里统一归并到 accumulator，最终由 terminal event 一次性吐给前端和数据库。
     if (chunk.providerRequestId() != null && !chunk.providerRequestId().isBlank()) {
@@ -575,6 +632,18 @@ public class LlmConversationService {
     }
     if (chunk.delta() != null && !chunk.delta().isEmpty()) {
       accumulator.assistantText.append(chunk.delta());
+      if (!accumulator.firstDeltaLogged) {
+        accumulator.firstDeltaLogged = true;
+        log.info(
+            "Received first llm delta, requestId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, deltaChars={}",
+            preparedRequest.requestEntity().getRequestId(),
+            preparedRequest.runtimeSelection().providerName(),
+            preparedRequest.runtimeSelection().model(),
+            accumulator.providerRequestId,
+            accumulator.chunkCount,
+            chunk.delta().length()
+        );
+      }
       // 用户取消后仍可能继续收到上游晚到 token，本地直接丢弃，不再往前端发 delta。
       if (!executionRegistry.isCancelled(preparedRequest.requestEntity().getRequestId())) {
         sink.send("assistant-delta", deltaEvent(preparedRequest, chunk.delta()));
@@ -594,6 +663,16 @@ public class LlmConversationService {
     if (!executionRegistry.tryMarkFailed(preparedRequest.requestEntity().getRequestId())) {
       return;
     }
+    log.info(
+        "Llm request failed, requestId={}, documentId={}, sessionId={}, provider={}, model={}, errorCode={}, message={}",
+        preparedRequest.requestEntity().getRequestId(),
+        preparedRequest.request().documentId(),
+        preparedRequest.request().sessionId(),
+        preparedRequest.runtimeSelection().providerName(),
+        preparedRequest.runtimeSelection().model(),
+        errorCode,
+        exception.getMessage()
+    );
     markRequestFailed(preparedRequest.requestEntity(), preparedRequest.assistantMessage(), errorCode);
     sink.send("assistant-error", errorEvent(preparedRequest, errorCode));
     // 错误信息已经通过 SSE 显式返回给前端，这里只需要正常结束流，
@@ -611,6 +690,15 @@ public class LlmConversationService {
     if (!cancelClaimed && executionRegistry.hasExecution(requestId)) {
       return;
     }
+    log.info(
+        "Cancelling llm request, requestId={}, documentId={}, sessionId={}, provider={}, model={}, cancelSource={}",
+        requestId,
+        requestEntity.getDocumentId(),
+        requestEntity.getSessionId(),
+        preparedRequest.runtimeSelection().providerName(),
+        preparedRequest.runtimeSelection().model(),
+        cancelSource
+    );
     persistCancelledRequest(
         requestEntity,
         preparedRequest.assistantMessage(),
@@ -667,7 +755,7 @@ public class LlmConversationService {
   private RuntimeSelection resolveSelection(SendLlmMessageRequest request) {
     // 这里要区分两个名字：
     // - providerName: 对前端暴露的逻辑 provider，例如 siliconflow
-    // - springAiProvider: 真正执行请求的实现名，例如 openai-compatible / dashscope
+    // - springAiProvider: 真正执行请求的实现名，例如 openai-compatible
     String providerName = request.provider() == null || request.provider().isBlank()
         ? llmProperties.resolveDefaultProvider()
         : request.provider().trim();
@@ -681,6 +769,15 @@ public class LlmConversationService {
     }
     SpringAiLlmProvider provider = providerRegistry.findProvider(providerProperties.getSpringAiProvider())
         .orElseThrow(() -> new LlmApiException(LlmErrorCodes.LLM_UNAVAILABLE, HttpStatus.SERVICE_UNAVAILABLE, "未找到匹配的 Spring AI provider。"));
+    log.info(
+        "Resolved llm runtime selection, requestedProvider={}, resolvedProvider={}, springAiProvider={}, requestedModel={}, resolvedModel={}, timeoutMs={}",
+        request.provider(),
+        providerName,
+        provider.providerName(),
+        request.model(),
+        model,
+        providerProperties.getTimeoutMillis()
+    );
     return new RuntimeSelection(
         providerName,
         providerProperties.getBaseUrl(),
@@ -1120,6 +1217,8 @@ public class LlmConversationService {
     private String providerRequestId;
     private LlmProviderUsage usage = new LlmProviderUsage(null, null, null);
     private String finishReason;
+    private int chunkCount;
+    private boolean firstDeltaLogged;
 
     /**
      * 用 provider 和 model 初始化元数据骨架。
