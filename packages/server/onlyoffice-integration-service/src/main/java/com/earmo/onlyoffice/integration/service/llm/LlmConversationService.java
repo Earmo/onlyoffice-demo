@@ -1178,6 +1178,7 @@ public class LlmConversationService {
     private final SseEmitter emitter;
     private final Runnable onClosed;
     private final AtomicBoolean closeHandled = new AtomicBoolean(false);
+    private final AtomicBoolean completionSignalled = new AtomicBoolean(false);
     private volatile boolean closed;
 
     /**
@@ -1212,11 +1213,15 @@ public class LlmConversationService {
      */
     @Override
     public void complete() {
-      if (closed) {
+      if (!completionSignalled.compareAndSet(false, true)) {
         return;
       }
       markClosed();
-      emitter.complete();
+      try {
+        emitter.complete();
+      } catch (IllegalStateException ignored) {
+        // 连接已关闭时仍然允许这里静默收口，避免 servlet async 上下文悬挂到超时。
+      }
     }
 
     /**
@@ -1224,11 +1229,15 @@ public class LlmConversationService {
      */
     @Override
     public void completeWithError(Exception exception) {
-      if (closed) {
+      if (!completionSignalled.compareAndSet(false, true)) {
         return;
       }
       markClosed();
-      emitter.completeWithError(exception);
+      try {
+        emitter.completeWithError(exception);
+      } catch (IllegalStateException ignored) {
+        // 与 complete() 保持相同语义：连接已不可用时只做本地收口，不再放大异常。
+      }
     }
 
     private void markClosed() {

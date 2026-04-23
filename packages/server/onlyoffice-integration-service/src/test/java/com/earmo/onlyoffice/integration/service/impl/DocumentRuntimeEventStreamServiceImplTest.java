@@ -30,7 +30,7 @@ class DocumentRuntimeEventStreamServiceImplTest {
       DocumentRuntimeEventStreamServiceImpl service = new DocumentRuntimeEventStreamServiceImpl(
           scheduler,
           Clock.fixed(Instant.parse("2026-04-22T00:00:00Z"), ZoneOffset.UTC),
-          180000L,
+          0L,
           25000L,
           timeout -> new CapturingSseEmitter(timeout)
       );
@@ -43,7 +43,7 @@ class DocumentRuntimeEventStreamServiceImplTest {
           }
       );
 
-      assertEquals(180000L, emitter.getTimeout());
+      assertEquals(0L, emitter.getTimeout());
       assertEquals(2, emitter.sendCount());
       assertTrue(service.hasSubscribers("demo"));
 
@@ -62,7 +62,7 @@ class DocumentRuntimeEventStreamServiceImplTest {
       DocumentRuntimeEventStreamServiceImpl service = new DocumentRuntimeEventStreamServiceImpl(
           scheduler,
           Clock.fixed(Instant.parse("2026-04-22T00:00:00Z"), ZoneOffset.UTC),
-          180000L,
+          0L,
           25000L,
           timeout -> new CapturingSseEmitter(timeout)
       );
@@ -99,7 +99,7 @@ class DocumentRuntimeEventStreamServiceImplTest {
       DocumentRuntimeEventStreamServiceImpl service = new DocumentRuntimeEventStreamServiceImpl(
           scheduler,
           Clock.fixed(Instant.parse("2026-04-22T00:00:00Z"), ZoneOffset.UTC),
-          180000L,
+          0L,
           10L,
           timeout -> new CapturingSseEmitter(timeout)
       );
@@ -124,7 +124,7 @@ class DocumentRuntimeEventStreamServiceImplTest {
     DocumentRuntimeEventStreamServiceImpl service = new DocumentRuntimeEventStreamServiceImpl(
         scheduler,
         Clock.fixed(Instant.parse("2026-04-22T00:00:00Z"), ZoneOffset.UTC),
-        180000L,
+        0L,
         25000L,
         timeout -> new FailingInitialSendEmitter(timeout)
     );

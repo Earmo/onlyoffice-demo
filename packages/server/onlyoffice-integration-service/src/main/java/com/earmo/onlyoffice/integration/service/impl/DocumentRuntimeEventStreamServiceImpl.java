@@ -39,7 +39,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Service
 public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEventStreamService {
 
-  static final long DEFAULT_EMITTER_TIMEOUT_MILLIS = 180000L;
+  // runtime-events 是文档级长连接，keepalive 负责保活，不应该被固定总时长强制切断。
+  static final long DEFAULT_EMITTER_TIMEOUT_MILLIS = 0L;
   static final long DEFAULT_KEEPALIVE_INTERVAL_MILLIS = 25000L;
 
   private static final AtomicInteger KEEPALIVE_THREAD_COUNTER = new AtomicInteger(1);
