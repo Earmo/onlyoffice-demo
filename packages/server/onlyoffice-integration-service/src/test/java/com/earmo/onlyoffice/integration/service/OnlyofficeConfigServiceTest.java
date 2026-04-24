@@ -158,7 +158,9 @@ class OnlyofficeConfigServiceTest {
 
     assertEquals("https://gateway.example.test/", response.documentServerUrl());
     assertEquals("view", cast(response.config().get("editorConfig")).get("mode"));
-    assertEquals(null, cast(response.config().get("editorConfig")).get("plugins"));
+    Map<String, Object> bridgePlugins = cast(cast(response.config().get("editorConfig")).get("plugins"));
+    assertNotNull(bridgePlugins);
+    assertEquals(List.of("https://gateway.example.test/onlyoffice-plugins/ai-bridge/config.json"), bridgePlugins.get("pluginsData"));
   }
 
   @Test
@@ -221,7 +223,9 @@ class OnlyofficeConfigServiceTest {
     assertEquals(Boolean.FALSE, permissions.get("download"));
     assertEquals(Boolean.FALSE, permissions.get("comment"));
     assertEquals(Boolean.TRUE, permissions.get("print"));
-    assertEquals(null, editorConfig.get("plugins"));
+    Map<String, Object> bridgePlugins = cast(editorConfig.get("plugins"));
+    assertNotNull(bridgePlugins);
+    assertEquals(List.of("https://gateway.example.test/onlyoffice-plugins/ai-bridge/config.json"), bridgePlugins.get("pluginsData"));
   }
 
   @Test

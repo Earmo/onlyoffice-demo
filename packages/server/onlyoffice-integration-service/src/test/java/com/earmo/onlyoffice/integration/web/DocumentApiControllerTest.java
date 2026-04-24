@@ -5,6 +5,9 @@ import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentEditorSessionMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmMessageMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmRequestMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmSessionMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentRuntimeEventMapper;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
@@ -69,6 +72,15 @@ class DocumentApiControllerTest {
 
   @MockBean
   private DocumentEditorSessionMapper documentEditorSessionMapper;
+
+  @MockBean
+  private DocumentLlmMessageMapper documentLlmMessageMapper;
+
+  @MockBean
+  private DocumentLlmRequestMapper documentLlmRequestMapper;
+
+  @MockBean
+  private DocumentLlmSessionMapper documentLlmSessionMapper;
 
   @Test
   void shouldListDocumentsForCurrentTenant() throws Exception {

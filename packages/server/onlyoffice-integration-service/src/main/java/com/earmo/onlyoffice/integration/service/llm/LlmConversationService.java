@@ -622,7 +622,15 @@ public class LlmConversationService {
       accumulator.providerRequestId = chunk.providerRequestId();
     }
     if (chunk.providerResponseMeta() != null) {
-      accumulator.providerMeta.putAll(chunk.providerResponseMeta());
+      for (Map.Entry<String, Object> entry : chunk.providerResponseMeta().entrySet()) {
+        if ("reasoningContent".equals(entry.getKey()) && entry.getValue() instanceof String newDelta) {
+          // 推理内容是流式增量，需要拼接而非覆盖（与 assistantText 的 append 逻辑一致）
+          String existing = (String) accumulator.providerMeta.getOrDefault("reasoningContent", "");
+          accumulator.providerMeta.put("reasoningContent", existing + newDelta);
+        } else {
+          accumulator.providerMeta.put(entry.getKey(), entry.getValue());
+        }
+      }
     }
     if (chunk.usage() != null) {
       accumulator.usage = chunk.usage();
@@ -634,14 +642,9 @@ public class LlmConversationService {
       accumulator.assistantText.append(chunk.delta());
       if (!accumulator.firstDeltaLogged) {
         accumulator.firstDeltaLogged = true;
-        log.info(
-            "收到首个 LLM 增量片段，requestId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, deltaChars={}",
-            preparedRequest.requestEntity().getRequestId(),
-            preparedRequest.runtimeSelection().providerName(),
-            preparedRequest.runtimeSelection().model(),
-            accumulator.providerRequestId,
-            accumulator.chunkCount,
-            chunk.delta().length()
+        log.info("收到首个 LLM 增量片段，requestId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, deltaChars={}",
+            preparedRequest.requestEntity().getRequestId(),preparedRequest.runtimeSelection().providerName(),
+            preparedRequest.runtimeSelection().model(),accumulator.providerRequestId,accumulator.chunkCount,chunk.delta().length()
         );
       }
       // 用户取消后仍可能继续收到上游晚到 token，本地直接丢弃，不再往前端发 delta。

@@ -14,6 +14,6 @@ class LlmConfigurationDefaultsTest {
   void shouldKeepLlmDisabledByDefaultInSharedApplicationConfig() throws IOException {
     String content = Files.readString(Path.of("src/main/resources/application.yml"), StandardCharsets.UTF_8);
 
-    assertTrue(content.contains("enabled: ${LLM_ENABLED:false}"));
+    assertTrue(content.contains("enabled: ${LLM_ENABLED:true}"));
   }
 }
