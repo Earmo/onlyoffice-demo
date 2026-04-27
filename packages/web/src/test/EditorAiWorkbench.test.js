@@ -38,11 +38,13 @@ vi.mock("element-plus", async importOriginal => {
 });
 
 import EditorAiWorkbench from "../components/editor/EditorAiWorkbench.vue";
+import { useWriteBackStore } from "../stores/writeBackStore";
 
 describe("EditorAiWorkbench", () => {
   beforeEach(() => {
     Object.values(apiMocks).forEach(mock => mock.mockReset());
     Object.values(elementPlusMocks).forEach(mock => mock.mockReset());
+    useWriteBackStore().reset();
     elementPlusMocks.confirm.mockResolvedValue("confirm");
     apiMocks.getLlmCapability.mockResolvedValue({
       documentId: "doc-1",
@@ -419,6 +421,100 @@ describe("EditorAiWorkbench", () => {
     expect(elementPlusMocks.info).toHaveBeenCalledWith("已停止当前回复，正在切换会话");
     expect(wrapper.text()).toContain("当前会话：目标会话");
   });
+
+  describe("写入文档功能（Pinia store 反馈模式）", () => {
+    it("completed 条目显示「写入文档」按钮", async () => {
+      const wrapper = await mountWorkbenchWithCompletedReply();
+
+      expect(wrapper.find('button[title="将回复写入文档"]').exists()).toBe(true);
+    });
+
+    it("点击后打开确认对话框并生成净化后的 HTML 预览", async () => {
+      const wrapper = await mountWorkbenchWithCompletedReply({
+        assistantText: "## 标题\n\n<script>alert(1)</script>\n\n<a href=\"javascript:alert(1)\">链接</a>"
+      });
+
+      await wrapper.find('button[title="将回复写入文档"]').trigger("click");
+      await flushPromises();
+
+      expect(wrapper.vm.writeBackDialogVisible).toBe(true);
+      expect(wrapper.vm.writeBackHtml).toContain("<h2>标题</h2>");
+      expect(wrapper.vm.writeBackHtml).not.toContain("<script>");
+      expect(wrapper.vm.writeBackHtml).not.toContain("javascript:");
+    });
+
+    it("openWriteBackDialog 冻结 writeBackHasSelection 快照", async () => {
+      const wrapper = await mountWorkbenchWithCompletedReply({
+        runtimeContext: runtimeContext({ hasEmptySelection: false })
+      });
+
+      await wrapper.vm.openWriteBackDialog(wrapper.vm.conversationEntries[0]);
+      await wrapper.setProps({
+        runtimeContext: runtimeContext({ hasEmptySelection: true })
+      });
+      await flushPromises();
+
+      expect(wrapper.vm.writeBackHasSelection).toBe(true);
+    });
+
+    it("无选区时「替换当前选区」禁用逻辑基于冻结 writeBackHasSelection", async () => {
+      const wrapper = await mountWorkbenchWithCompletedReply({
+        runtimeContext: runtimeContext({ hasEmptySelection: true })
+      });
+
+      await wrapper.vm.openWriteBackDialog(wrapper.vm.conversationEntries[0]);
+      await flushPromises();
+
+      expect(wrapper.vm.writeBackHasSelection).toBe(false);
+      expect(wrapper.vm.writeBackMode).toBe("cursor");
+      expect(document.body.textContent).toContain("当前无选区");
+    });
+
+    it("confirmWriteBack 设 store.status=loading 并 emit insert-html（无回调）", async () => {
+      const wrapper = await mountWorkbenchWithCompletedReply();
+
+      await wrapper.vm.openWriteBackDialog(wrapper.vm.conversationEntries[0]);
+      await wrapper.vm.confirmWriteBack();
+      await flushPromises();
+
+      expect(wrapper.vm.writeBackStore.status).toBe("loading");
+      const emitted = wrapper.emitted("insert-html");
+      expect(emitted).toBeTruthy();
+      expect(emitted[0][0]).toMatchObject({ html: expect.any(String) });
+      expect(emitted[0][0].onSuccess).toBeUndefined();
+      expect(emitted[0][0].onError).toBeUndefined();
+    });
+
+    it("store.status=success 时提示成功并关闭对话框", async () => {
+      const wrapper = await mountWorkbenchWithCompletedReply();
+
+      await wrapper.vm.openWriteBackDialog(wrapper.vm.conversationEntries[0]);
+      await flushPromises();
+      wrapper.vm.writeBackStore.status = "success";
+      await wrapper.vm.$nextTick();
+      await flushPromises();
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(elementPlusMocks.success).toHaveBeenCalledWith("已写入文档");
+      expect(wrapper.vm.writeBackStore.status).toBe("idle");
+    });
+
+    it("store.status=error 时提示错误并保持对话框开启", async () => {
+      const wrapper = await mountWorkbenchWithCompletedReply();
+
+      await wrapper.vm.openWriteBackDialog(wrapper.vm.conversationEntries[0]);
+      await wrapper.vm.confirmWriteBack();
+      await flushPromises();
+      wrapper.vm.writeBackStore.errorMsg = "写入超时";
+      wrapper.vm.writeBackStore.status = "error";
+      await wrapper.vm.$nextTick();
+      await flushPromises();
+
+      expect(elementPlusMocks.error).toHaveBeenCalledWith("写入超时");
+      expect(wrapper.vm.writeBackDialogVisible).toBe(true);
+      expect(wrapper.vm.writeBackStore.status).toBe("idle");
+    });
+  });
 });
 
 function mountWorkbench(props = {}) {
@@ -446,6 +542,46 @@ function runtimeContext(overrides = {}) {
     bridgeReady: true,
     ...overrides
   };
+}
+
+async function mountWorkbenchWithCompletedReply(options = {}) {
+  const assistantText = options.assistantText || "流式回复";
+  apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+    queueMicrotask(() => {
+      handlers.onStarted?.({
+        documentId: "doc-1",
+        requestId: "request-writeback",
+        sessionId: "session-1",
+        assistantMessageId: "assistant-writeback",
+        provider: "stub-provider",
+        model: "fake-gpt",
+        providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+      });
+      handlers.onCompleted?.({
+        requestId: "request-writeback",
+        sessionId: "session-1",
+        assistantMessageId: "assistant-writeback",
+        assistantText,
+        usage: null,
+        finishReason: "stop",
+        providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+      });
+    });
+    return {
+      ready: Promise.resolve(),
+      done: Promise.resolve(),
+      abort: vi.fn(() => Promise.resolve())
+    };
+  });
+
+  const wrapper = mountWorkbench({
+    runtimeContext: options.runtimeContext || runtimeContext({ hasEmptySelection: false })
+  });
+  await flushPromises();
+  await wrapper.find("textarea").setValue("测试写回");
+  await wrapper.find('button[title="发送问题"]').trigger("click");
+  await flushPromises();
+  return wrapper;
 }
 
 function deferred() {

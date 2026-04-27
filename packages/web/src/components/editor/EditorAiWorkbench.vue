@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { Plus, Menu, Crop, List, Picture, Close, Position, Collection, DocumentCopy, Refresh, Delete } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import DOMPurify from "dompurify";
@@ -192,6 +192,9 @@ watch(
       writeBackDialogVisible.value = false;
       ElMessage.success("已写入文档");
       writeBackStore.reset();
+      nextTick(() => {
+        writeBackDialogVisible.value = false;
+      });
     } else if (status === "error") {
       ElMessage.error(writeBackStore.errorMsg || "写入文档失败，请重试");
       writeBackStore.reset();
