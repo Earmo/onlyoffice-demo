@@ -327,7 +327,7 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
     if (reasoningContent == null) {
       return null;
     }
-    String value = String.valueOf(reasoningContent).trim();
+    String value = String.valueOf(reasoningContent);
     return value.isEmpty() ? null : value;
   }
 
