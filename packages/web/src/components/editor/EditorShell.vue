@@ -1,11 +1,12 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
+import { DArrowLeft } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 import { apiFetch, buildApiUrl, createAccessContextHeaders } from "../../lib/api";
 import EditorAiWorkbench from "./EditorAiWorkbench.vue";
 import { createOnlyofficeBridge } from "./onlyofficeBridge";
 import { startRuntimeEventStream } from "./runtimeEventStream";
+import { useWriteBackStore } from "../../stores/writeBackStore.js";
 
 const props = defineProps({
   documentId: {
@@ -51,6 +52,7 @@ const bridgeReady = ref(false);
 const bridgeCapability = ref("plugin");
 const activeHeadingId = ref("");
 const activeHeadingNode = ref(null);
+const writeBackStore = useWriteBackStore();
 let saveStatusTimer = null;
 let sessionHeartbeatTimer = null;
 let closeEditingSessionPromise = null;
@@ -107,7 +109,8 @@ const runtimeContext = computed(() => ({
   activeHeadingId: activeHeadingId.value,
   activeHeadingNode: activeHeadingNode.value,
   bridgeStatusMessage: bridgeStatusMessage.value,
-  bridgeReady: bridgeReady.value
+  bridgeReady: bridgeReady.value,
+  saveStatus: saveStatus.value
 }));
 
 async function readErrorMessage(response, fallbackMessage) {
@@ -400,6 +403,24 @@ async function insertRemoteImage(sourceUrl) {
     errorMessage.value = error instanceof Error ? error.message : "插入图片失败";
   } finally {
     isInsertingImage.value = false;
+  }
+}
+
+async function handleInsertHtml({ html }) {
+  // Bridge 实例存在且握手完成后才允许写回文档。
+  if (!onlyofficeBridge || !bridgeReady.value) {
+    writeBackStore.status = "error";
+    writeBackStore.errorMsg = "文档连接未就绪，请等待编辑器完全加载后重试。";
+    return;
+  }
+
+  try {
+    await onlyofficeBridge.insertHtml(html);
+    writeBackStore.status = "success";
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "写入文档失败，请重试。";
+    writeBackStore.status = "error";
+    writeBackStore.errorMsg = msg;
   }
 }
 
@@ -917,7 +938,8 @@ defineExpose({
   modeLabel,
   loadSaveStatus,
   loadEditorConfig,
-  saveStatusTone
+  saveStatusTone,
+  handleInsertHtml
 });
 </script>
 
@@ -956,14 +978,6 @@ defineExpose({
     </el-main>
 
     <div v-show="shouldShowConsole && isConsoleOpen" class="floating-console">
-      <div class="console-panel-header">
-        <div style="flex: 1;">
-        </div>
-        <el-button class="panel-close" type="primary" @click="closeConsole" title="收起工作台" style="padding: 8px;" plain>
-          <el-icon size="16"><DArrowRight /></el-icon>
-        </el-button>
-      </div>
-
       <div class="console-body">
         <EditorAiWorkbench
           :document-title="props.documentTitle"
@@ -974,6 +988,7 @@ defineExpose({
           @refresh-outline="refreshOutline"
           @jump-to-heading="jumpToHeading"
           @insert-image="insertRemoteImage"
+          @insert-html="handleInsertHtml"
         />
       </div>
     </div>
@@ -1060,13 +1075,6 @@ defineExpose({
     bottom: 0;
     z-index: 120;
   }
-}
-
-.console-panel-header {
-  display: flex;
-  align-items: flex-start;
-  padding: 16px;
-  border-bottom: 1px solid var(--el-border-color);
 }
 
 .eyebrow {
