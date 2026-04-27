@@ -12,7 +12,9 @@ export const ONLYOFFICE_AI_BRIDGE_EVENTS = {
   refreshOutline: "onlyoffice-ai-bridge:refresh-outline",
   outlineRefreshed: "onlyoffice-ai-bridge:outline-refreshed",
   jumpToHeading: "onlyoffice-ai-bridge:jump-to-heading",
-  headingJumped: "onlyoffice-ai-bridge:heading-jumped"
+  headingJumped: "onlyoffice-ai-bridge:heading-jumped",
+  insertHtml: "onlyoffice-ai-bridge:insert-html",
+  htmlInserted: "onlyoffice-ai-bridge:html-inserted"
 };
 
 function createBridgeError(message) {
@@ -204,6 +206,15 @@ export function createOnlyofficeBridge({
           paragraphIndex: heading?.paragraphIndex ?? -1
         },
         "定位章节标题"
+      );
+    },
+    async insertHtml(html) {
+      // 写入动作统一交给插件端 PasteHtml，宿主页只负责请求-响应配对和超时控制。
+      await waitForReady();
+      return sendRequest(
+        ONLYOFFICE_AI_BRIDGE_EVENTS.insertHtml,
+        { html: typeof html === "string" ? html : "" },
+        "写入 HTML 到文档"
       );
     },
     dispose() {
