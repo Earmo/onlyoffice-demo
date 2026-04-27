@@ -669,10 +669,10 @@ function startRuntimeEventStreamForDocument(documentId) {
       runtimeStreamRetryDelayMs = 1000;
       isRuntimeStreamHealthy.value = true;
       stopSaveStatusPolling();
-      stopSessionHeartbeatPolling();
-      // SSE 健康时，服务端 keepalive（默认 25s）在每次 tick 已经调用 touchEditingSession。
-      // 活跃会话超时默认 30s > 25s，SSE keepalive 足以续期，无需额外轮询。
-      // SSE 断流后 activateRuntimePollingFallback 会立刻恢复两条轮询（save-status + heartbeat）。
+      startSessionHeartbeatPolling();
+      // SSE 健康时，save-status 主通道切到 runtime-events；
+      // heartbeat 仍由浏览器每 5 秒续期，避免服务端 active timeout
+      // 小于 SSE keepalive 间隔时误判当前编辑会话离线。
     })
     .catch(() => {
       if (runtimeStreamHandle !== streamHandle) {
