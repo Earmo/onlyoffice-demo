@@ -1,4 +1,4 @@
-import { createPinia, defineStore, getActivePinia } from "pinia";
+import { createPinia, defineStore } from "pinia";
 
 const fallbackPinia = createPinia();
 
@@ -28,6 +28,6 @@ const useWriteBackStoreBase = defineStore("writeBack", {
  *   loading -> error（bridge 未就绪或 insertHtml 抛出异常）
  *   success|error -> idle（watch 处理完毕后 reset）
  */
-export function useWriteBackStore(pinia = getActivePinia() || fallbackPinia) {
+export function useWriteBackStore(pinia = fallbackPinia) {
   return useWriteBackStoreBase(pinia);
 }

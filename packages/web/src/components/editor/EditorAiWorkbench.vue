@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Plus, Menu, Crop, List, Picture, Close, Position, Collection, DocumentCopy, Refresh, Delete } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import DOMPurify from "dompurify";
 import {
   cancelLlmRequest,
   createLlmSession,
@@ -14,6 +15,16 @@ import {
 import markdownit from "markdown-it";
 import hljs from "highlight.js";
 import "highlight.js/styles/github.css";
+import { useWriteBackStore } from "../../stores/writeBackStore";
+
+// DOMPurify 白名单：仅允许基础文档标记，禁止 script/iframe/事件属性等。
+const WRITE_BACK_ALLOWED_TAGS = [
+  "p", "strong", "em", "ul", "ol", "li",
+  "h1", "h2", "h3", "h4", "h5", "h6",
+  "code", "pre", "blockquote", "a", "br",
+  "table", "thead", "tbody", "tr", "th", "td"
+];
+const WRITE_BACK_ALLOWED_ATTR = ["href"];
 
 const md = markdownit({
   html: true,
@@ -50,8 +61,9 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "insert-image"]);
+const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "insert-image", "insert-html"]);
 
+const writeBackStore = useWriteBackStore();
 const drawerVisible = ref(false);
 const capabilityStatus = ref("bridge-pending");
 const capability = ref(null);
@@ -73,6 +85,10 @@ const isExcludedSelection = ref(false);
 const selectedProvider = ref("");
 const selectedModel = ref("");
 const activeStream = ref(null);
+const writeBackDialogVisible = ref(false);
+const writeBackHtml = ref("");
+const writeBackMode = ref("cursor");
+const writeBackHasSelection = ref(false);
 
 let bootstrapToken = 0;
 let sessionLoadToken = 0;
@@ -168,6 +184,20 @@ watch(selectedProvider, provider => {
     selectedModel.value = option?.defaultModel || models[0] || "";
   }
 });
+
+watch(
+  () => writeBackStore.status,
+  status => {
+    if (status === "success") {
+      writeBackDialogVisible.value = false;
+      ElMessage.success("已写入文档");
+      writeBackStore.reset();
+    } else if (status === "error") {
+      ElMessage.error(writeBackStore.errorMsg || "写入文档失败，请重试");
+      writeBackStore.reset();
+    }
+  }
+);
 
 onBeforeUnmount(() => {
   abortActiveStream();
@@ -942,6 +972,48 @@ function renderReasoningText(entry) {
   }
   return "";
 }
+
+function openWriteBackDialog(entry) {
+  // 对话框打开后焦点会离开 ONLYOFFICE，选区状态必须使用打开瞬间的快照。
+  writeBackHasSelection.value = !props.runtimeContext.hasEmptySelection;
+  const rawHtml = md.render(entry.assistantText || "");
+  writeBackHtml.value = DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: WRITE_BACK_ALLOWED_TAGS,
+    ALLOWED_ATTR: WRITE_BACK_ALLOWED_ATTR,
+  });
+  if (!writeBackHasSelection.value) {
+    writeBackMode.value = "cursor";
+  }
+  writeBackStore.reset();
+  writeBackDialogVisible.value = true;
+}
+
+function confirmWriteBack() {
+  writeBackStore.status = "loading";
+  emit("insert-html", {
+    html: writeBackHtml.value,
+  });
+}
+
+function saveStatusTagType(state) {
+  if (!state) return "info";
+  if (state === "saved") return "success";
+  if (state === "save-failed" || state === "failed") return "danger";
+  if (state === "editing" || state === "callback-received") return "warning";
+  return "info";
+}
+
+function saveStatusLabel(state) {
+  const map = {
+    idle: "已同步",
+    editing: "编辑中",
+    "callback-received": "保存中",
+    saved: "已保存",
+    "save-failed": "保存失败",
+    failed: "异常",
+  };
+  return map[state] ?? state ?? "-";
+}
 </script>
 
 <template>
@@ -958,6 +1030,14 @@ function renderReasoningText(entry) {
             <el-icon><Plus /></el-icon>
           </el-button>
         </el-tooltip>
+        <el-tag
+          v-if="props.runtimeContext.saveStatus"
+          size="small"
+          :type="saveStatusTagType(props.runtimeContext.saveStatus?.state)"
+          style="margin-left:4px;"
+        >
+          {{ saveStatusLabel(props.runtimeContext.saveStatus?.state) }}
+        </el-tag>
         <div class="workbench-status">{{ topStatusText }}</div>
       </div>
       <div class="session-title">当前会话：{{ currentSessionTitle }}</div>
@@ -1045,7 +1125,7 @@ function renderReasoningText(entry) {
             <p v-else class="assistant-placeholder">{{ entry.responseMessage }}</p>
 
             <div v-if="renderReasoningText(entry)" class="reasoning-panel">
-              <p class="reasoning-label">深度思考</p>
+              <p class="reasoning-label">思考方式</p>
               <pre class="reasoning-content">{{ renderReasoningText(entry) }}</pre>
             </div>
 
@@ -1058,6 +1138,16 @@ function renderReasoningText(entry) {
               </el-button>
               <el-button size="small" text type="danger" @click="handleDeleteMessage(index)">
                 <el-icon><Delete /></el-icon>
+              </el-button>
+              <el-button
+                v-if="entry.status === 'completed'"
+                size="small"
+                text
+                type="primary"
+                title="将回复写入文档"
+                @click="openWriteBackDialog(entry)"
+              >
+                <el-icon><Position /></el-icon>
               </el-button>
             </div>
 
@@ -1170,6 +1260,52 @@ function renderReasoningText(entry) {
         </div>
       </div>
     </div>
+
+    <el-dialog
+      v-model="writeBackDialogVisible"
+      title="写入文档"
+      width="560px"
+      :close-on-click-modal="writeBackStore.status !== 'loading'"
+      :close-on-press-escape="writeBackStore.status !== 'loading'"
+      append-to-body
+    >
+      <div
+        class="writeback-preview markdown-body"
+        v-html="writeBackHtml"
+        style="max-height:320px;overflow-y:auto;border:1px solid var(--el-border-color);border-radius:4px;padding:12px;margin-bottom:16px;"
+      ></div>
+
+      <el-alert
+        v-if="writeBackMode === 'replace' && writeBackHasSelection"
+        type="info"
+        :closable="false"
+        style="margin-bottom:12px;"
+        description="注意：确认框打开后文档选区可能因焦点转移而失效。如「替换选区」未能替换预期内容，请关闭此框在文档中重新选中后写入。"
+      />
+
+      <el-radio-group v-model="writeBackMode" style="display:flex;flex-direction:column;gap:8px;">
+        <el-radio value="cursor">插入到光标</el-radio>
+        <el-radio value="replace" :disabled="!writeBackHasSelection">
+          替换当前选区
+          <span
+            v-if="!writeBackHasSelection"
+            style="font-size:12px;color:var(--el-text-color-secondary);margin-left:4px;"
+          >（当前无选区）</span>
+        </el-radio>
+      </el-radio-group>
+
+      <template #footer>
+        <el-button
+          :disabled="writeBackStore.status === 'loading'"
+          @click="writeBackDialogVisible = false"
+        >取消</el-button>
+        <el-button
+          type="primary"
+          :loading="writeBackStore.status === 'loading'"
+          @click="confirmWriteBack"
+        >确认写入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
