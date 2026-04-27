@@ -49,6 +49,10 @@ public class DocumentLlmSessionEntity {
   @Column("last_heading_text")
   private String lastHeadingText;
 
+  /** 会话最近一次用户发起对话的时间。 */
+  @Column("last_conversation_time")
+  private Instant lastConversationTime;
+
   /** 会话创建时间。 */
   @Column("created_time")
   private Instant createdTime;

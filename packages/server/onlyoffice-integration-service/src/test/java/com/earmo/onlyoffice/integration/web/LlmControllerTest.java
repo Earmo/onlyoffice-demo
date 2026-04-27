@@ -94,6 +94,7 @@ class LlmControllerTest {
               "doc-1",
               "req-1",
               "session-1",
+              "自动标题",
               "assistant-1",
               "dashscope",
               "qwen-plus",

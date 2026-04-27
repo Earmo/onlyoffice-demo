@@ -59,7 +59,8 @@ public class DocumentLlmSessionRepository {
         .and(DOCUMENT_LLM_SESSION_ENTITY.TENANT_ID.eq(tenantId))
         .and(DOCUMENT_LLM_SESSION_ENTITY.ACTOR_USER.eq(actorUser))
         .and(DOCUMENT_LLM_SESSION_ENTITY.ARCHIVED_TIME.isNull())
-        .orderBy(DOCUMENT_LLM_SESSION_ENTITY.UPDATED_TIME.desc())
+        .orderBy(DOCUMENT_LLM_SESSION_ENTITY.LAST_CONVERSATION_TIME.desc())
+        .orderBy(DOCUMENT_LLM_SESSION_ENTITY.CREATED_TIME.desc())
         .limit(limit);
     return documentLlmSessionMapper.selectListByQuery(queryWrapper);
   }

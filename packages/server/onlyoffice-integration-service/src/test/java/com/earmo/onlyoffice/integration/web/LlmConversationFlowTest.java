@@ -7,6 +7,7 @@ import com.earmo.onlyoffice.integration.service.llm.LlmProviderUsage;
 import com.earmo.onlyoffice.integration.service.llm.LlmRuntimeRequest;
 import com.earmo.onlyoffice.integration.service.llm.SpringAiLlmProvider;
 import com.earmo.onlyoffice.integration.service.llm.SpringAiProviderChunk;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -111,13 +112,14 @@ class LlmConversationFlowTest {
         .andReturn();
 
     Thread.sleep(120L);
-    String streamBody = streamResult.getResponse().getContentAsString();
+    String streamBody = streamResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
     assertThat(streamBody).contains("event:request-started");
     assertThat(streamBody).contains("event:reasoning-delta");
     assertThat(streamBody).contains("event:assistant-delta");
     assertThat(streamBody).contains("event:assistant-completed");
     assertThat(streamBody.indexOf("event:reasoning-delta")).isLessThan(streamBody.indexOf("event:assistant-delta"));
     assertThat(streamBody).contains("\"reasoningText\":");
+    assertThat(streamBody).contains("\"sessionTitle\":\"STREAM 首轮问题\"");
 
     String requestId = jsonFieldFromSse(streamBody, "requestId");
     assertThat(requestId).isNotBlank();
@@ -135,6 +137,87 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.providerResponseMeta.reasoningContent").value("先分析选区上下文，再组织最终建议。"))
         .andExpect(jsonPath("$.providerResponseMeta.provider").value("stub-provider"))
         .andExpect(jsonPath("$.providerResponseMeta.model").value("fake-gpt"));
+
+    mockMvc.perform(
+            get("/api/llm/sessions/{sessionId}", sessionId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("llm-user", "LLM User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.title").value("STREAM 首轮问题"));
+  }
+
+  @Test
+  void shouldListSessionsByLastConversationTime() throws Exception {
+    stubStreamingProvider.enqueueSuccess("第一条会话回复", Duration.ofMillis(10));
+    String documentId = createDocument("sort-user", "Sort User");
+
+    MvcResult firstSessionResult = mockMvc.perform(
+            post("/api/llm/sessions")
+                .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s","title":"较早会话"}
+                    """.formatted(documentId))
+        )
+        .andExpect(status().isOk())
+        .andReturn();
+    String firstSessionId = jsonValue(firstSessionResult, "sessionId");
+
+    Thread.sleep(20L);
+
+    MvcResult secondSessionResult = mockMvc.perform(
+            post("/api/llm/sessions")
+                .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s","title":"较新会话"}
+                    """.formatted(documentId))
+        )
+        .andExpect(status().isOk())
+        .andReturn();
+    String secondSessionId = jsonValue(secondSessionResult, "sessionId");
+
+    mockMvc.perform(
+            get("/api/llm/sessions")
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].sessionId").value(secondSessionId))
+        .andExpect(jsonPath("$[0].lastConversationTime").isNotEmpty());
+
+    mockMvc.perform(
+            post("/api/llm/messages/stream")
+                .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .content("""
+                    {
+                      "documentId":"%s",
+                      "sessionId":"%s",
+                      "provider":"stub-provider",
+                      "model":"fake-gpt",
+                      "question":"更新较早会话的最后对话时间",
+                      "selectionSnapshot":{"text":"","emptySelection":true},
+                      "headingContext":{"includeHeading":false,"headingId":"","headingText":""},
+                      "retryConfirmed":false
+                    }
+                    """.formatted(documentId, firstSessionId))
+        )
+        .andExpect(request().asyncStarted())
+        .andReturn();
+
+    Thread.sleep(120L);
+
+    mockMvc.perform(
+            get("/api/llm/sessions")
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].sessionId").value(firstSessionId))
+        .andExpect(jsonPath("$[1].sessionId").value(secondSessionId));
   }
 
   @Test
@@ -247,7 +330,7 @@ class LlmConversationFlowTest {
         .andReturn();
 
     Thread.sleep(40L);
-    String startedFrame = streamResult.getResponse().getContentAsString();
+    String startedFrame = streamResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
     String requestId = jsonFieldFromSse(startedFrame, "requestId");
     assertThat(requestId).isNotBlank();
 
@@ -304,7 +387,7 @@ class LlmConversationFlowTest {
         .andReturn();
 
     Thread.sleep(120L);
-    String streamBody = streamResult.getResponse().getContentAsString();
+    String streamBody = streamResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
     assertThat(streamBody).contains("event:request-started");
     assertThat(streamBody).contains("event:assistant-error");
 
@@ -361,7 +444,7 @@ class LlmConversationFlowTest {
         .andReturn();
 
     Thread.sleep(160L);
-    String streamBody = streamResult.getResponse().getContentAsString();
+    String streamBody = streamResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
     assertThat(streamBody).contains("event:reasoning-delta");
     assertThat(streamBody).contains("event:assistant-delta");
     assertThat(streamBody).contains("event:assistant-error");
@@ -420,7 +503,7 @@ class LlmConversationFlowTest {
         .andReturn();
 
     Thread.sleep(90L);
-    String startedFrame = streamResult.getResponse().getContentAsString();
+    String startedFrame = streamResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
     assertThat(startedFrame).contains("event:assistant-delta");
     String requestId = jsonFieldFromSse(startedFrame, "requestId");
     assertThat(requestId).isNotBlank();
@@ -462,7 +545,7 @@ class LlmConversationFlowTest {
   }
 
   private String jsonValue(MvcResult result, String key) throws Exception {
-    String body = result.getResponse().getContentAsString();
+    String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
     String needle = "\"" + key + "\":\"";
     int start = body.indexOf(needle);
     assertThat(start).isGreaterThanOrEqualTo(0);

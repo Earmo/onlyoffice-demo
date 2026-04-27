@@ -9,6 +9,7 @@ public record LlmStreamEventResponse(
     String documentId,
     String requestId,
     String sessionId,
+    String sessionTitle,
     String assistantMessageId,
     String provider,
     String model,

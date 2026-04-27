@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { Plus, Menu, Crop, List, Picture, Close, Position, Collection, DocumentCopy, Refresh, Delete, DArrowRight } from "@element-plus/icons-vue";
+import { Plus, Menu, Crop, List, Picture, Close, Position, Collection, DocumentCopy, Refresh, Delete, DArrowRight, MoreFilled, EditPen } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import DOMPurify from "dompurify";
 import {
@@ -9,6 +9,8 @@ import {
   getLlmCapability,
   getLlmRequest,
   getLlmSession,
+  deleteLlmSession,
+  renameLlmSession,
   listLlmSessions,
   startLlmMessageStream
 } from "./editorAiApi";
@@ -396,6 +398,55 @@ async function handleSessionClick(sessionId) {
   }
 }
 
+async function handleDeleteSession(sessionId) {
+  try {
+    await ElMessageBox.confirm("确定要删除这条对话吗？", "提示", {
+      type: "warning",
+      confirmButtonText: "确定",
+      cancelButtonText: "取消"
+    });
+    
+    await deleteLlmSession(sessionId, props.runtimeContext.documentId);
+    ElMessage.success("删除成功");
+    
+    await refreshSessions(props.runtimeContext.documentId);
+  } catch (error) {
+    if (error !== "cancel") {
+      ElMessage.error(error.message || "删除失败");
+    }
+  }
+}
+
+function handleSessionCommand(cmd, session) {
+  if (cmd === 'rename') {
+    handleRenameSession(session);
+  } else if (cmd === 'delete') {
+    handleDeleteSession(session.sessionId);
+  }
+}
+
+async function handleRenameSession(session) {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入新的对话名称', '重命名', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputValue: session.title,
+      inputPattern: /\S+/,
+      inputErrorMessage: '名称不能为空'
+    });
+    await renameLlmSession(session.sessionId, props.runtimeContext.documentId, value.trim());
+    ElMessage.success("重命名成功");
+    await refreshSessions(props.runtimeContext.documentId);
+    if (session.sessionId === currentSessionId.value) {
+      documentTitle.value = value.trim();
+    }
+  } catch (error) {
+    if (error !== "cancel") {
+      ElMessage.error(error.message || "重命名失败");
+    }
+  }
+}
+
 function applySessionSummary(session) {
   currentSessionId.value = session.sessionId;
   currentSessionTitle.value = session.title || "新会话";
@@ -582,6 +633,12 @@ async function sendCurrentQuestion(options) {
           provider: event.provider || pendingEntry.providerResponseMeta?.provider,
           model: event.model || pendingEntry.providerResponseMeta?.model
         };
+        if (event.sessionTitle) {
+          currentSessionTitle.value = event.sessionTitle;
+          sessions.value = sessions.value.map(session => session.sessionId === targetSessionId
+            ? { ...session, title: event.sessionTitle }
+            : session);
+        }
         currentRequestId.value = event.requestId || "";
         currentRequestState.value = "in_progress";
         conversationEntries.value = [...conversationEntries.value];
@@ -1158,7 +1215,33 @@ function formatTimestamp(value) {
           :class="{ active: session.sessionId === currentSessionId }"
           @click="session.sessionId !== currentSessionId && handleSessionClick(session.sessionId)"
         >
-          <strong>{{ session.title }}</strong>
+          <div class="session-item-header">
+            <strong>{{ session.title }}</strong>
+            <span @click.stop>
+              <el-dropdown trigger="click" @command="cmd => handleSessionCommand(cmd, session)">
+                <el-button class="session-more-btn" text size="small">
+                  <el-icon><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="rename">
+                      <el-icon><EditPen /></el-icon>
+                      重命名
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      divided
+                      command="delete"
+                      style="color: var(--el-color-danger);"
+                      :disabled="session.sessionId === currentSessionId"
+                    >
+                      <el-icon color="var(--el-color-danger)"><Delete /></el-icon>
+                      删除此对话
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </span>
+          </div>
           <time>{{ formatTimestamp(session.updatedTime || session.documentId) }}</time>
         </div>
       </div>
@@ -1655,6 +1738,22 @@ function formatTimestamp(value) {
   cursor: default;
 }
 
+.session-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-more-btn {
+  display: none;
+  padding: 4px;
+  height: auto;
+}
+
+.session-item:hover .session-more-btn {
+  display: inline-flex;
+}
+
 .session-item strong {
   margin: 0;
   font-size: 13px;
@@ -1663,7 +1762,7 @@ function formatTimestamp(value) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  width: 100%;
+  flex: 1;
 }
 
 .session-item.active strong {

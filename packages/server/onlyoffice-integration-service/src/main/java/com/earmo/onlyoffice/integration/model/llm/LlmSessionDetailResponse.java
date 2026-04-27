@@ -11,6 +11,7 @@ public record LlmSessionDetailResponse(
     boolean lastSnapshotIsEmpty,
     String lastHeadingId,
     String lastHeadingText,
+    Instant lastConversationTime,
     Instant createdTime,
     Instant updatedTime,
     List<LlmMessageResponse> messages

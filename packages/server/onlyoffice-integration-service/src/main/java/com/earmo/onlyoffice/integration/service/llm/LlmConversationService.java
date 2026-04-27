@@ -64,6 +64,7 @@ public class LlmConversationService {
   private static final String STATUS_CANCELLED = "cancelled";
   private static final String CANCEL_SOURCE_USER = "user";
   private static final String CANCEL_SOURCE_CLIENT_DISCONNECT = "client_disconnect";
+  private static final int AUTO_SESSION_TITLE_MAX_LENGTH = 24;
   // 流式链路需要给上游 provider timeout 留收口余量，避免“上游已超时但 servlet 先把请求砍掉”。
   private static final long STREAM_TIMEOUT_BUFFER_MILLIS = 30000L;
   private static final long MIN_STREAM_TIMEOUT_MILLIS = 300000L;
@@ -204,6 +205,7 @@ public class LlmConversationService {
     entity.setTitle(request.title() == null || request.title().isBlank() ? "新会话 " + SESSION_TITLE_FORMATTER.format(now) : request.title().trim());
     entity.setLastSnapshotText("");
     entity.setLastSnapshotIsEmpty(true);
+    entity.setLastConversationTime(now);
     entity.setCreatedTime(now);
     entity.setUpdatedTime(now);
     documentLlmSessionRepository.insert(entity);
@@ -215,6 +217,23 @@ public class LlmConversationService {
         now
     );
     return toSessionDetail(entity, List.of());
+  }
+
+  /**
+   * 删除会话（软删除）。
+   */
+  public void deleteSession(String documentId, String sessionId, AccessContext accessContext) {
+    DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
+    session.setArchivedTime(Instant.now());
+    session.setUpdatedTime(Instant.now());
+    documentLlmSessionRepository.update(session);
+  }
+
+  public void renameSession(String documentId, String sessionId, String newTitle, AccessContext accessContext) {
+    DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
+    session.setTitle(newTitle);
+    session.setUpdatedTime(Instant.now());
+    documentLlmSessionRepository.update(session);
   }
 
   /**
@@ -342,6 +361,13 @@ public class LlmConversationService {
     RuntimeSelection runtimeSelection = resolveSelection(request);
     DocumentLlmSessionEntity session = accessGuard.requireSession(request.documentId(), request.sessionId(), accessContext);
     Instant now = Instant.now();
+    boolean firstConversationTurn = documentLlmMessageRepository.findMessagesBySessionScope(
+        session.getSessionId(),
+        session.getDocumentId(),
+        accessContext.tenantId(),
+        accessContext.actorUser(),
+        1
+    ).isEmpty();
 
     // 固定的建单顺序：
     // 1. user message 先落库，保证问题上下文可追溯
@@ -396,10 +422,21 @@ public class LlmConversationService {
     documentLlmRequestRepository.insert(requestEntity);
 
     // 会话表只保留“最近一次发送”的摘要，便于列表页和详情页快速展示。
+    if (firstConversationTurn && shouldAutoRenameSession(session)) {
+      String generatedTitle = generateSessionTitle(request.question());
+      session.setTitle(generatedTitle);
+      log.info(
+          "首次对话后自动命名 LLM 会话：documentId={}, sessionId={}, title={}",
+          request.documentId(),
+          session.getSessionId(),
+          generatedTitle
+      );
+    }
     session.setLastSnapshotText(request.selectionSnapshot().text());
     session.setLastSnapshotIsEmpty(request.selectionSnapshot().emptySelection());
     session.setLastHeadingId(request.headingContext().headingId());
     session.setLastHeadingText(request.headingContext().headingText());
+    session.setLastConversationTime(now);
     session.setUpdatedTime(now);
     documentLlmSessionRepository.update(session);
 
@@ -935,6 +972,38 @@ public class LlmConversationService {
   }
 
   /**
+   * 默认会话在首轮对话后自动改名；显式命名或历史会话不被覆盖。
+   */
+  private boolean shouldAutoRenameSession(DocumentLlmSessionEntity session) {
+    String title = Optional.ofNullable(session.getTitle()).orElse("").trim();
+    return title.isEmpty() || title.startsWith("新会话 ");
+  }
+
+  /**
+   * 从首条问题里提取短标题，避免把完整 prompt 直接塞进会话列表。
+   */
+  private String generateSessionTitle(String question) {
+    String title = Optional.ofNullable(question).orElse("")
+        .replaceAll("\\s+", " ")
+        .trim();
+    for (String prefix : List.of("请帮我把", "请帮我", "帮我把", "帮我", "请问", "请", "能否")) {
+      if (title.startsWith(prefix)) {
+        title = title.substring(prefix.length()).trim();
+        break;
+      }
+    }
+    title = title.replaceAll("[\\p{Punct}，。！？；：、]+$", "").trim();
+    if (title.isEmpty()) {
+      return "新对话";
+    }
+    if (title.codePointCount(0, title.length()) <= AUTO_SESSION_TITLE_MAX_LENGTH) {
+      return title;
+    }
+    int endIndex = title.offsetByCodePoints(0, AUTO_SESSION_TITLE_MAX_LENGTH);
+    return title.substring(0, endIndex).trim() + "...";
+  }
+
+  /**
    * 构造请求刚开始时的初始 provider 元数据。
    */
   private Map<String, Object> initialProviderMeta(RuntimeSelection runtimeSelection) {
@@ -952,6 +1021,7 @@ public class LlmConversationService {
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.request().sessionId(),
+        preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
@@ -975,6 +1045,7 @@ public class LlmConversationService {
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.request().sessionId(),
+        preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
@@ -998,6 +1069,7 @@ public class LlmConversationService {
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.request().sessionId(),
+        preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
@@ -1021,6 +1093,7 @@ public class LlmConversationService {
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.request().sessionId(),
+        preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
@@ -1045,6 +1118,7 @@ public class LlmConversationService {
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.request().sessionId(),
+        preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
@@ -1072,6 +1146,7 @@ public class LlmConversationService {
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.request().sessionId(),
+        preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
@@ -1095,6 +1170,7 @@ public class LlmConversationService {
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
         preparedRequest.request().sessionId(),
+        preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
@@ -1145,6 +1221,7 @@ public class LlmConversationService {
         entity.isLastSnapshotIsEmpty(),
         entity.getLastHeadingId(),
         entity.getLastHeadingText(),
+        entity.getLastConversationTime(),
         entity.getCreatedTime(),
         entity.getUpdatedTime(),
         messages
@@ -1163,6 +1240,7 @@ public class LlmConversationService {
         entity.isLastSnapshotIsEmpty(),
         entity.getLastHeadingId(),
         entity.getLastHeadingText(),
+        entity.getLastConversationTime(),
         entity.getCreatedTime(),
         entity.getUpdatedTime()
     );

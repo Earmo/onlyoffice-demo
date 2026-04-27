@@ -14,13 +14,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
@@ -57,6 +51,28 @@ public class LlmController {
   ) {
     AccessContext accessContext = accessContextResolver.resolve(request);
     return llmConversationService.getSession(documentId, sessionId, accessContext);
+  }
+
+  @DeleteMapping("/sessions/{sessionId}")
+  public void deleteSession(
+      @PathVariable String sessionId,
+      @RequestParam String documentId,
+      HttpServletRequest request
+  ) {
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    llmConversationService.deleteSession(documentId, sessionId, accessContext);
+  }
+
+  @PutMapping("/sessions/{sessionId}/title")
+  public void renameSession(
+      @PathVariable String sessionId,
+      @RequestParam String documentId,
+      @RequestBody java.util.Map<String, String> body,
+      HttpServletRequest request
+  ) {
+    AccessContext accessContext = accessContextResolver.resolve(request);
+    String newTitle = body.get("title");
+    llmConversationService.renameSession(documentId, sessionId, newTitle, accessContext);
   }
 
   @PostMapping(path = "/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

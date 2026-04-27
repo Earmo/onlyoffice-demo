@@ -196,8 +196,8 @@ describe("EditorAiWorkbench", () => {
     });
     await flushPromises();
 
-    expect(wrapper.text()).toContain("当前会话：新会话");
-    expect(wrapper.text()).not.toContain("当前会话：旧会话");
+    expect(wrapper.text()).toContain("新会话");
+    expect(wrapper.text()).not.toContain("旧会话");
   });
 
   it("应在流式事件完成后展示增量回复和 usage", async () => {
@@ -228,6 +228,46 @@ describe("EditorAiWorkbench", () => {
     expect(reasoningPanel.element.open).toBe(false);
     const testNodes = [...entry.querySelectorAll("[data-testid]")];
     expect(testNodes.indexOf(reasoningPanel.element)).toBeLessThan(testNodes.indexOf(assistantAnswer.element));
+  });
+
+  it("应在首轮 request-started 返回标题后刷新当前会话名", async () => {
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-title",
+          sessionId: "session-1",
+          sessionTitle: "总结这一段",
+          assistantMessageId: "assistant-title",
+          provider: "stub-provider",
+          model: "fake-gpt",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+        handlers.onCompleted?.({
+          requestId: "request-title",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-title",
+          assistantText: "完成",
+          usage: null,
+          finishReason: "stop",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("帮我总结这一段");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("总结这一段");
   });
 
   it("应把当前 provider/model 选择带入 payload", async () => {
@@ -572,7 +612,7 @@ describe("EditorAiWorkbench", () => {
     const wrapper = mountWorkbench();
     await flushPromises();
 
-    expect(wrapper.text()).toContain("当前会话：历史会话");
+    expect(wrapper.text()).toContain("历史会话");
     expect(wrapper.text()).toContain("历史深度思考");
     expect(wrapper.text()).toContain("历史回答");
     const entry = wrapper.find(".thread-entry").element;
@@ -663,7 +703,7 @@ describe("EditorAiWorkbench", () => {
     expect(abort).toHaveBeenCalled();
     expect(apiMocks.cancelLlmRequest).toHaveBeenCalledWith("request-4", "doc-1");
     expect(elementPlusMocks.info).toHaveBeenCalledWith("已停止当前回复，正在切换会话");
-    expect(wrapper.text()).toContain("当前会话：目标会话");
+    expect(wrapper.text()).toContain("目标会话");
   });
 
   describe("写入文档功能（Pinia store 反馈模式）", () => {

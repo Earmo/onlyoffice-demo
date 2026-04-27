@@ -10,6 +10,7 @@ public record LlmSessionSummaryResponse(
     boolean lastSnapshotIsEmpty,
     String lastHeadingId,
     String lastHeadingText,
+    Instant lastConversationTime,
     Instant createdTime,
     Instant updatedTime
 ) {

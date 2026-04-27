@@ -35,6 +35,20 @@ export function getLlmSession(sessionId, documentId) {
   return apiFetch(`/api/llm/sessions/${encodeURIComponent(sessionId)}?documentId=${encodeURIComponent(documentId)}`).then(parseApiResponse);
 }
 
+export function deleteLlmSession(sessionId, documentId) {
+  return apiFetch(`/api/llm/sessions/${encodeURIComponent(sessionId)}?documentId=${encodeURIComponent(documentId)}`, {
+    method: "DELETE"
+  }).then(parseApiResponse);
+}
+
+export function renameLlmSession(sessionId, documentId, title) {
+  return apiFetch(`/api/llm/sessions/${encodeURIComponent(sessionId)}/title?documentId=${encodeURIComponent(documentId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title })
+  }).then(parseApiResponse);
+}
+
 export function startLlmMessageStream(payload, handlers) {
   return startLlmMessageStreamTransport(payload, handlers);
 }

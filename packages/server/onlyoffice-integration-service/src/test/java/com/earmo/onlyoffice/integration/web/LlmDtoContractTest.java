@@ -47,6 +47,7 @@ class LlmDtoContractTest {
         "doc-1",
         "request-1",
         "session-1",
+        "自动标题",
         "assistant-1",
         "stub-provider",
         "fake-gpt",
