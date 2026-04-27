@@ -9,7 +9,20 @@ const bridgeMocks = vi.hoisted(() => ({
   captureSelectedText: vi.fn(),
   refreshOutline: vi.fn(),
   jumpToHeading: vi.fn(),
+  insertHtml: vi.fn(),
   dispose: vi.fn()
+}));
+
+const writeBackStoreMock = vi.hoisted(() => ({
+  state: {
+    status: "idle",
+    errorMsg: ""
+  },
+  useWriteBackStore: vi.fn(() => writeBackStoreMock.state),
+  reset() {
+    writeBackStoreMock.state.status = "idle";
+    writeBackStoreMock.state.errorMsg = "";
+  }
 }));
 
 vi.mock("@onlyoffice/document-editor-vue", () => ({
@@ -27,19 +40,25 @@ vi.mock("../components/editor/onlyofficeBridge.js", () => ({
   createOnlyofficeBridge: bridgeMocks.createOnlyofficeBridge
 }));
 
+vi.mock("../stores/writeBackStore.js", () => ({
+  useWriteBackStore: writeBackStoreMock.useWriteBackStore
+}));
+
 vi.mock("../components/editor/EditorAiWorkbench.vue", () => ({
   default: {
     name: "EditorAiWorkbenchStub",
     props: ["documentTitle", "runtimeContext", "loading", "closing"],
-    emits: ["capture-selection", "refresh-outline", "jump-to-heading", "insert-image"],
+    emits: ["capture-selection", "refresh-outline", "jump-to-heading", "insert-image", "insert-html"],
     template: `
       <div class="ai-workbench-stub">
         <p class="workbench-title">{{ documentTitle }}</p>
         <p class="runtime-document">{{ runtimeContext.documentId }}</p>
         <p class="runtime-selection">{{ runtimeContext.selectedText }}</p>
+        <p class="runtime-save-status">{{ runtimeContext.saveStatus?.state || 'none' }}</p>
         <button class="emit-capture" @click="$emit('capture-selection')">capture</button>
         <button class="emit-refresh" @click="$emit('refresh-outline')">refresh</button>
         <button class="emit-jump" @click="$emit('jump-to-heading', { id: 'heading-1', text: '一、项目背景', paragraphIndex: 3 })">jump</button>
+        <button class="emit-insert-html" @click="$emit('insert-html', { html: '<p>hello</p>' })">insert html</button>
       </div>
     `
   }
@@ -166,8 +185,10 @@ describe("EditorShell", () => {
     bridgeMocks.captureSelectedText.mockReset();
     bridgeMocks.refreshOutline.mockReset();
     bridgeMocks.jumpToHeading.mockReset();
+    bridgeMocks.insertHtml.mockReset();
     bridgeMocks.dispose.mockReset();
     bridgeMocks.createOnlyofficeBridge.mockReset();
+    writeBackStoreMock.reset();
 
     bridgeMocks.waitForReady.mockResolvedValue({ capability: "plugin" });
     bridgeMocks.captureSelectedText.mockResolvedValue({ text: "第一段选中文本", emptySelection: false });
@@ -184,6 +205,7 @@ describe("EditorShell", () => {
       captureSelectedText: bridgeMocks.captureSelectedText,
       refreshOutline: bridgeMocks.refreshOutline,
       jumpToHeading: bridgeMocks.jumpToHeading,
+      insertHtml: bridgeMocks.insertHtml,
       dispose: bridgeMocks.dispose
     }));
 
@@ -260,6 +282,65 @@ describe("EditorShell", () => {
     expect(bridgeMocks.jumpToHeading).toHaveBeenCalledWith(
       expect.objectContaining({ id: "heading-1", paragraphIndex: 3 })
     );
+  });
+
+  describe("handleInsertHtml", () => {
+    it("bridge 未就绪时应将 store.status 设为 error", async () => {
+      bridgeMocks.waitForReady.mockRejectedValueOnce(new Error("bridge pending"));
+      fetch.mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")));
+
+      const wrapper = mount(EditorShell, {
+        props: {
+          documentId: "doc-1",
+          documentTitle: "路线图.docx"
+        }
+      });
+      await flushPromises();
+
+      await wrapper.vm.handleInsertHtml({ html: "<p>test</p>" });
+
+      const store = writeBackStoreMock.state;
+      expect(store.status).toBe("error");
+      expect(store.errorMsg).toMatch(/未就绪/);
+      expect(bridgeMocks.insertHtml).not.toHaveBeenCalled();
+    });
+
+    it("bridge.insertHtml 成功时应将 store.status 设为 success", async () => {
+      bridgeMocks.insertHtml.mockResolvedValue({ success: true });
+      fetch.mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")));
+
+      const wrapper = mount(EditorShell, {
+        props: {
+          documentId: "doc-1",
+          documentTitle: "路线图.docx"
+        }
+      });
+      await flushPromises();
+
+      await wrapper.vm.handleInsertHtml({ html: "<p>hello</p>" });
+
+      expect(bridgeMocks.insertHtml).toHaveBeenCalledWith("<p>hello</p>");
+      expect(writeBackStoreMock.state.status).toBe("success");
+    });
+
+    it("bridge.insertHtml 抛出异常时应将 store.status 设为 error 并透传 errorMsg", async () => {
+      bridgeMocks.insertHtml.mockRejectedValue(new Error("PasteHtml timeout"));
+      fetch.mockResolvedValueOnce(jsonResponse(editorConfigPayload("路线图.docx")));
+
+      const wrapper = mount(EditorShell, {
+        props: {
+          documentId: "doc-1",
+          documentTitle: "路线图.docx"
+        }
+      });
+      await flushPromises();
+
+      await wrapper.vm.handleInsertHtml({ html: "<p>fail</p>" });
+
+      const store = writeBackStoreMock.state;
+      expect(store.status).toBe("error");
+      expect(store.errorMsg).toBe("PasteHtml timeout");
+    });
   });
 
   it("应在 close-session 进行中复用同一个请求而不是重复发送", async () => {
