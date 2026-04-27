@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.config;
 
 import com.earmo.onlyoffice.integration.storage.StorageProvider;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -323,6 +324,16 @@ public class OnlyofficeIntegrationProperties {
 
     /** 活跃编辑会话的心跳超时秒数；超过该窗口且未显式关闭，则不再对列表投影为 editing。 */
     private long activeTimeoutSeconds = 30L;
+
+    /** runtime-events SSE 成功 keepalive 后刷新编辑会话存活的间隔秒数。 */
+    private long runtimeKeepaliveSeconds = 10L;
+
+    @AssertTrue(message = "runtime keepalive interval must be positive and no more than half of the editing session active timeout")
+    public boolean isRuntimeKeepaliveSafelyBelowActiveTimeout() {
+      return runtimeKeepaliveSeconds > 0
+          && activeTimeoutSeconds >= 5L
+          && runtimeKeepaliveSeconds * 2L <= activeTimeoutSeconds;
+    }
   }
 }
 

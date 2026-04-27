@@ -54,7 +54,6 @@ const activeHeadingId = ref("");
 const activeHeadingNode = ref(null);
 const writeBackStore = useWriteBackStore();
 let saveStatusTimer = null;
-let sessionHeartbeatTimer = null;
 let closeEditingSessionPromise = null;
 let removeUnloadListeners = null;
 let onlyofficeBridge = null;
@@ -430,11 +429,6 @@ function handleDocumentReady() {
   if (props.readonly) {
     stopRuntimeEventStream();
     clearRuntimeStreamRetry();
-  } else if (props.showConsole === false) {
-    stopRuntimeEventStream();
-    clearRuntimeStreamRetry();
-    startSessionHeartbeatPolling();
-    startSaveStatusPolling();
   } else {
     activateRuntimeStream();
   }
@@ -513,14 +507,12 @@ function stopRuntimeEventStream() {
 }
 
 function isRuntimeStreamEligibleFor(documentId) {
-  // 14.1 的产品语义是：只有“这个页面现在真的需要编辑运行态流”时，SSE 才是主通道。
-  // 这里四个条件缺一不可：
+  // SSE 是编辑运行态的唯一活跃性通道，即使工作台被隐藏也要保持。
+  // 这里三个条件缺一不可：
   // - 不是 readonly；
-  // - 工作台没被显式隐藏；
   // - editing session 还开着；
   // - 流对应的 documentId 仍然是当前页面这份文档。
   return !props.readonly
-    && props.showConsole !== false
     && editingSessionOpened.value
     && documentId === props.documentId;
 }
@@ -547,22 +539,16 @@ function scheduleRuntimeStreamRetry(documentId) {
 }
 
 function activateRuntimePollingFallback(documentId) {
-  // fallback 是 14.1 的兜底态，不是失败后的“空窗期”。
-  // 一旦进入这里，页面马上恢复两条旧链路：
-  // 1. `loadSaveStatus()`：继续拿保存状态；
-  // 2. `touchEditingSession()`：继续给编辑会话续期。
-  // 然后再看当前条件是否仍允许 SSE，如果允许，就挂一个退避重连把主通道拉回来。
+  // fallback 只恢复保存状态查询和 SSE 重连。
+  // editing session 活跃性不再走独立 REST heartbeat，避免浏览器轮询和 SSE 双通道并存。
   if (props.readonly || documentId !== props.documentId || !editingSessionOpened.value) {
     stopSaveStatusPolling();
-    stopSessionHeartbeatPolling();
     clearRuntimeStreamRetry();
     return;
   }
 
   void loadSaveStatus();
-  void touchEditingSession({ suppressErrors: true });
   startSaveStatusPolling();
-  startSessionHeartbeatPolling();
   if (isRuntimeStreamEligibleFor(documentId)) {
     scheduleRuntimeStreamRetry(documentId);
   } else {
@@ -606,14 +592,13 @@ function startRuntimeEventStreamForDocument(documentId) {
   // 正常路径：
   // 1. startRuntimeEventStream 建出 handle；
   // 2. ready resolve；
-  // 3. 页面把 save-status 主通道切到 SSE；
-  // 4. heartbeat 继续保留，专门负责 editing session 续期；
-  // 5. 后续 save-status 事件不断覆盖本地状态。
+  // 3. 页面把 save-status 与 editing-session liveness 主通道切到 SSE；
+  // 4. 后续 save-status 事件不断覆盖本地状态。
   //
   // 异常路径：
   // 1. runtime-error / onError 进入 fallback；
-  // 2. fallback 恢复 REST polling；
-  // 3. retry timer 按退避策略重连。
+  // 2. fallback 恢复 save-status polling；
+  // 3. retry timer 按退避策略重连，liveness 仍由重建后的 SSE 承担。
   //
   // clean completion 路径：
   // 1. 不进入 fallback；
@@ -669,10 +654,7 @@ function startRuntimeEventStreamForDocument(documentId) {
       runtimeStreamRetryDelayMs = 1000;
       isRuntimeStreamHealthy.value = true;
       stopSaveStatusPolling();
-      startSessionHeartbeatPolling();
-      // SSE 健康时，save-status 主通道切到 runtime-events；
-      // heartbeat 仍由浏览器每 5 秒续期，避免服务端 active timeout
-      // 小于 SSE keepalive 间隔时误判当前编辑会话离线。
+      // save-status 和 editing-session liveness 主通道都在 runtime-events 上。
     })
     .catch(() => {
       if (runtimeStreamHandle !== streamHandle) {
@@ -685,10 +667,9 @@ function startRuntimeEventStreamForDocument(documentId) {
 function activateRuntimeStream(documentId = props.documentId) {
   // activateRuntimeStream 是“切主通道”的动作，不是简单 start：
   // 1. 先停掉旧 save-status polling；
-  // 2. 再停掉旧 heartbeat polling；
-  // 3. 清空旧 retry timer；
-  // 4. abort 旧 stream；
-  // 5. 最后再为当前 documentId 建一条新的 SSE 流。
+  // 2. 清空旧 retry timer；
+  // 3. abort 旧 stream；
+  // 4. 最后再为当前 documentId 建一条新的 SSE 流。
   // 这样能保证页面任意时刻只认一条主链路，不会出现 SSE 和轮询同时写状态。
   if (!isRuntimeStreamEligibleFor(documentId)) {
     stopRuntimeEventStream();
@@ -697,60 +678,9 @@ function activateRuntimeStream(documentId = props.documentId) {
   }
 
   stopSaveStatusPolling();
-  stopSessionHeartbeatPolling();
   clearRuntimeStreamRetry();
   stopRuntimeEventStream();
   startRuntimeEventStreamForDocument(documentId);
-}
-
-async function touchEditingSession(options = {}) {
-  const {
-    keepalive = false,
-    suppressErrors = false
-  } = options;
-
-  if (props.readonly || !editingSessionOpened.value) {
-    return;
-  }
-
-  try {
-    // 编辑态下定期 heartbeat，避免后端把当前用户视为离线。
-    const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/heartbeat`, {
-      method: "POST",
-      keepalive
-    });
-    if (!response.ok && !suppressErrors) {
-      throw new Error(await readErrorMessage(response, `刷新编辑会话失败，HTTP ${response.status}`));
-    }
-  } catch (error) {
-    if (!suppressErrors) {
-      throw error;
-    }
-  }
-}
-
-function startSessionHeartbeatPolling() {
-  stopSessionHeartbeatPolling();
-  if (props.readonly) {
-    return;
-  }
-
-  // heartbeat 的职责在 14.1 里被重新收窄成“编辑会话续期”，而不是“拿保存状态”。
-  // 也就是说：
-  // - save-status 交给 SSE；
-  // - editing session 活跃性仍由浏览器每 5 秒续期。
-  // 这样服务端 active timeout 无论配成 5 秒、10 秒还是 30 秒，
-  // 都不会因为 keepalive 只有 25 秒一次而把用户错误踢出 active。
-  sessionHeartbeatTimer = window.setInterval(() => {
-    void touchEditingSession({ suppressErrors: true });
-  }, 5000);
-}
-
-function stopSessionHeartbeatPolling() {
-  if (sessionHeartbeatTimer !== null) {
-    window.clearInterval(sessionHeartbeatTimer);
-    sessionHeartbeatTimer = null;
-  }
 }
 
 function destroyDocEditor() {
@@ -792,7 +722,6 @@ async function closeEditingSession(options = {}) {
   stopRuntimeEventStream();
   clearRuntimeStreamRetry();
   stopSaveStatusPolling();
-  stopSessionHeartbeatPolling();
 
   isClosingSession.value = true;
   closeEditingSessionPromise = (async () => {
@@ -810,7 +739,7 @@ async function closeEditingSession(options = {}) {
 
     destroyDocEditor();
 
-    // 编辑器销毁后再通知后端关闭会话，避免前端残留实例继续发送 callback/heartbeat。
+    // 编辑器销毁后再通知后端关闭会话，避免前端残留实例继续发送 callback。
     const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/close`, {
       method: "POST",
       keepalive
@@ -849,7 +778,6 @@ function dispatchUnloadCloseRequest() {
   stopRuntimeEventStream();
   clearRuntimeStreamRetry();
   stopSaveStatusPolling();
-  stopSessionHeartbeatPolling();
 
   fetch(buildApiUrl(`/api/documents/${props.documentId}/editing-sessions/close`), {
     method: "POST",
@@ -887,7 +815,6 @@ watch(
     stopRuntimeEventStream();
     clearRuntimeStreamRetry();
     stopSaveStatusPolling();
-    stopSessionHeartbeatPolling();
     saveStatus.value = null;
     isRuntimeStreamHealthy.value = false;
     runtimeStreamRetryDelayMs = 1000;
@@ -918,7 +845,6 @@ onBeforeUnmount(async () => {
   stopRuntimeEventStream();
   clearRuntimeStreamRetry();
   stopSaveStatusPolling();
-  stopSessionHeartbeatPolling();
   removeUnloadListeners?.();
   await closeEditingSession({ keepalive: true, suppressErrors: true });
 });

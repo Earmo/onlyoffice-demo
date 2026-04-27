@@ -33,8 +33,10 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -57,6 +59,9 @@ class DocumentControllerTest {
 
   @Autowired
   private MockMvc mockMvc;
+
+  @Autowired
+  private RequestMappingHandlerMapping requestMappingHandlerMapping;
 
   @MockBean
   private OnlyofficeConfigService onlyofficeConfigService;
@@ -344,15 +349,10 @@ class DocumentControllerTest {
   }
 
   @Test
-  void shouldRefreshEditingSessionHeartbeatForCurrentActor() throws Exception {
-    when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
-        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
-    );
-
-    mockMvc.perform(post("/api/documents/sample/editing-sessions/heartbeat"))
-        .andExpect(status().isNoContent());
-
-    verify(documentStatusService).touchEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class));
+  void shouldNotExposeEditingSessionHeartbeatEndpoint() {
+    assertThat(requestMappingHandlerMapping.getHandlerMethods().keySet())
+        .flatExtracting(mappingInfo -> mappingInfo.getPatternValues())
+        .noneMatch(pattern -> pattern.contains("/editing-sessions/heartbeat"));
   }
 
   @Test

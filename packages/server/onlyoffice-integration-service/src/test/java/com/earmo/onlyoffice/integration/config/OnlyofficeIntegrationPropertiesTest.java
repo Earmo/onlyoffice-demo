@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class OnlyofficeIntegrationPropertiesTest {
@@ -35,7 +36,9 @@ class OnlyofficeIntegrationPropertiesTest {
           "onlyoffice.integration.storage.cos.secret-key=cos-secret-key",
           "onlyoffice.integration.storage.cos.endpoint-suffix=cos.internal.example",
           "onlyoffice.integration.storage.routing.tenants.tenant-a=minio",
-          "onlyoffice.integration.storage.routing.source-systems.erp=local"
+          "onlyoffice.integration.storage.routing.source-systems.erp=local",
+          "onlyoffice.integration.editing-session.active-timeout-seconds=30",
+          "onlyoffice.integration.editing-session.runtime-keepalive-seconds=10"
       );
 
   @Test
@@ -65,7 +68,19 @@ class OnlyofficeIntegrationPropertiesTest {
       assertEquals("cos.internal.example", properties.getStorage().getCos().getEndpointSuffix());
       assertEquals(StorageProvider.MINIO, properties.getStorage().getRouting().getTenants().get("tenant-a"));
       assertEquals(StorageProvider.LOCAL, properties.getStorage().getRouting().getSourceSystems().get("erp"));
+      assertEquals(30L, properties.getEditingSession().getActiveTimeoutSeconds());
+      assertEquals(10L, properties.getEditingSession().getRuntimeKeepaliveSeconds());
     });
+  }
+
+  @Test
+  void shouldRejectUnsafeRuntimeKeepaliveInterval() {
+    contextRunner
+        .withPropertyValues(
+            "onlyoffice.integration.editing-session.active-timeout-seconds=10",
+            "onlyoffice.integration.editing-session.runtime-keepalive-seconds=8"
+        )
+        .run(context -> assertThat(context).hasFailed());
   }
 
   @Configuration(proxyBeanMethods = false)

@@ -27,6 +27,7 @@
 - [ ] callback JWT 配置正确时保存链路正常
 - [ ] callback JWT 配置错误时接口能返回明确错误，而不是静默成功
 - [ ] `save-status` 能看到当前摘要状态和最近事件
+- [ ] 编辑态通过 `runtime-events` SSE 维持会话存活；浏览器不再调用 `/editing-sessions/heartbeat`，后端也不暴露该 REST heartbeat 接口
 - [ ] 编辑页关闭后即使 ONLYOFFICE 继续补发关闭类 callback，列表状态也不会错误停留在 `editing`
 
 ## 4. 存储与安全边界

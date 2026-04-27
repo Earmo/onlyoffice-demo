@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.service.impl;
 
+import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.service.DocumentRuntimeEventStreamService;
@@ -18,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongFunction;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -41,7 +43,7 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
 
   // runtime-events 是文档级长连接，keepalive 负责保活，不应该被固定总时长强制切断。
   static final long DEFAULT_EMITTER_TIMEOUT_MILLIS = 0L;
-  static final long DEFAULT_KEEPALIVE_INTERVAL_MILLIS = 25000L;
+  static final long DEFAULT_KEEPALIVE_INTERVAL_MILLIS = 10000L;
 
   private static final AtomicInteger KEEPALIVE_THREAD_COUNTER = new AtomicInteger(1);
 
@@ -53,19 +55,31 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
   private final long keepaliveIntervalMillis;
   private final LongFunction<SseEmitter> emitterFactory;
 
-  public DocumentRuntimeEventStreamServiceImpl() {
+  @Autowired
+  public DocumentRuntimeEventStreamServiceImpl(OnlyofficeIntegrationProperties properties) {
     this(
-        Executors.newSingleThreadScheduledExecutor(runnable -> {
-          Thread thread = new Thread(runnable);
-          thread.setName("runtime-sse-keepalive-" + KEEPALIVE_THREAD_COUNTER.getAndIncrement());
-          thread.setDaemon(true);
-          return thread;
-        }),
+        newKeepaliveScheduler(),
         Clock.systemUTC(),
         DEFAULT_EMITTER_TIMEOUT_MILLIS,
-        DEFAULT_KEEPALIVE_INTERVAL_MILLIS,
+        resolveKeepaliveIntervalMillis(properties),
         SseEmitter::new
     );
+  }
+
+  private static ScheduledExecutorService newKeepaliveScheduler() {
+    return Executors.newSingleThreadScheduledExecutor(runnable -> {
+      Thread thread = new Thread(runnable);
+      thread.setName("runtime-sse-keepalive-" + KEEPALIVE_THREAD_COUNTER.getAndIncrement());
+      thread.setDaemon(true);
+      return thread;
+    });
+  }
+
+  private static long resolveKeepaliveIntervalMillis(OnlyofficeIntegrationProperties properties) {
+    if (properties == null || properties.getEditingSession() == null) {
+      return DEFAULT_KEEPALIVE_INTERVAL_MILLIS;
+    }
+    return Math.max(1L, properties.getEditingSession().getRuntimeKeepaliveSeconds()) * 1000L;
   }
 
   DocumentRuntimeEventStreamServiceImpl(

@@ -159,6 +159,8 @@ onlyoffice:
     editing-session:
       # 活跃编辑会话的心跳超时窗口（秒）。
       active-timeout-seconds: ${ONLYOFFICE_INTEGRATION_EDITING_SESSION_ACTIVE_TIMEOUT_SECONDS:30}
+      # runtime-events SSE 健康连接下的服务端续期间隔（秒）；必须不超过 active timeout 的一半。
+      runtime-keepalive-seconds: ${ONLYOFFICE_INTEGRATION_EDITING_SESSION_RUNTIME_KEEPALIVE_SECONDS:10}
 
 llm:
   # 是否真正允许后端发起模型调用；默认关闭，避免本地环境误连真实 provider。
@@ -166,7 +168,7 @@ llm:
   # 是否向前端暴露 AI 工作台能力；可以在保留配置的前提下单独关闭功能开关。
   feature-enabled: ${LLM_FEATURE_ENABLED:true}
   # 14.2 默认 provider / model。
-  default-provider: ${LLM_DEFAULT_PROVIDER:siliconflow}
+  default-provider: ${LLM_DEFAULT_PROVIDER:openai}
   default-model: ${LLM_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
   # 调用上游 provider 的超时时间，单位毫秒。
   timeout-millis: ${LLM_TIMEOUT_MILLIS:60000}
@@ -193,7 +195,7 @@ llm:
     - usage.totalTokens
   providers:
     dashscope:
-      enabled: ${LLM_PROVIDER_DASHSCOPE_ENABLED:true}
+      enabled: ${LLM_PROVIDER_DASHSCOPE_ENABLED:false}
       label: DashScope
       spring-ai-provider: openai-compatible
       base-url: ${LLM_PROVIDER_DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
@@ -204,7 +206,7 @@ llm:
       streaming-enabled: ${LLM_PROVIDER_DASHSCOPE_STREAMING_ENABLED:true}
       timeout-millis: ${LLM_PROVIDER_DASHSCOPE_TIMEOUT_MILLIS:60000}
     siliconflow:
-      enabled: ${LLM_PROVIDER_SILICONFLOW_ENABLED:true}
+      enabled: false
       label: SiliconFlow
       spring-ai-provider: openai-compatible
       base-url: ${LLM_PROVIDER_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
@@ -218,6 +220,21 @@ llm:
         - Pro/deepseek-ai/DeepSeek-V3.2
       streaming-enabled: ${LLM_PROVIDER_SILICONFLOW_STREAMING_ENABLED:true}
       timeout-millis: ${LLM_PROVIDER_SILICONFLOW_TIMEOUT_MILLIS:60000}
+    openai:
+      enabled: true
+      label: openai
+      spring-ai-provider: openai-compatible
+      base-url: ${LLM_PROVIDER_OPENAI_BASE_URL:http://127.0.0.1:49199/v1}
+      api-key: ${LLM_PROVIDER_OPENAI_API_KEY:agt_codex_2vlDmcKvHqEm8thTK4nxKPTInZ2XEifG}
+      default-model: ${LLM_PROVIDER_OPENAI_DEFAULT_MODEL:gpt-5.4}
+      models:
+        - ${LLM_PROVIDER_OPENAI_DEFAULT_MODEL:gpt-5.4}
+        - gpt-5.4-mini
+        - gpt-5.3-codex
+        - gpt-5.2-codex
+        - gpt-5.2
+      streaming-enabled: ${LLM_PROVIDER_OPENAI_STREAMING_ENABLED:true}
+      timeout-millis: ${LLM_PROVIDER_OPENAI_TIMEOUT_MILLIS:60000}
   session:
     # 单文档最多保留多少个 AI 会话。
     max-sessions-per-document: ${LLM_SESSION_MAX_SESSIONS_PER_DOCUMENT:20}
