@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createOnlyofficeBridge, ONLYOFFICE_AI_BRIDGE_EVENTS } from "../components/editor/onlyofficeBridge";
 
 describe("onlyofficeBridge", () => {
@@ -174,5 +176,15 @@ describe("onlyofficeBridge", () => {
 
     await expect(insertPromise).rejects.toThrow(/timeout|超时/i);
     bridge.dispose();
+  });
+
+  it("运行时 public 插件脚本应与 dist 副本保持一致并包含 PasteHtml 写回处理", () => {
+    const publicPlugin = readFileSync(resolve(process.cwd(), "public/onlyoffice-plugins/ai-bridge/code.js"), "utf8");
+    const distPlugin = readFileSync(resolve(process.cwd(), "dist/onlyoffice-plugins/ai-bridge/code.js"), "utf8");
+
+    expect(publicPlugin).toBe(distPlugin);
+    expect(publicPlugin).toContain(ONLYOFFICE_AI_BRIDGE_EVENTS.insertHtml);
+    expect(publicPlugin).toContain(ONLYOFFICE_AI_BRIDGE_EVENTS.htmlInserted);
+    expect(publicPlugin).toContain("\"PasteHtml\"");
   });
 });

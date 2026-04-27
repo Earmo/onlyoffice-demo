@@ -1,3 +1,4 @@
+// MANUALLY MAINTAINED - 此文件不由构建系统生成，须与 onlyofficeBridge.js ONLYOFFICE_AI_BRIDGE_EVENTS 手动保持同步
 (function () {
   // 这个文件运行在 ONLYOFFICE 隐藏插件 iframe 内部。
   // 它的职责是把编辑器内部能力转换成宿主页可调用的 postMessage 协议。
@@ -11,7 +12,9 @@
     refreshOutline: "onlyoffice-ai-bridge:refresh-outline",           // 宿主页请求刷新章节目录
     outlineRefreshed: "onlyoffice-ai-bridge:outline-refreshed",       // 章节目录回传
     jumpToHeading: "onlyoffice-ai-bridge:jump-to-heading",            // 宿主页请求跳转到指定标题
-    headingJumped: "onlyoffice-ai-bridge:heading-jumped"              // 跳转结果回传
+    headingJumped: "onlyoffice-ai-bridge:heading-jumped",             // 跳转结果回传
+    insertHtml: "onlyoffice-ai-bridge:insert-html",                   // 宿主页请求向文档写入 HTML
+    htmlInserted: "onlyoffice-ai-bridge:html-inserted"                // 写入结果回传
   };
 
   function getHostWindow() {
@@ -386,8 +389,35 @@
   }
 
   /**
+   * 将 HTML 字符串粘贴到文档当前光标位置。
+   * ONLYOFFICE PasteHtml 语义：有选区时替换选区，无选区时在光标处插入。
+   *
+   * 已知 API 限制（ONLYOFFICE PasteHtml void callback）：
+   *   PasteHtml callback 不携带任何参数，无法区分成功/失败。
+   *   此处将 callback 触发视为 best-effort 成功（false-positive 风险低于永久挂起）。
+   *   同步异常（如插件未初始化）通过 try/catch 捕获并回传 error 事件。
+   *   异步失败（如 ONLYOFFICE 内部错误）只能由宿主页的 requestTimeoutMs 超时检测。
+   */
+  function insertHtmlAtCursor(requestId, payload) {
+    const html = payload && typeof payload.html === "string" ? payload.html : "";
+    try {
+      window.Asc.plugin.executeMethod(
+        "PasteHtml",
+        [html],
+        function () {
+          // PasteHtml 是 void - callback 无错误参数，视为 best-effort 成功。
+          postMessage(EVENTS.htmlInserted, { success: true }, requestId);
+        }
+      );
+    } catch (err) {
+      // executeMethod 同步抛出时（例如插件未初始化），回传 error 事件。
+      postError(err && err.message ? err.message : "insertHtml failed", requestId);
+    }
+  }
+
+  /**
    * 处理宿主页发来的 postMessage 请求。
-   * 插件只暴露非常克制的三类命令：抓选区、刷目录、跳标题。
+   * 插件只暴露非常克制的四类命令：抓选区、刷目录、跳标题、写入 HTML。
    * 真正的 AI 调用仍放在宿主页或后端，不放进插件里。
    */
   function handleHostMessage(event) {
@@ -406,6 +436,9 @@
           break;
         case EVENTS.jumpToHeading:
           jumpToHeading(message.requestId, message.payload || {});
+          break;
+        case EVENTS.insertHtml:
+          insertHtmlAtCursor(message.requestId, message.payload || {});
           break;
         default:
           break;
