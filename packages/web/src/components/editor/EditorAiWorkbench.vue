@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { Plus, Menu, Crop, List, Picture, Close, Position, Collection, DocumentCopy, Refresh, Delete } from "@element-plus/icons-vue";
+import { Plus, Menu, Crop, List, Picture, Close, Position, Collection, DocumentCopy, Refresh, Delete, DArrowRight } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import DOMPurify from "dompurify";
 import {
@@ -29,9 +29,10 @@ const REASONING_DISPLAY_ALLOWED_TAGS = [
   "p", "strong", "em", "ul", "ol", "li",
   "h1", "h2", "h3", "h4", "h5", "h6",
   "code", "pre", "blockquote", "a", "br",
-  "table", "thead", "tbody", "tr", "th", "td"
+  "table", "thead", "tbody", "tr", "th", "td",
+  "span", "div", "del", "hr", "img", "sub", "sup"
 ];
-const REASONING_DISPLAY_ALLOWED_ATTR = ["href"];
+const REASONING_DISPLAY_ALLOWED_ATTR = ["href", "class", "style", "src", "alt", "title"];
 
 const md = markdownit({
   html: true,
@@ -68,7 +69,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "insert-image", "insert-html"]);
+const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "insert-image", "insert-html", "close"]);
 
 const writeBackStore = useWriteBackStore();
 const drawerVisible = ref(false);
@@ -1088,22 +1089,32 @@ function saveStatusLabel(state) {
   };
   return map[state] ?? state ?? "-";
 }
+
+function formatTimestamp(value) {
+  if (!value) return "未知时间";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(d);
+}
 </script>
 
 <template>
   <div class="ai-workbench-shell">
     <div class="workbench-top-bar">
-      <div class="top-actions">
-        <el-tooltip content="历史会话" placement="bottom">
-          <el-button text @click="drawerVisible = true">
-            <el-icon><Menu /></el-icon>
+      <div class="top-actions-left">
+        <el-tooltip content="收起侧边栏" placement="bottom">
+          <el-button type="primary" @click="emit('close')" style="padding: 8px; border: none; border-radius: 6px;">
+            <el-icon size="16"><DArrowRight /></el-icon>
           </el-button>
         </el-tooltip>
-        <el-tooltip content="新建对话" placement="bottom">
-          <el-button text @click="startNewChat">
-            <el-icon><Plus /></el-icon>
-          </el-button>
-        </el-tooltip>
+        <span class="session-title"><b>{{ currentSessionTitle }}</b></span>
         <el-tag
           v-if="props.runtimeContext.saveStatus"
           size="small"
@@ -1112,9 +1123,15 @@ function saveStatusLabel(state) {
         >
           {{ saveStatusLabel(props.runtimeContext.saveStatus?.state) }}
         </el-tag>
-        <div class="workbench-status">{{ topStatusText }}</div>
       </div>
-      <div class="session-title">当前会话：{{ currentSessionTitle }}</div>
+      <div class="top-actions-right">
+        <span class="workbench-status">{{ topStatusText }}</span>
+        <el-tooltip content="对话管理" placement="bottom">
+          <div class="icon-btn" @click="drawerVisible = true">
+            <el-icon><Menu /></el-icon>
+          </div>
+        </el-tooltip>
+      </div>
     </div>
 
     <div v-if="capabilityStatus === 'capability-disabled'" class="capability-disabled">
@@ -1123,21 +1140,27 @@ function saveStatusLabel(state) {
       <p>输入区已禁用，请先打开后端 LLM 配置。</p>
     </div>
 
-    <el-drawer v-model="drawerVisible" title="历史会话" direction="ltr" size="300px">
+    <el-drawer v-model="drawerVisible" title="对话管理" direction="rtl" size="300px">
       <div class="session-list">
         <el-button
+          plain
+          type="primary"
+          @click="startNewChat"
+          style="margin-bottom: 12px; border-style: dashed; justify-content: center; height: 36px; padding: 0; width: 100%; border-radius: 6px;"
+        >
+          <el-icon><Plus /></el-icon>
+          <span style="margin-left: 8px;">新建对话</span>
+        </el-button>
+        <div
           v-for="session in sessions"
           :key="session.sessionId"
           class="session-item"
           :class="{ active: session.sessionId === currentSessionId }"
-          plain
-          @click="handleSessionClick(session.sessionId)"
+          @click="session.sessionId !== currentSessionId && handleSessionClick(session.sessionId)"
         >
-          <div class="session-info">
-            <strong>{{ session.title }}</strong>
-            <span>{{ session.updatedTime || session.documentId }}</span>
-          </div>
-        </el-button>
+          <strong>{{ session.title }}</strong>
+          <time>{{ formatTimestamp(session.updatedTime || session.documentId) }}</time>
+        </div>
       </div>
     </el-drawer>
 
@@ -1253,9 +1276,11 @@ function saveStatusLabel(state) {
             <el-icon><Collection /></el-icon>
             {{ runtimeContext.activeHeadingNode.text || runtimeContext.activeHeadingNode.label }}
           </el-tag>
-          <el-tag size="small" type="info" closable @close="handleRemoveSelection" v-if="snapshotState === 'snapshot-ready' && !isExcludedSelection">
-            已获取选中文本片段
-          </el-tag>
+          <el-tooltip content="已获取编辑器选中文本，将作为模型对话的上下文输入" placement="top">
+            <el-tag size="small" type="info" closable @close="handleRemoveSelection" v-if="snapshotState === 'snapshot-ready' && !isExcludedSelection">
+              {{ runtimeContext.selectedText.length > 20 ? runtimeContext.selectedText.substring(0, 20) + '...' : runtimeContext.selectedText }}
+            </el-tag>
+          </el-tooltip>
         </div>
 
         <div class="provider-row" v-if="providerOptions.length">
@@ -1285,6 +1310,7 @@ function saveStatusLabel(state) {
           placeholder="围绕当前选中文本提问..."
           :disabled="props.loading || props.closing || capabilityStatus === 'capability-disabled' || Boolean(currentRequestId)"
           resize="none"
+          class="custom-textarea"
         />
 
         <div class="composer-actions">
@@ -1398,7 +1424,8 @@ function saveStatusLabel(state) {
 }
 
 .workbench-top-bar,
-.top-actions,
+.top-actions-left,
+.top-actions-right,
 .toolbox-actions,
 .composer-actions,
 .dialog-actions,
@@ -1412,7 +1439,6 @@ function saveStatusLabel(state) {
 }
 
 .workbench-top-bar,
-.toolbox,
 .composer,
 .capability-disabled,
 .thread-error-card,
@@ -1424,7 +1450,11 @@ function saveStatusLabel(state) {
 
 .workbench-top-bar {
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 8px 12px;
+  background: transparent;
+  border-color: transparent;
+  border-bottom: 2px solid var(--el-border-color-light);
+  border-radius: 0;
   margin-bottom: 12px;
 }
 
@@ -1437,7 +1467,22 @@ function saveStatusLabel(state) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 50%;
+  font-size: 14px;
+}
+
+.icon-btn {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.icon-btn:hover {
+  background-color: var(--el-fill-color-light);
 }
 
 .thread-panel {
@@ -1453,6 +1498,14 @@ function saveStatusLabel(state) {
 .thread-error-card,
 .capability-disabled {
   padding: 12px 16px;
+}
+
+.toolbox {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  background-color: var(--el-bg-color);
 }
 
 .thread-list {
@@ -1533,14 +1586,33 @@ function saveStatusLabel(state) {
 }
 
 .composer-footer {
-  padding: 12px 16px 0;
+  padding: 12px 16px 12px;
 }
 
 .composer {
-  padding: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background-color: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-textarea :deep(.el-textarea__inner) {
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 4px 0 !important;
+  border: none !important;
+  min-height: 24px;
+}
+.custom-textarea :deep(.el-textarea__inner:hover),
+.custom-textarea :deep(.el-textarea__inner:focus) {
+  box-shadow: none !important;
 }
 
 .composer-actions {
+  display: flex;
   justify-content: flex-end;
   margin-top: 8px;
 }
@@ -1553,27 +1625,54 @@ function saveStatusLabel(state) {
 }
 
 .session-list {
-  display: flex;
-  flex-direction: column;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
   gap: 8px;
 }
 
 .session-item {
-  justify-content: flex-start;
-  width: 100%;
-}
-
-.session-info {
+  padding: 8px 12px;
+  background: var(--el-fill-color);
+  border-radius: 6px;
+  font-size: 12px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  width: 100%;
-  min-width: 0;
+  gap: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  border: 1px solid transparent;
 }
 
-.session-info span {
+.session-item:hover:not(.active) {
+  background: var(--el-fill-color-darker);
+}
+
+.session-item.active {
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
+  cursor: default;
+}
+
+.session-item strong {
+  margin: 0;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.session-item.active strong {
+  color: var(--el-color-primary);
+}
+
+.session-item time {
+  margin: 0;
   color: var(--el-text-color-secondary);
-  font-size: 12px;
 }
 
 .outline-level-tag {

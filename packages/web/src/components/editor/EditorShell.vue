@@ -915,6 +915,7 @@ defineExpose({
           @jump-to-heading="jumpToHeading"
           @insert-image="insertRemoteImage"
           @insert-html="handleInsertHtml"
+          @close="closeConsole"
         />
       </div>
     </div>
