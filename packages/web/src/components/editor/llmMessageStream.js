@@ -8,6 +8,7 @@ export function startLlmMessageStream(payload, options = {}) {
   const {
     onStarted,
     onDelta,
+    onReasoningDelta,
     onMeta,
     onCompleted,
     onCancelled,
@@ -69,6 +70,7 @@ export function startLlmMessageStream(payload, options = {}) {
           dispatchFrame(frame, {
             onStarted,
             onDelta,
+            onReasoningDelta,
             onMeta,
             onCompleted,
             onCancelled,
@@ -138,6 +140,9 @@ function dispatchFrame(frame, handlers) {
       break;
     case "assistant-delta":
       handlers.onDelta?.(event.payload);
+      break;
+    case "reasoning-delta":
+      handlers.onReasoningDelta?.(event.payload);
       break;
     case "assistant-meta":
       handlers.onMeta?.(event.payload);

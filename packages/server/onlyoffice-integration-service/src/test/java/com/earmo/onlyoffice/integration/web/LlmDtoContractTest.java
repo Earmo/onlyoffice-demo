@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.web;
 
 import com.earmo.onlyoffice.integration.model.llm.LlmRequestStatusResponse;
+import com.earmo.onlyoffice.integration.model.llm.LlmStreamEventResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmUsageResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -38,5 +39,33 @@ class LlmDtoContractTest {
     assertThat(json).contains("requestId");
     assertThat(json).contains("status");
     assertThat(json).contains("errorCode");
+  }
+
+  @Test
+  void shouldSerializeReasoningTextAndOmitNullStreamFields() throws Exception {
+    LlmStreamEventResponse response = new LlmStreamEventResponse(
+        "doc-1",
+        "request-1",
+        "session-1",
+        "assistant-1",
+        "stub-provider",
+        "fake-gpt",
+        null,
+        "推理片段",
+        null,
+        null,
+        null,
+        Map.of(),
+        null,
+        Instant.parse("2026-04-21T00:00:00Z"),
+        null
+    );
+
+    String json = objectMapper.writeValueAsString(response);
+
+    assertThat(json).contains("\"reasoningText\":\"推理片段\"");
+    assertThat(json).doesNotContain("\"delta\":null");
+    assertThat(json).doesNotContain("\"assistantText\":null");
+    assertThat(json).doesNotContain("\"finishedTime\":null");
   }
 }

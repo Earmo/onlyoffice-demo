@@ -113,8 +113,11 @@ class LlmConversationFlowTest {
     Thread.sleep(120L);
     String streamBody = streamResult.getResponse().getContentAsString();
     assertThat(streamBody).contains("event:request-started");
+    assertThat(streamBody).contains("event:reasoning-delta");
     assertThat(streamBody).contains("event:assistant-delta");
     assertThat(streamBody).contains("event:assistant-completed");
+    assertThat(streamBody.indexOf("event:reasoning-delta")).isLessThan(streamBody.indexOf("event:assistant-delta"));
+    assertThat(streamBody).contains("\"reasoningText\":");
 
     String requestId = jsonFieldFromSse(streamBody, "requestId");
     assertThat(requestId).isNotBlank();
@@ -319,6 +322,131 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.errorCode").value("LLM_PROVIDER_BAD_REQUEST"));
   }
 
+  @Test
+  void shouldPreservePartialReasoningAndAssistantTextWhenProviderFailsAfterChunks() throws Exception {
+    stubStreamingProvider.enqueueFailureAfterPartial("partial-failure");
+    String documentId = createDocument("partial-failed-user", "Partial Failed User");
+
+    MvcResult createSessionResult = mockMvc.perform(
+            post("/api/llm/sessions")
+                .headers(TestAccessHeaders.headers("partial-failed-user", "Partial Failed User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s"}
+                    """.formatted(documentId))
+        )
+        .andExpect(status().isOk())
+        .andReturn();
+    String sessionId = jsonValue(createSessionResult, "sessionId");
+
+    MvcResult streamResult = mockMvc.perform(
+            post("/api/llm/messages/stream")
+                .headers(TestAccessHeaders.headers("partial-failed-user", "Partial Failed User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .content("""
+                    {
+                      "documentId":"%s",
+                      "sessionId":"%s",
+                      "provider":"stub-provider",
+                      "model":"fake-gpt",
+                      "question":"模拟 provider 中途失败",
+                      "selectionSnapshot":{"text":"失败选区","emptySelection":false},
+                      "headingContext":{"includeHeading":true,"headingId":"heading-1","headingText":"第一章"},
+                      "retryConfirmed":false
+                    }
+                    """.formatted(documentId, sessionId))
+        )
+        .andExpect(request().asyncStarted())
+        .andReturn();
+
+    Thread.sleep(160L);
+    String streamBody = streamResult.getResponse().getContentAsString();
+    assertThat(streamBody).contains("event:reasoning-delta");
+    assertThat(streamBody).contains("event:assistant-delta");
+    assertThat(streamBody).contains("event:assistant-error");
+
+    String requestId = jsonFieldFromSse(streamBody, "requestId");
+    assertThat(requestId).isNotBlank();
+
+    mockMvc.perform(
+            get("/api/llm/requests/{requestId}", requestId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("partial-failed-user", "Partial Failed User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("failed"))
+        .andExpect(jsonPath("$.assistantText").value("partial"))
+        .andExpect(jsonPath("$.providerResponseMeta.reasoningContent").value("先分析选区上下文，"))
+        .andExpect(jsonPath("$.errorCode").value("LLM_PROVIDER_UPSTREAM_ERROR"));
+  }
+
+  @Test
+  void shouldPreservePartialReasoningAndAssistantTextWhenCancelledAfterChunks() throws Exception {
+    stubStreamingProvider.enqueuePartialThenSlowTerminal("partial-final", Duration.ofMillis(350));
+    String documentId = createDocument("partial-cancel-user", "Partial Cancel User");
+
+    MvcResult createSessionResult = mockMvc.perform(
+            post("/api/llm/sessions")
+                .headers(TestAccessHeaders.headers("partial-cancel-user", "Partial Cancel User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s"}
+                    """.formatted(documentId))
+        )
+        .andExpect(status().isOk())
+        .andReturn();
+    String sessionId = jsonValue(createSessionResult, "sessionId");
+
+    MvcResult streamResult = mockMvc.perform(
+            post("/api/llm/messages/stream")
+                .headers(TestAccessHeaders.headers("partial-cancel-user", "Partial Cancel User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .content("""
+                    {
+                      "documentId":"%s",
+                      "sessionId":"%s",
+                      "provider":"stub-provider",
+                      "model":"fake-gpt",
+                      "question":"模拟部分输出后取消",
+                      "selectionSnapshot":{"text":"取消选区","emptySelection":false},
+                      "headingContext":{"includeHeading":true,"headingId":"heading-1","headingText":"第一章"},
+                      "retryConfirmed":false
+                    }
+                    """.formatted(documentId, sessionId))
+        )
+        .andExpect(request().asyncStarted())
+        .andReturn();
+
+    Thread.sleep(90L);
+    String startedFrame = streamResult.getResponse().getContentAsString();
+    assertThat(startedFrame).contains("event:assistant-delta");
+    String requestId = jsonFieldFromSse(startedFrame, "requestId");
+    assertThat(requestId).isNotBlank();
+
+    mockMvc.perform(
+            post("/api/llm/requests/{requestId}/cancel", requestId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("partial-cancel-user", "Partial Cancel User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("cancelled"));
+
+    Thread.sleep(520L);
+
+    mockMvc.perform(
+            get("/api/llm/requests/{requestId}", requestId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("partial-cancel-user", "Partial Cancel User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("cancelled"))
+        .andExpect(jsonPath("$.assistantText").value("partia"))
+        .andExpect(jsonPath("$.providerResponseMeta.reasoningContent").value("先分析选区上下文，"))
+        .andExpect(jsonPath("$.errorCode").value("LLM_REQUEST_CANCELLED"));
+  }
+
   private String createDocument(String actorUser, String actorName) throws Exception {
     MvcResult result = mockMvc.perform(
             post("/api/documents")
@@ -357,11 +485,19 @@ class LlmConversationFlowTest {
     private final Queue<Scenario> scenarios = new ConcurrentLinkedQueue<>();
 
     void enqueueSuccess(String assistantText, Duration delay) {
-      scenarios.add(new Scenario(assistantText, delay, false));
+      scenarios.add(new Scenario(assistantText, delay, Duration.ZERO, false, false));
+    }
+
+    void enqueuePartialThenSlowTerminal(String assistantText, Duration terminalDelay) {
+      scenarios.add(new Scenario(assistantText, Duration.ZERO, terminalDelay, false, false));
+    }
+
+    void enqueueFailureAfterPartial(String assistantText) {
+      scenarios.add(new Scenario(assistantText, Duration.ZERO, Duration.ZERO, false, true));
     }
 
     void enqueueBadRequest() {
-      scenarios.add(new Scenario("", Duration.ZERO, true));
+      scenarios.add(new Scenario("", Duration.ZERO, Duration.ZERO, true, false));
     }
 
     void reset() {
@@ -377,7 +513,7 @@ class LlmConversationFlowTest {
     public Flux<SpringAiProviderChunk> stream(LlmRuntimeRequest request) {
       Scenario scenario = scenarios.poll();
       if (scenario == null) {
-        scenario = new Scenario("默认回复", Duration.ZERO, false);
+        scenario = new Scenario("默认回复", Duration.ZERO, Duration.ZERO, false, false);
       }
       if (scenario.badRequest) {
         return Flux.error(new LlmApiException(
@@ -393,14 +529,29 @@ class LlmConversationFlowTest {
       usage.put("totalTokens", 40);
       String first = assistantText.substring(0, Math.min(assistantText.length(), Math.max(1, assistantText.length() / 2)));
       String second = assistantText.substring(first.length());
-      return Flux.concat(
-          Flux.just(new SpringAiProviderChunk(
+      Flux<SpringAiProviderChunk> firstChunk = Flux.just(new SpringAiProviderChunk(
               first,
               "provider-request-1",
               null,
               null,
-              Map.of("provider", request.providerName(), "model", request.model())
-          )).delayElements(scenario.delay),
+              Map.of(
+                  "provider", request.providerName(),
+                  "model", request.model(),
+                  "reasoningContent", "先分析选区上下文，"
+              )
+          )).delayElements(scenario.firstDelay);
+      if (scenario.failAfterPartial) {
+        return Flux.concat(
+            firstChunk,
+            Flux.error(new LlmApiException(
+                LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR,
+                HttpStatus.BAD_GATEWAY,
+                "模型流式响应中断。"
+            ))
+        );
+      }
+      return Flux.concat(
+          firstChunk,
           Flux.just(new SpringAiProviderChunk(
               second,
               "provider-request-1",
@@ -410,10 +561,10 @@ class LlmConversationFlowTest {
                   "provider", request.providerName(),
                   "model", request.model(),
                   "created", 1711000000,
-                  "reasoningContent", "先分析选区上下文，再组织最终建议。",
+                  "reasoningContent", "再组织最终建议。",
                   "usage", usage
               )
-          ))
+          )).delayElements(scenario.secondDelay)
       );
     }
 
@@ -426,7 +577,13 @@ class LlmConversationFlowTest {
     public void cancelRequest(String providerRequestId) {
     }
 
-    private record Scenario(String assistantText, Duration delay, boolean badRequest) {
+    private record Scenario(
+        String assistantText,
+        Duration firstDelay,
+        Duration secondDelay,
+        boolean badRequest,
+        boolean failAfterPartial
+    ) {
     }
   }
 }

@@ -25,6 +25,13 @@ const WRITE_BACK_ALLOWED_TAGS = [
   "table", "thead", "tbody", "tr", "th", "td"
 ];
 const WRITE_BACK_ALLOWED_ATTR = ["href"];
+const REASONING_DISPLAY_ALLOWED_TAGS = [
+  "p", "strong", "em", "ul", "ol", "li",
+  "h1", "h2", "h3", "h4", "h5", "h6",
+  "code", "pre", "blockquote", "a", "br",
+  "table", "thead", "tbody", "tr", "th", "td"
+];
+const REASONING_DISPLAY_ALLOWED_ATTR = ["href"];
 
 const md = markdownit({
   html: true,
@@ -419,6 +426,7 @@ function buildConversationEntries(messages) {
         status: "completed",
         assistantText: "",
         streamingText: "",
+        streamingReasoningText: "",
         usage: null,
         finishReason: "",
         providerResponseMeta: {},
@@ -433,6 +441,7 @@ function buildConversationEntries(messages) {
       lastEntry.status = message.status || "completed";
       lastEntry.assistantText = message.assistantText || "";
       lastEntry.streamingText = "";
+      lastEntry.streamingReasoningText = "";
       lastEntry.usage = message.usage || null;
       lastEntry.finishReason = message.finishReason || "";
       lastEntry.providerResponseMeta = message.providerResponseMeta || {};
@@ -457,6 +466,7 @@ function buildConversationEntries(messages) {
       status: message.status || "completed",
       assistantText: message.assistantText || "",
       streamingText: "",
+      streamingReasoningText: "",
       usage: message.usage || null,
       finishReason: message.finishReason || "",
       providerResponseMeta: message.providerResponseMeta || {},
@@ -540,6 +550,7 @@ async function sendCurrentQuestion(options) {
       status: "in_progress",
       assistantText: "",
       streamingText: "",
+      streamingReasoningText: "",
       usage: null,
       finishReason: "",
       providerResponseMeta: {
@@ -583,16 +594,28 @@ async function sendCurrentQuestion(options) {
         pendingEntry.responseMessage = "正在请求模型";
         conversationEntries.value = [...conversationEntries.value];
       },
+      onReasoningDelta(event) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+          return;
+        }
+        const reasoningText = event?.reasoningText || "";
+        if (!reasoningText) {
+          return;
+        }
+        pendingEntry.status = "in_progress";
+        pendingEntry.streamingReasoningText = `${pendingEntry.streamingReasoningText || ""}${reasoningText}`;
+        if (!pendingEntry.responseMessage || pendingEntry.responseMessage === "等待模型返回...") {
+          pendingEntry.responseMessage = "正在深度思考...";
+        }
+        conversationEntries.value = [...conversationEntries.value];
+      },
       onMeta(event) {
         if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
           return;
         }
         pendingEntry.usage = event?.usage || pendingEntry.usage;
         pendingEntry.finishReason = event?.finishReason || pendingEntry.finishReason;
-        pendingEntry.providerResponseMeta = {
-          ...(pendingEntry.providerResponseMeta || {}),
-          ...(event?.providerResponseMeta || {})
-        };
+        pendingEntry.providerResponseMeta = mergeProviderResponseMeta(pendingEntry, event?.providerResponseMeta || {});
         conversationEntries.value = [...conversationEntries.value];
       },
       onCompleted(event) {
@@ -686,10 +709,10 @@ function applyStreamTerminalResult(entry, event) {
     sessionId: event.sessionId || currentSessionId.value,
     assistantMessageId: event.assistantMessageId || entry.assistantMessageId,
     status: event.status,
-    assistantText: event.assistantText || "",
+    assistantText: event.assistantText || entry.assistantText || entry.streamingText || "",
     usage: event.usage || null,
     finishReason: event.finishReason || "",
-    providerResponseMeta: event.providerResponseMeta || entry.providerResponseMeta || {},
+    providerResponseMeta: mergeProviderResponseMeta(entry, event.providerResponseMeta || {}),
     errorCode: event.errorCode || "",
     startedTime: event.startedTime || "",
     finishedTime: event.finishedTime || ""
@@ -704,11 +727,12 @@ function applyRequestResult(entry, result) {
   entry.assistantMessageId = result.assistantMessageId || entry.assistantMessageId;
   entry.requestId = result.requestId || entry.requestId;
   entry.status = result.status;
-  entry.assistantText = result.assistantText || "";
+  entry.assistantText = result.assistantText || entry.assistantText || entry.streamingText || "";
+  entry.providerResponseMeta = mergeProviderResponseMeta(entry, result.providerResponseMeta || {});
   entry.streamingText = "";
+  entry.streamingReasoningText = "";
   entry.usage = result.usage || null;
   entry.finishReason = result.finishReason || "";
-  entry.providerResponseMeta = result.providerResponseMeta || entry.providerResponseMeta || {};
   entry.errorCode = result.errorCode || "";
   entry.responseMessage = humanizeResult(result);
   conversationEntries.value = [...conversationEntries.value];
@@ -760,7 +784,7 @@ function buildLocalCancelledResult(entry) {
     sessionId: currentSessionId.value,
     assistantMessageId: entry.assistantMessageId || "",
     status: "cancelled",
-    assistantText: "",
+    assistantText: entry.assistantText || entry.streamingText || "",
     usage: null,
     finishReason: "",
     providerResponseMeta: entry.providerResponseMeta || {},
@@ -775,6 +799,7 @@ function markPendingEntryFailed(entry, error) {
     return;
   }
   entry.status = "failed";
+  entry.assistantText = entry.assistantText || entry.streamingText || "";
   entry.errorCode = error?.errorCode || "NETWORK_ERROR";
   entry.responseMessage = error?.message || "请求失败";
   entry.streamingText = "";
@@ -968,12 +993,58 @@ function renderAssistantText(entry) {
   return entry.assistantText || entry.streamingText || "";
 }
 
-function renderReasoningText(entry) {
+function getReasoningText(entry) {
   const reasoningContent = entry?.providerResponseMeta?.reasoningContent;
-  if (typeof reasoningContent === "string") {
+  if (typeof reasoningContent === "string" && reasoningContent.trim()) {
     return reasoningContent.trim();
   }
-  return "";
+  return (entry?.streamingReasoningText || "").trim();
+}
+
+function hasReasoningContent(entry) {
+  return Boolean(getReasoningText(entry));
+}
+
+function reasoningTitle(entry) {
+  return entry?.status === "in_progress" ? "深度思考中" : "深度思考";
+}
+
+function renderMarkdownHtml(text) {
+  return DOMPurify.sanitize(md.render(text || ""), {
+    ALLOWED_TAGS: REASONING_DISPLAY_ALLOWED_TAGS,
+    ALLOWED_ATTR: REASONING_DISPLAY_ALLOWED_ATTR
+  });
+}
+
+function renderReasoningHtml(entry) {
+  return renderMarkdownHtml(getReasoningText(entry));
+}
+
+function mergeProviderResponseMeta(entry, incomingMeta = {}) {
+  const existing = { ...(entry?.providerResponseMeta || {}) };
+  const incoming = { ...(incomingMeta || {}) };
+  const incomingReasoning = typeof incoming.reasoningContent === "string" ? incoming.reasoningContent.trim() : "";
+  const existingReasoning = typeof existing.reasoningContent === "string" ? existing.reasoningContent.trim() : "";
+  const streamedReasoning = (entry?.streamingReasoningText || "").trim();
+
+  if (!incomingReasoning) {
+    delete incoming.reasoningContent;
+  }
+
+  const merged = {
+    ...existing,
+    ...incoming
+  };
+
+  if (incomingReasoning) {
+    merged.reasoningContent = incomingMeta.reasoningContent;
+  } else if (existingReasoning) {
+    merged.reasoningContent = existing.reasoningContent;
+  } else if (streamedReasoning) {
+    merged.reasoningContent = entry.streamingReasoningText;
+  }
+
+  return merged;
 }
 
 function openWriteBackDialog(entry) {
@@ -1124,13 +1195,18 @@ function saveStatusLabel(state) {
               </el-button>
             </div>
 
-            <div v-if="renderAssistantText(entry)" class="markdown-body" v-html="md.render(renderAssistantText(entry))"></div>
-            <p v-else class="assistant-placeholder">{{ entry.responseMessage }}</p>
+            <details v-if="hasReasoningContent(entry)" class="reasoning-panel" data-testid="reasoning-panel">
+              <summary class="reasoning-summary">{{ reasoningTitle(entry) }}</summary>
+              <div class="reasoning-content markdown-body" v-html="renderReasoningHtml(entry)"></div>
+            </details>
 
-            <div v-if="renderReasoningText(entry)" class="reasoning-panel">
-              <p class="reasoning-label">思考方式</p>
-              <pre class="reasoning-content">{{ renderReasoningText(entry) }}</pre>
-            </div>
+            <div
+              v-if="renderAssistantText(entry)"
+              class="markdown-body assistant-answer"
+              data-testid="assistant-answer"
+              v-html="md.render(renderAssistantText(entry))"
+            ></div>
+            <p v-else class="assistant-placeholder" data-testid="assistant-answer">{{ entry.responseMessage }}</p>
 
             <div class="message-actions" v-if="entry.status !== 'failed'">
               <el-button size="small" text @click="handleCopy(renderAssistantText(entry))">
@@ -1393,26 +1469,41 @@ function saveStatusLabel(state) {
 }
 
 .reasoning-panel {
-  margin-top: 12px;
+  margin-bottom: 12px;
   padding: 12px;
   border-radius: 8px;
   background: var(--el-fill-color-light);
   border: 1px solid var(--el-border-color-lighter);
 }
 
-.reasoning-label {
-  margin: 0 0 8px;
+.reasoning-summary {
+  cursor: pointer;
   font-size: 12px;
   font-weight: 600;
   color: var(--el-text-color-secondary);
+  user-select: none;
 }
 
 .reasoning-content {
-  margin: 0;
+  margin-top: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: auto;
+  color: var(--el-text-color-primary);
+  overflow-wrap: anywhere;
+}
+
+.reasoning-content :deep(pre) {
   white-space: pre-wrap;
   word-break: break-word;
-  font: inherit;
-  color: var(--el-text-color-primary);
+}
+
+.reasoning-content :deep(a) {
+  overflow-wrap: anywhere;
+}
+
+.assistant-answer {
+  margin: 0;
 }
 
 .bubble {

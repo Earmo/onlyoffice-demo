@@ -1,8 +1,10 @@
 package com.earmo.onlyoffice.integration.model.llm;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.Map;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record LlmStreamEventResponse(
     String documentId,
     String requestId,
@@ -11,6 +13,7 @@ public record LlmStreamEventResponse(
     String provider,
     String model,
     String delta,
+    String reasoningText,
     String assistantText,
     LlmUsageResponse usage,
     String finishReason,

@@ -99,7 +99,9 @@ describe("EditorAiWorkbench", () => {
           model: "fake-gpt",
           providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
         });
+        handlers.onReasoningDelta?.({ requestId: "request-1", reasoningText: "先结合选区识别主题，" });
         handlers.onDelta?.({ requestId: "request-1", delta: "流式" });
+        handlers.onReasoningDelta?.({ requestId: "request-1", reasoningText: "再给出结构化建议。" });
         handlers.onDelta?.({ requestId: "request-1", delta: "回复" });
         handlers.onMeta?.({
           requestId: "request-1",
@@ -215,10 +217,17 @@ describe("EditorAiWorkbench", () => {
       expect.any(Object)
     );
     expect(wrapper.text()).toContain("流式回复");
-    expect(wrapper.text()).toContain("思考方式");
+    expect(wrapper.text()).toContain("深度思考");
     expect(wrapper.text()).toContain("先结合选区识别主题，再给出结构化建议。");
     expect(wrapper.text()).toContain("promptTokens: 10");
     expect(wrapper.text()).toContain("provider: stub-provider");
+    const entry = wrapper.find(".thread-entry").element;
+    const reasoningPanel = wrapper.find('[data-testid="reasoning-panel"]');
+    const assistantAnswer = wrapper.find('[data-testid="assistant-answer"]');
+    expect(reasoningPanel.exists()).toBe(true);
+    expect(reasoningPanel.element.open).toBe(false);
+    const testNodes = [...entry.querySelectorAll("[data-testid]")];
+    expect(testNodes.indexOf(reasoningPanel.element)).toBeLessThan(testNodes.indexOf(assistantAnswer.element));
   });
 
   it("应把当前 provider/model 选择带入 payload", async () => {
@@ -239,6 +248,51 @@ describe("EditorAiWorkbench", () => {
       }),
       expect.any(Object)
     );
+  });
+
+  it("应渲染并清洗 reasoning Markdown", async () => {
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-md",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-md",
+          provider: "stub-provider",
+          model: "fake-gpt",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+        handlers.onReasoningDelta?.({
+          requestId: "request-md",
+          reasoningText: "## 标题\n<script>alert(1)</script>\n<a href=\"javascript:alert(1)\">链接</a>"
+        });
+        handlers.onDelta?.({ requestId: "request-md", delta: "回答" });
+        handlers.onCompleted?.({
+          requestId: "request-md",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-md",
+          assistantText: "回答",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("检查 Markdown");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    const reasoningPanel = wrapper.find('[data-testid="reasoning-panel"]');
+    expect(reasoningPanel.html()).toContain("<h2>标题</h2>");
+    expect(reasoningPanel.html()).not.toContain("<script>");
+    expect(reasoningPanel.html()).not.toContain("javascript:");
   });
 
   it("应在取消后显示请求已取消", async () => {
@@ -292,6 +346,98 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).toContain("LLM_REQUEST_CANCELLED");
   });
 
+  it("应在取消终态缺少 reasoning 时保留已收到的半成品", async () => {
+    const abort = vi.fn(() => Promise.resolve());
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-partial-cancel",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-partial-cancel",
+          provider: "stub-provider",
+          model: "fake-gpt",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+        handlers.onReasoningDelta?.({ requestId: "request-partial-cancel", reasoningText: "已收到的思考" });
+        handlers.onDelta?.({ requestId: "request-partial-cancel", delta: "半截回答" });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort
+      };
+    });
+    apiMocks.cancelLlmRequest.mockResolvedValueOnce({
+      documentId: "doc-1",
+      requestId: "request-partial-cancel",
+      sessionId: "session-1",
+      assistantMessageId: "assistant-partial-cancel",
+      status: "cancelled",
+      assistantText: "",
+      usage: null,
+      finishReason: "",
+      providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" },
+      errorCode: "LLM_REQUEST_CANCELLED",
+      startedTime: "",
+      finishedTime: ""
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("部分取消");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('button[title="取消发送"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("半截回答");
+    expect(wrapper.text()).toContain("已收到的思考");
+    expect(wrapper.text()).toContain("LLM_REQUEST_CANCELLED");
+  });
+
+  it("应在失败终态缺少 reasoning 时保留已收到的半成品", async () => {
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-partial-failed",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-partial-failed",
+          provider: "stub-provider",
+          model: "fake-gpt",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+        handlers.onReasoningDelta?.({ requestId: "request-partial-failed", reasoningText: "失败前思考" });
+        handlers.onDelta?.({ requestId: "request-partial-failed", delta: "失败前回答" });
+        handlers.onError?.({
+          requestId: "request-partial-failed",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-partial-failed",
+          errorCode: "LLM_PROVIDER_UPSTREAM_ERROR",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("部分失败");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("失败前回答");
+    expect(wrapper.text()).toContain("失败前思考");
+    expect(wrapper.text()).toContain("LLM_PROVIDER_UPSTREAM_ERROR");
+  });
+
   it("应在流异常断开后只回查一次最终态", async () => {
     apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
       queueMicrotask(() => {
@@ -304,6 +450,7 @@ describe("EditorAiWorkbench", () => {
           model: "fake-gpt"
         });
         handlers.onDelta?.({ requestId: "request-3", delta: "半截" });
+        handlers.onReasoningDelta?.({ requestId: "request-3", reasoningText: "临时思考" });
         handlers.onComplete?.();
       });
       return {
@@ -321,7 +468,7 @@ describe("EditorAiWorkbench", () => {
       assistantText: "最终结果",
       usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
       finishReason: "stop",
-      providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" },
+      providerResponseMeta: { provider: "stub-provider", model: "fake-gpt", reasoningContent: "最终思考" },
       errorCode: "",
       startedTime: "",
       finishedTime: ""
@@ -337,6 +484,103 @@ describe("EditorAiWorkbench", () => {
     expect(apiMocks.getLlmRequest).toHaveBeenCalledTimes(1);
     expect(apiMocks.getLlmRequest).toHaveBeenCalledWith("request-3", "doc-1");
     expect(wrapper.text()).toContain("最终结果");
+    expect(wrapper.text()).toContain("最终思考");
+  });
+
+  it("应在 terminal 缺少 reasoning 时保留 streamed reasoning", async () => {
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-streamed-reasoning",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-streamed-reasoning",
+          provider: "stub-provider",
+          model: "fake-gpt",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+        handlers.onReasoningDelta?.({ requestId: "request-streamed-reasoning", reasoningText: "流式思考" });
+        handlers.onDelta?.({ requestId: "request-streamed-reasoning", delta: "回答" });
+        handlers.onCompleted?.({
+          requestId: "request-streamed-reasoning",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-streamed-reasoning",
+          assistantText: "回答",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("terminal 空 reasoning");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("流式思考");
+    expect(wrapper.text()).toContain("回答");
+  });
+
+  it("应从历史消息恢复 reasoning 并保持在正文前", async () => {
+    apiMocks.listLlmSessions.mockResolvedValue([
+      {
+        sessionId: "session-history",
+        documentId: "doc-1",
+        title: "历史会话",
+        updatedTime: "2026-04-27T10:00:00Z"
+      }
+    ]);
+    apiMocks.getLlmSession.mockResolvedValue({
+      sessionId: "session-history",
+      documentId: "doc-1",
+      title: "历史会话",
+      lastSnapshotText: "历史选区",
+      lastSnapshotIsEmpty: false,
+      lastHeadingId: "heading-1",
+      lastHeadingText: "第一章",
+      messages: [
+        {
+          role: "user",
+          messageId: "user-history",
+          question: "历史问题",
+          snapshotText: "历史选区",
+          snapshotEmptySelection: false,
+          includeHeading: true,
+          headingId: "heading-1",
+          headingText: "第一章"
+        },
+        {
+          role: "assistant",
+          messageId: "assistant-history",
+          status: "completed",
+          assistantText: "历史回答",
+          providerResponseMeta: {
+            provider: "stub-provider",
+            model: "fake-gpt",
+            reasoningContent: "历史深度思考"
+          }
+        }
+      ]
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("当前会话：历史会话");
+    expect(wrapper.text()).toContain("历史深度思考");
+    expect(wrapper.text()).toContain("历史回答");
+    const entry = wrapper.find(".thread-entry").element;
+    const reasoningPanel = wrapper.find('[data-testid="reasoning-panel"]');
+    const assistantAnswer = wrapper.find('[data-testid="assistant-answer"]');
+    expect(reasoningPanel.element.open).toBe(false);
+    const testNodes = [...entry.querySelectorAll("[data-testid]")];
+    expect(testNodes.indexOf(reasoningPanel.element)).toBeLessThan(testNodes.indexOf(assistantAnswer.element));
   });
 
   it("应在切换会话时提示当前流式回复会被中断", async () => {

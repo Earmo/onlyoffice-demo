@@ -101,6 +101,7 @@ class LlmControllerTest {
               null,
               null,
               null,
+              null,
               java.util.Map.of("provider", "dashscope", "model", "qwen-plus"),
               null,
               Instant.parse("2026-04-22T10:00:00Z"),

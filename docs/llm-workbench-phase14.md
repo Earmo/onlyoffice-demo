@@ -68,6 +68,7 @@ llm:
 - 不同 `tenantId` / `actorUser` 访问旧会话拒绝
 - `chars_div_4` 历史预算估算
 - `providerResponseMeta` 白名单过滤
+- `reasoning-delta` 实时推理增量和终态 `providerResponseMeta.reasoningContent`
 - `errorCode` 映射
 - `cancelled` 晚到成功结果丢弃
 
@@ -76,6 +77,7 @@ llm:
 - capability disabled
 - stale response 忽略
 - stream started / delta / completed
+- `reasoning-delta`、深度思考 Markdown 展示、失败/取消 partial 保留
 - 断流后单次最终态回查
 - `in_progress -> cancelled`
 - `LLM_SESSION_NOT_FOUND` / `LLM_SESSION_FORBIDDEN` 回退新会话
@@ -125,7 +127,8 @@ Phase 14 的取消规则固定如下：
 - 上游取消是 best effort。
 - 用户一旦取消，请求最终状态必须保持 `cancelled`。
 - provider 随后晚到成功时，不得覆盖本地 `cancelled` 状态。
-- 晚到成功结果不得回写 `assistantText`。
+- 取消前已经进入本地 accumulator 的正文和 `reasoningContent` 可以随 `cancelled` 终态保留。
+- 取消登记之后的晚到 provider chunk 不得继续回写 `assistantText` 或 reasoning。
 
 这条规则同时适用于：
 
@@ -154,6 +157,32 @@ Phase 14 的取消规则固定如下：
 - `usage.promptTokens`
 - `usage.completionTokens`
 - `usage.totalTokens`
+- `reasoningContent`
+
+## Phase 16 extension: 深度思考流式协议
+
+Phase 16 在 Phase 14.2 的独立 AI SSE 基础上新增了与 `assistant-delta` 并列的 `reasoning-delta` 事件。后端收到 provider reasoning 增量时立即向浏览器发送，不等待 `assistant-meta` 或 `assistant-completed`。
+
+示例：
+
+```text
+event: reasoning-delta
+data: {"requestId":"...","reasoningText":"..."}
+```
+
+字段语义：
+
+- `reasoningText` 是本次 SSE frame 的推理增量片段。
+- `assistant-delta.data.delta` 仍只表示正文回复增量。
+- `providerResponseMeta.reasoningContent` 仍是 terminal event、历史消息和断流回查中的完整聚合推理内容。
+- 如果同一个 provider chunk 同时包含 reasoning 和正文，服务端先发送 `reasoning-delta`，再发送 `assistant-delta`。
+
+前端展示规则：
+
+- 深度思考块展示在 assistant 正文之前，进行中、完成态和历史消息顺序一致。
+- 深度思考块默认折叠；生成中标题为“深度思考中”，终态标题为“深度思考”。
+- 用户展开后看到 Markdown 渲染内容；Markdown 输出必须经过 DOMPurify 清洗后才能进入 `v-html`。
+- 失败或取消时，前端保留已经收到的 `reasoningText` 和正文片段；如果 terminal payload 没有非空 `reasoningContent`，不得用空值覆盖已收到的 streamed reasoning。
 
 ## Phase 15 Handoff
 

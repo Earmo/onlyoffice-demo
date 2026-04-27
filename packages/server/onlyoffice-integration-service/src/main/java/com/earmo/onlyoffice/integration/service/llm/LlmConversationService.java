@@ -477,7 +477,14 @@ public class LlmConversationService {
             preparedRequest.request().documentId(),
             preparedRequest.request().sessionId()
         );
-        sink.send("assistant-cancelled", cancelledEvent(preparedRequest));
+        persistCancelledRequest(
+            preparedRequest.requestEntity(),
+            preparedRequest.assistantMessage(),
+            preparedRequest.accessContext(),
+            CANCEL_SOURCE_USER,
+            accumulator
+        );
+        sink.send("assistant-cancelled", cancelledEvent(preparedRequest, accumulator));
         sink.complete();
         return;
       }
@@ -512,7 +519,14 @@ public class LlmConversationService {
             preparedRequest.runtimeSelection().model(),
             accumulator.chunkCount
         );
-        sink.send("assistant-cancelled", cancelledEvent(preparedRequest));
+        persistCancelledRequest(
+            preparedRequest.requestEntity(),
+            preparedRequest.assistantMessage(),
+            preparedRequest.accessContext(),
+            CANCEL_SOURCE_CLIENT_DISCONNECT,
+            accumulator
+        );
+        sink.send("assistant-cancelled", cancelledEvent(preparedRequest, accumulator));
         sink.complete();
         return;
       }
@@ -542,7 +556,14 @@ public class LlmConversationService {
               preparedRequest.runtimeSelection().model(),
               accumulator.chunkCount
           );
-          sink.send("assistant-cancelled", cancelledEvent(preparedRequest));
+          persistCancelledRequest(
+              preparedRequest.requestEntity(),
+              preparedRequest.assistantMessage(),
+              preparedRequest.accessContext(),
+              CANCEL_SOURCE_USER,
+              accumulator
+          );
+          sink.send("assistant-cancelled", cancelledEvent(preparedRequest, accumulator));
           sink.complete();
         }
         return;
@@ -584,22 +605,23 @@ public class LlmConversationService {
       sink.send("assistant-completed", completedEvent(preparedRequest, accumulator));
       sink.complete();
     } catch (LlmApiException exception) {
-      handleProviderFailure(preparedRequest, sink, exception.errorCode(), exception);
+      handleProviderFailure(preparedRequest, sink, accumulator, exception.errorCode(), exception);
     } catch (RuntimeException exception) {
       if (isProviderTimeoutException(exception)) {
         handleProviderFailure(
             preparedRequest,
             sink,
+            accumulator,
             LlmErrorCodes.LLM_PROVIDER_TIMEOUT,
             new LlmApiException(LlmErrorCodes.LLM_PROVIDER_TIMEOUT, HttpStatus.GATEWAY_TIMEOUT, "模型上游服务响应超时。")
         );
         return;
       }
       log.error("LLM provider 流执行时出现未预期的运行时异常，requestId={}", requestId, exception);
-      handleProviderFailure(preparedRequest, sink, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR, exception);
+      handleProviderFailure(preparedRequest, sink, accumulator, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR, exception);
     } catch (Exception exception) {
       log.error("LLM provider 流执行时出现未预期异常，requestId={}", requestId, exception);
-      handleProviderFailure(preparedRequest, sink, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR, exception);
+      handleProviderFailure(preparedRequest, sink, accumulator, LlmErrorCodes.LLM_PROVIDER_UPSTREAM_ERROR, exception);
     } finally {
       executionRegistry.unregister(requestId);
     }
@@ -615,6 +637,16 @@ public class LlmConversationService {
       SpringAiProviderChunk chunk
   ) {
     accumulator.chunkCount++;
+    if (executionRegistry.isCancelled(preparedRequest.requestEntity().getRequestId())) {
+      log.info(
+          "LLM 请求已取消，丢弃上游晚到 chunk，requestId={}, provider={}, model={}, chunkCount={}",
+          preparedRequest.requestEntity().getRequestId(),
+          preparedRequest.runtimeSelection().providerName(),
+          preparedRequest.runtimeSelection().model(),
+          accumulator.chunkCount
+      );
+      return;
+    }
     // provider 的流式回包可能把 requestId、usage、finish_reason 分散在不同帧里，
     // 这里统一归并到 accumulator，最终由 terminal event 一次性吐给前端和数据库。
     if (chunk.providerRequestId() != null && !chunk.providerRequestId().isBlank()) {
@@ -624,9 +656,22 @@ public class LlmConversationService {
     if (chunk.providerResponseMeta() != null) {
       for (Map.Entry<String, Object> entry : chunk.providerResponseMeta().entrySet()) {
         if ("reasoningContent".equals(entry.getKey()) && entry.getValue() instanceof String newDelta) {
-          // 推理内容是流式增量，需要拼接而非覆盖（与 assistantText 的 append 逻辑一致）
-          String existing = (String) accumulator.providerMeta.getOrDefault("reasoningContent", "");
-          accumulator.providerMeta.put("reasoningContent", existing + newDelta);
+          appendReasoningContent(accumulator, newDelta);
+          if (!executionRegistry.isCancelled(preparedRequest.requestEntity().getRequestId())) {
+            if (!accumulator.firstReasoningDeltaLogged) {
+              accumulator.firstReasoningDeltaLogged = true;
+              log.info(
+                  "收到首个 LLM 推理增量片段，requestId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, reasoningChars={}",
+                  preparedRequest.requestEntity().getRequestId(),
+                  preparedRequest.runtimeSelection().providerName(),
+                  preparedRequest.runtimeSelection().model(),
+                  accumulator.providerRequestId,
+                  accumulator.chunkCount,
+                  newDelta.length()
+              );
+            }
+            sink.send("reasoning-delta", reasoningDeltaEvent(preparedRequest, newDelta));
+          }
         } else {
           accumulator.providerMeta.put(entry.getKey(), entry.getValue());
         }
@@ -654,12 +699,23 @@ public class LlmConversationService {
     }
   }
 
+  private void appendReasoningContent(StreamAccumulator accumulator, String newDelta) {
+    if (newDelta == null || newDelta.isEmpty()) {
+      return;
+    }
+    // 推理内容是流式增量，需要拼接而非覆盖（与 assistantText 的 append 逻辑一致）。
+    // 如果某个 provider 返回累积式 reasoning，应在 provider adapter 层先规范化成增量。
+    String existing = (String) accumulator.providerMeta.getOrDefault("reasoningContent", "");
+    accumulator.providerMeta.put("reasoningContent", existing + newDelta);
+  }
+
   /**
    * 统一处理 provider 执行失败。
    */
   private void handleProviderFailure(
       PreparedRequest preparedRequest,
       StreamEventSink sink,
+      StreamAccumulator accumulator,
       String errorCode,
       Exception exception
   ) {
@@ -676,8 +732,8 @@ public class LlmConversationService {
         errorCode,
         exception.getMessage()
     );
-    markRequestFailed(preparedRequest.requestEntity(), preparedRequest.assistantMessage(), errorCode);
-    sink.send("assistant-error", errorEvent(preparedRequest, errorCode));
+    markRequestFailed(preparedRequest.requestEntity(), preparedRequest.assistantMessage(), errorCode, accumulator);
+    sink.send("assistant-error", errorEvent(preparedRequest, errorCode, accumulator));
     // 错误信息已经通过 SSE 显式返回给前端，这里只需要正常结束流，
     // 避免 response 已经切到 text/event-stream 后又被 Spring 当成 JSON 异常响应二次处理。
     sink.complete();
@@ -716,6 +772,16 @@ public class LlmConversationService {
       AccessContext accessContext,
       String cancelSource
   ) {
+    persistCancelledRequest(requestEntity, assistantMessage, accessContext, cancelSource, null);
+  }
+
+  private void persistCancelledRequest(
+      DocumentLlmRequestEntity requestEntity,
+      DocumentLlmMessageEntity assistantMessage,
+      AccessContext accessContext,
+      String cancelSource,
+      StreamAccumulator accumulator
+  ) {
     documentLlmRequestRepository.markCancelRequested(
         requestEntity.getRequestId(),
         accessContext.tenantId(),
@@ -729,9 +795,8 @@ public class LlmConversationService {
     documentLlmRequestRepository.update(requestEntity);
 
     assistantMessage.setStatus(STATUS_CANCELLED);
-    assistantMessage.setAssistantText(null);
+    applyPartialAssistantContent(assistantMessage, accumulator);
     assistantMessage.setErrorCode(LlmErrorCodes.LLM_REQUEST_CANCELLED);
-    assistantMessage.setFinishReason(null);
     documentLlmMessageRepository.update(assistantMessage);
   }
 
@@ -741,15 +806,40 @@ public class LlmConversationService {
   private void markRequestFailed(
       DocumentLlmRequestEntity requestEntity,
       DocumentLlmMessageEntity assistantMessage,
-      String errorCode
+      String errorCode,
+      StreamAccumulator accumulator
   ) {
     requestEntity.setStatus(STATUS_FAILED);
     requestEntity.setFinishedTime(Instant.now());
     documentLlmRequestRepository.update(requestEntity);
     assistantMessage.setStatus(STATUS_FAILED);
+    applyPartialAssistantContent(assistantMessage, accumulator);
     assistantMessage.setErrorCode(errorCode);
-    assistantMessage.setFinishReason(null);
     documentLlmMessageRepository.update(assistantMessage);
+  }
+
+  private void applyPartialAssistantContent(
+      DocumentLlmMessageEntity assistantMessage,
+      StreamAccumulator accumulator
+  ) {
+    if (accumulator == null || !accumulator.hasPartialContent()) {
+      return;
+    }
+    assistantMessage.setAssistantText(accumulator.assistantText.toString());
+    if (accumulator.finishReason != null && !accumulator.finishReason.isBlank()) {
+      assistantMessage.setFinishReason(accumulator.finishReason);
+    }
+    if (hasUsage(accumulator.usage)) {
+      assistantMessage.setProviderUsageJson(writeJson(accumulator.usage));
+    }
+    Map<String, Object> filteredMeta = filterProviderResponseMeta(accumulator.providerMeta);
+    if (!filteredMeta.isEmpty()) {
+      assistantMessage.setProviderMetaJson(writeJson(filteredMeta));
+    }
+  }
+
+  private boolean hasUsage(LlmProviderUsage usage) {
+    return usage != null && (usage.promptTokens() != null || usage.completionTokens() != null || usage.totalTokens() != null);
   }
 
   /**
@@ -869,6 +959,7 @@ public class LlmConversationService {
         null,
         null,
         null,
+        null,
         initialProviderMeta(preparedRequest.runtimeSelection()),
         null,
         preparedRequest.requestEntity().getStartedTime(),
@@ -891,6 +982,30 @@ public class LlmConversationService {
         null,
         null,
         null,
+        null,
+        Map.of(),
+        null,
+        preparedRequest.requestEntity().getStartedTime(),
+        null
+    );
+  }
+
+  /**
+   * 构造 `reasoning-delta` 事件体。
+   */
+  private LlmStreamEventResponse reasoningDeltaEvent(PreparedRequest preparedRequest, String reasoningText) {
+    return new LlmStreamEventResponse(
+        preparedRequest.request().documentId(),
+        preparedRequest.requestEntity().getRequestId(),
+        preparedRequest.request().sessionId(),
+        preparedRequest.assistantMessage().getMessageId(),
+        preparedRequest.runtimeSelection().providerName(),
+        preparedRequest.runtimeSelection().model(),
+        null,
+        reasoningText,
+        null,
+        null,
+        null,
         Map.of(),
         null,
         preparedRequest.requestEntity().getStartedTime(),
@@ -909,6 +1024,7 @@ public class LlmConversationService {
         preparedRequest.assistantMessage().getMessageId(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
+        null,
         null,
         null,
         new LlmUsageResponse(accumulator.usage.promptTokens(), accumulator.usage.completionTokens(), accumulator.usage.totalTokens()),
@@ -933,6 +1049,7 @@ public class LlmConversationService {
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
         null,
+        null,
         accumulator.assistantText.toString(),
         new LlmUsageResponse(accumulator.usage.promptTokens(), accumulator.usage.completionTokens(), accumulator.usage.totalTokens()),
         accumulator.finishReason,
@@ -947,6 +1064,10 @@ public class LlmConversationService {
    * 构造 `assistant-cancelled` 事件体。
    */
   private LlmStreamEventResponse cancelledEvent(PreparedRequest preparedRequest) {
+    return cancelledEvent(preparedRequest, null);
+  }
+
+  private LlmStreamEventResponse cancelledEvent(PreparedRequest preparedRequest, StreamAccumulator accumulator) {
     return new LlmStreamEventResponse(
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
@@ -956,9 +1077,10 @@ public class LlmConversationService {
         preparedRequest.runtimeSelection().model(),
         null,
         null,
+        accumulator == null ? null : accumulator.assistantText.toString(),
         null,
         null,
-        initialProviderMeta(preparedRequest.runtimeSelection()),
+        accumulator == null ? initialProviderMeta(preparedRequest.runtimeSelection()) : filterProviderResponseMeta(accumulator.providerMeta),
         LlmErrorCodes.LLM_REQUEST_CANCELLED,
         preparedRequest.requestEntity().getStartedTime(),
         Instant.now()
@@ -968,7 +1090,7 @@ public class LlmConversationService {
   /**
    * 构造 `assistant-error` 事件体。
    */
-  private LlmStreamEventResponse errorEvent(PreparedRequest preparedRequest, String errorCode) {
+  private LlmStreamEventResponse errorEvent(PreparedRequest preparedRequest, String errorCode, StreamAccumulator accumulator) {
     return new LlmStreamEventResponse(
         preparedRequest.request().documentId(),
         preparedRequest.requestEntity().getRequestId(),
@@ -978,9 +1100,10 @@ public class LlmConversationService {
         preparedRequest.runtimeSelection().model(),
         null,
         null,
+        accumulator == null ? null : accumulator.assistantText.toString(),
         null,
         null,
-        initialProviderMeta(preparedRequest.runtimeSelection()),
+        accumulator == null ? initialProviderMeta(preparedRequest.runtimeSelection()) : filterProviderResponseMeta(accumulator.providerMeta),
         errorCode,
         preparedRequest.requestEntity().getStartedTime(),
         Instant.now()
@@ -1225,6 +1348,7 @@ public class LlmConversationService {
     private String finishReason;
     private int chunkCount;
     private boolean firstDeltaLogged;
+    private boolean firstReasoningDeltaLogged;
 
     /**
      * 用 provider 和 model 初始化元数据骨架。
@@ -1232,6 +1356,10 @@ public class LlmConversationService {
     private StreamAccumulator(String providerName, String model) {
       providerMeta.put("provider", providerName);
       providerMeta.put("model", model);
+    }
+
+    private boolean hasPartialContent() {
+      return !assistantText.isEmpty() || providerMeta.containsKey("reasoningContent");
     }
   }
 
