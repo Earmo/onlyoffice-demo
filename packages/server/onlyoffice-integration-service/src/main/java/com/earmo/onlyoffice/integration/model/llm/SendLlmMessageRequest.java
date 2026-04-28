@@ -25,7 +25,9 @@ public record SendLlmMessageRequest(
     @Valid
     @NotNull
     HeadingContext headingContext,
-    boolean retryConfirmed
+    boolean retryConfirmed,
+    @Size(max = 128)
+    String regenerateAssistantMessageId
 ) {
 
   public record SelectionSnapshot(

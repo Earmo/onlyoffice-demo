@@ -8,6 +8,9 @@ public record LlmRequestStatusResponse(
     String requestId,
     String sessionId,
     String assistantMessageId,
+    String variantId,
+    Integer variantIndex,
+    Integer activeVariantIndex,
     String status,
     String assistantText,
     LlmUsageResponse usage,
@@ -17,4 +20,37 @@ public record LlmRequestStatusResponse(
     Instant startedTime,
     Instant finishedTime
 ) {
+
+  public LlmRequestStatusResponse(
+      String documentId,
+      String requestId,
+      String sessionId,
+      String assistantMessageId,
+      String status,
+      String assistantText,
+      LlmUsageResponse usage,
+      String finishReason,
+      Map<String, Object> providerResponseMeta,
+      String errorCode,
+      Instant startedTime,
+      Instant finishedTime
+  ) {
+    this(
+        documentId,
+        requestId,
+        sessionId,
+        assistantMessageId,
+        null,
+        null,
+        null,
+        status,
+        assistantText,
+        usage,
+        finishReason,
+        providerResponseMeta,
+        errorCode,
+        startedTime,
+        finishedTime
+    );
+  }
 }
