@@ -17,7 +17,8 @@ const apiMocks = vi.hoisted(() => ({
   getLlmSession: vi.fn(),
   startLlmMessageStream: vi.fn(),
   getLlmRequest: vi.fn(),
-  cancelLlmRequest: vi.fn()
+  cancelLlmRequest: vi.fn(),
+  setLlmActiveVariant: vi.fn()
 }));
 
 vi.mock("../components/editor/editorAiApi.js", () => apiMocks);
@@ -87,6 +88,9 @@ describe("EditorAiWorkbench", () => {
       lastHeadingId: "",
       lastHeadingText: "",
       messages: []
+    });
+    apiMocks.setLlmActiveVariant.mockResolvedValue({
+      activeVariantIndex: 0
     });
     apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
       queueMicrotask(() => {
@@ -897,6 +901,81 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).toContain("回查完成版本");
     expect(wrapper.text()).toContain("回查终态思考");
     expect(wrapper.text()).not.toContain("初始版本回答");
+  });
+
+  it("多版本控件应持久化 active 切换并驱动复制和写回", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    });
+    mockSessionWithVariants({
+      activeVariantIndex: 1,
+      variants: [
+        {
+          variantId: "variant-0",
+          variantIndex: 0,
+          status: "completed",
+          assistantText: "第一个版本回答",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        },
+        {
+          variantId: "variant-1",
+          variantIndex: 1,
+          status: "completed",
+          assistantText: "第二个版本回答",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt-2" }
+        }
+      ]
+    });
+    apiMocks.setLlmActiveVariant.mockResolvedValueOnce({ activeVariantIndex: 0 });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="variant-counter"]').text()).toBe("2/2");
+    await wrapper.get('[data-testid="variant-prev"]').trigger("click");
+    await flushPromises();
+
+    expect(apiMocks.setLlmActiveVariant).toHaveBeenCalledWith({
+      documentId: "doc-1",
+      sessionId: "session-variants",
+      assistantMessageId: "assistant-variants",
+      variantIndex: 0
+    });
+    expect(wrapper.get('[data-testid="variant-counter"]').text()).toBe("1/2");
+    expect(wrapper.text()).toContain("第一个版本回答");
+    expect(wrapper.text()).not.toContain("第二个版本回答");
+
+    await wrapper.get('[data-testid="copy-active-variant"]').trigger("click");
+    await flushPromises();
+    expect(writeText).toHaveBeenCalledWith("第一个版本回答");
+
+    await wrapper.find('button[title="将回复写入文档"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.vm.writeBackHtml).toContain("第一个版本回答");
+    expect(wrapper.vm.writeBackHtml).not.toContain("第二个版本回答");
+  });
+
+  it("active variant 生成中时应禁用复制和写回", async () => {
+    mockSessionWithVariants({
+      variants: [
+        {
+          variantId: "variant-0",
+          variantIndex: 0,
+          status: "in_progress",
+          assistantText: "",
+          streamingText: "生成中的半截回答",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        }
+      ]
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="copy-active-variant"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.find('button[title="将回复写入文档"]').exists()).toBe(false);
   });
 
   it("应在切换会话时提示当前流式回复会被中断", async () => {
