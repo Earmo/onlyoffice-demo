@@ -184,6 +184,75 @@ data: {"requestId":"...","reasoningText":"..."}
 - 用户展开后看到 Markdown 渲染内容；Markdown 输出必须经过 DOMPurify 清洗后才能进入 `v-html`。
 - 失败或取消时，前端保留已经收到的 `reasoningText` 和正文片段；如果 terminal payload 没有非空 `reasoningContent`，不得用空值覆盖已收到的 streamed reasoning。
 
+## Phase 17 extension: ChatGPT 式多版本 regenerate
+
+Phase 17 将“重新生成”从纵向追加 assistant 消息改为同一 assistant 轮次内的多版本切换。`document_llm_message` 现在是稳定的对话轮次容器，具体 AI 回复内容写入 `document_llm_message_variant`；每个 assistant message 通过 `active_variant_index` 指向当前默认版本。
+
+### 数据模型与审计链路
+
+- `document_llm_message_variant` 保存每个具体版本，字段覆盖 `variantId`、`messageId`、`variantIndex`、`assistantText`、`status`、`errorCode`、`finishReason`、`usage`、`providerResponseMeta` 和创建时间。
+- `document_llm_message.active_variant_index` 是历史加载、默认展示、复制和写回的服务端默认值。
+- `document_llm_request` 记录 `assistantMessageId`、`variantId` 和 `variantIndex`，因此可以按 `requestId -> assistantMessageId -> variantId` 回查一次生成尝试。
+- 首次生成会创建 user message、assistant message、variant 0 和 request。
+- regenerate 复用原 user/assistant 轮次，只在同一 assistant message 下追加新的 `message_variant`，不新增纵向 assistant message。
+- 旧的 assistant message 数据通过迁移或兼容逻辑映射为 variant 0，旧会话加载时不应出现空白回复。
+
+### SSE 与 REST 契约
+
+所有 AI SSE payload 在既有字段基础上携带版本身份：
+
+```text
+event: assistant-delta
+data: {"requestId":"...","assistantMessageId":"...","variantId":"...","variantIndex":1,"activeVariantIndex":0,"delta":"..."}
+```
+
+适用事件包括：
+
+- `request-started`
+- `assistant-delta`
+- `reasoning-delta`
+- `assistant-meta`
+- `assistant-completed`
+- `assistant-cancelled`
+- `assistant-error`
+
+REST 返回规则：
+
+- `GET /api/llm/requests/{requestId}` 返回 `assistantMessageId`、`variantId`、`variantIndex`、`activeVariantIndex`，并展开本 request 对应 variant 的终态正文、状态、错误码、finish reason、usage 和 meta。
+- `GET /api/llm/sessions/{sessionId}` 对 assistant message 返回 `variants[]` 和 `activeVariantIndex`；顶层 `assistantText/status/errorCode/finishReason/usage/providerResponseMeta` 展开 active variant，兼容旧消费方。
+- `PUT /api/llm/messages/{messageId}/active-variant` 持久化用户选择的版本；请求体指定目标 `variantIndex`，服务端按 document、session、tenant、actor user、assistant message 和 variant 归属做作用域校验。
+
+### Prompt history 与前端行为
+
+- 后端构造 prompt history 时，每个 assistant message 只投影 active variant 文本；同一轮的其它 variants 不进入模型上下文。
+- 前端消息列表每个 assistant 轮次只展示 active variant，不把 regenerate 结果纵向堆成多条回答。
+- 当某个 assistant message 有多个 variants 时，工作台展示 `‹ 2/3 ›` 风格的左右切换控件，并调用 active variant endpoint 持久化切换。
+- 复制、写回、插入预览、reasoning 展示和 provider meta 展示都读取 active variant。
+- active variant 处于 `in_progress` 时，复制和写回入口保持禁用，避免半截内容进入剪贴板或文档。
+- 前端流式合并必须同时匹配 `documentId`、`sessionId`、`requestId`、`assistantMessageId` 和 `variantId/variantIndex`，防止晚到 delta 写入旧版本。
+
+### 失败、取消与 Phase 16 reasoning 保留
+
+- 生成中的正文增量仍走 `assistant-delta.data.delta`，推理增量仍走 `reasoning-delta.data.reasoningText`。
+- terminal event、历史消息和断流回查中的完整推理内容仍在 `providerResponseMeta.reasoningContent`，属于当前 variant。
+- regenerate 失败或取消时，新 variant 记录 `failed` 或 `cancelled` 状态、错误码和已收到的 partial 内容；既有 completed variant 不被覆盖。
+- 若用户在 request start 之后已经显式切换 active variant，晚到的 completed terminal 不得覆盖用户选择。
+- 如果失败或取消 terminal 没有非空 `reasoningContent`，前端不得用空值覆盖该 variant 已流式收到的 reasoning。
+
+### 日志与敏感信息
+
+Phase 17 的 info 日志只允许记录稳定排障标识、状态迁移和计数，例如 `requestId`、`sessionId`、`assistantMessageId`、`variantId`、`variantIndex`、`activeVariantIndex`、`provider`、`model`、terminal 状态和 variants 数量。
+
+info 日志禁止记录：
+
+- prompt、用户问题正文、选区正文
+- `assistantText` 或完整 assistant 正文
+- `reasoningContent` 或完整推理正文
+- `apiKey`、`Authorization`、token、密钥
+- 原始 provider request body、response headers、raw payload 或 raw provider meta
+
+DTO 和文档可以说明字段名，但运行时日志不得输出字段值中的敏感正文、密钥或原始上游报文。
+
 ## Phase 15 Handoff
 
 Phase 15 写回能力必须直接复用现有线程字段，不重新发起模型请求。
