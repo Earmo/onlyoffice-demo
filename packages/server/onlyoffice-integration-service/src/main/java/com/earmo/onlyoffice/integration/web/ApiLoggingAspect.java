@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.web;
 
+import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletResponse;
@@ -25,6 +26,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 @Slf4j
 public class ApiLoggingAspect {
+
+  private static final String REDACTED = "[REDACTED]";
 
   private final ObjectMapper objectMapper;
 
@@ -101,6 +104,9 @@ public class ApiLoggingAspect {
       fileInfo.put("size", multipartFile.getSize());
       return fileInfo;
     }
+    if (value instanceof SendLlmMessageRequest request) {
+      return sanitizeLlmMessageRequest(request);
+    }
     if (value instanceof Map<?, ?> map) {
       Map<String, Object> sanitizedMap = new LinkedHashMap<>();
       map.forEach((key, mapValue) -> sanitizedMap.put(String.valueOf(key), sanitizeValue(mapValue)));
@@ -124,6 +130,41 @@ public class ApiLoggingAspect {
     } catch (IllegalArgumentException ex) {
       return value.toString();
     }
+  }
+
+  private Map<String, Object> sanitizeLlmMessageRequest(SendLlmMessageRequest request) {
+    Map<String, Object> requestInfo = new LinkedHashMap<>();
+    requestInfo.put("documentId", request.documentId());
+    requestInfo.put("sessionId", request.sessionId());
+    requestInfo.put("provider", request.provider());
+    requestInfo.put("model", request.model());
+    requestInfo.put("question", REDACTED);
+    requestInfo.put("selectionSnapshot", sanitizeSelectionSnapshot(request.selectionSnapshot()));
+    requestInfo.put("headingContext", sanitizeHeadingContext(request.headingContext()));
+    requestInfo.put("retryConfirmed", request.retryConfirmed());
+    requestInfo.put("regenerateAssistantMessageId", request.regenerateAssistantMessageId());
+    return requestInfo;
+  }
+
+  private Map<String, Object> sanitizeSelectionSnapshot(SendLlmMessageRequest.SelectionSnapshot selectionSnapshot) {
+    if (selectionSnapshot == null) {
+      return Map.of("text", REDACTED);
+    }
+    Map<String, Object> snapshotInfo = new LinkedHashMap<>();
+    snapshotInfo.put("text", REDACTED);
+    snapshotInfo.put("emptySelection", selectionSnapshot.emptySelection());
+    return snapshotInfo;
+  }
+
+  private Map<String, Object> sanitizeHeadingContext(SendLlmMessageRequest.HeadingContext headingContext) {
+    if (headingContext == null) {
+      return Map.of("headingText", REDACTED);
+    }
+    Map<String, Object> headingInfo = new LinkedHashMap<>();
+    headingInfo.put("includeHeading", headingContext.includeHeading());
+    headingInfo.put("headingId", headingContext.headingId());
+    headingInfo.put("headingText", REDACTED);
+    return headingInfo;
   }
 
   private boolean isSimpleValue(Object value) {

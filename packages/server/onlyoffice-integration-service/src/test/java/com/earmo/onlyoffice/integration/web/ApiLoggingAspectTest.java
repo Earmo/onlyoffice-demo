@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.web;
 
+import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.CodeSignature;
@@ -66,5 +67,44 @@ class ApiLoggingAspectTest {
     assertThat(output).contains("API请求结束: method=DocumentApiController.delete");
     assertThat(output).contains("completedAt=");
     assertThat(output).contains("success=false");
+  }
+
+  @Test
+  void shouldRedactLlmMessageRequestSensitiveBodyFields(CapturedOutput output) throws Throwable {
+    ProceedingJoinPoint joinPoint = mock(ProceedingJoinPoint.class);
+    CodeSignature signature = mock(CodeSignature.class);
+    SendLlmMessageRequest request = new SendLlmMessageRequest(
+        "doc-llm",
+        "session-llm",
+        "stub-provider",
+        "fake-gpt",
+        "请根据这段敏感用户问题重新生成",
+        new SendLlmMessageRequest.SelectionSnapshot("这是一段敏感选区正文", false),
+        new SendLlmMessageRequest.HeadingContext(true, "heading-1", "敏感标题正文"),
+        true,
+        "assistant-1"
+    );
+
+    when(joinPoint.getSignature()).thenReturn(signature);
+    when(signature.getDeclaringType()).thenReturn((Class) LlmController.class);
+    when(signature.getName()).thenReturn("streamMessage");
+    when(signature.getParameterNames()).thenReturn(new String[]{"request"});
+    when(joinPoint.getArgs()).thenReturn(new Object[]{request});
+    when(joinPoint.proceed()).thenReturn("ok");
+
+    apiLoggingAspect.logControllerInvocation(joinPoint);
+
+    assertThat(output).contains("API请求开始: method=LlmController.streamMessage");
+    assertThat(output).contains("\"documentId\":\"doc-llm\"");
+    assertThat(output).contains("\"sessionId\":\"session-llm\"");
+    assertThat(output).contains("\"provider\":\"stub-provider\"");
+    assertThat(output).contains("\"model\":\"fake-gpt\"");
+    assertThat(output).contains("\"question\":\"[REDACTED]\"");
+    assertThat(output).contains("\"text\":\"[REDACTED]\"");
+    assertThat(output).contains("\"headingText\":\"[REDACTED]\"");
+    assertThat(output).contains("\"regenerateAssistantMessageId\":\"assistant-1\"");
+    assertThat(output).doesNotContain("请根据这段敏感用户问题重新生成");
+    assertThat(output).doesNotContain("这是一段敏感选区正文");
+    assertThat(output).doesNotContain("敏感标题正文");
   }
 }
