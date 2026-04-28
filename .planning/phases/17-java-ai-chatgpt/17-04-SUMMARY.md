@@ -107,11 +107,11 @@ completed: 2026-04-28
 
 ## Verification
 
-- `rg -n "Phase 17 extension|document_llm_message_variant|activeVariantIndex|variantId|失败|取消" docs/llm-workbench-phase14.md` 通过，文档覆盖计划关键词。
+- `Select-String -Path docs/llm-workbench-phase14.md -Pattern "Phase 17 extension|document_llm_message_variant|activeVariantIndex|variantId|失败|取消"` 通过，文档覆盖计划关键词。
 - `mvn -f packages/server/pom.xml -pl onlyoffice-integration-data,onlyoffice-integration-service "-Dtest=DocumentLlmMessageVariantRepositoryTest,LlmDtoContractTest,LlmConversationFlowTest,LlmConversationServiceTest" test` 通过：26 tests green。
 - `pnpm --dir packages/web test -- src/test/EditorAiWorkbench.test.js --reporter=verbose` 通过：26 tests green。
 - `npm run verify` 通过：后端 144 tests green，前端 56 tests green，web build 通过，`docker compose config` 通过。
-- `rg -n "log\.info\([^\n]*(prompt|assistantText|reasoningContent|apiKey|Authorization|raw payload|rawPayload)" packages/server/onlyoffice-integration-service/src/main/java` 负断言通过。
+- `git grep -n -E "log\\.info\\([^\\n]*(prompt|assistantText|reasoningContent|apiKey|Authorization|raw payload|rawPayload)" -- packages/server/onlyoffice-integration-service/src/main/java` 负断言通过。
 
 ## Coverage Audit
 
@@ -141,7 +141,7 @@ Phase 17 已完成。后续 Phase 15/写回相关工作应继续消费 active va
 ## Self-Check: PASSED
 
 - 已确认 SUMMARY、`docs/llm-workbench-phase14.md` 存在。
-- 已确认提交 `859cfc9`、`254e3fa` 存在。
+- 已确认提交 `859cfc9`、`254e3fa`、`984fea8` 存在。
 - 已确认目标测试、根级 verify 和敏感 info 日志负断言通过。
 
 ---
