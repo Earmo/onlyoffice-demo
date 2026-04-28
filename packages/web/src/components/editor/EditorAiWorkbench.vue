@@ -89,8 +89,6 @@ const currentRequestState = ref("");
 const lastCancelled = ref(false);
 const draftQuestion = ref("");
 const threadError = ref(null);
-const retryEntry = ref(null);
-const showRetryDialog = ref(false);
 const showSnapshotDecision = ref(false);
 const isExcludedSelection = ref(false);
 const selectedProvider = ref("");
@@ -233,8 +231,6 @@ function resetWorkbench() {
   lastCancelled.value = false;
   draftQuestion.value = "";
   threadError.value = null;
-  retryEntry.value = null;
-  showRetryDialog.value = false;
   showSnapshotDecision.value = false;
   selectedProvider.value = "";
   selectedModel.value = "";
@@ -1160,26 +1156,6 @@ function apiLikeError(errorCode, message) {
   return error;
 }
 
-function openRetryDialog(entry) {
-  retryEntry.value = entry;
-  showRetryDialog.value = true;
-}
-
-async function confirmRetry() {
-  if (!retryEntry.value) {
-    return;
-  }
-  showRetryDialog.value = false;
-  await sendCurrentQuestion({
-    retryConfirmed: true,
-    retryPayload: {
-      question: retryEntry.value.question,
-      selectionSnapshot: retryEntry.value.selectionSnapshot,
-      headingContext: retryEntry.value.headingContext
-    }
-  });
-}
-
 function confirmSnapshotDecision(createNewSessionFirst) {
   showSnapshotDecision.value = false;
   void sendCurrentQuestion({ retryConfirmed: false, createNewSessionFirst });
@@ -1605,11 +1581,8 @@ function formatTimestamp(value) {
           </div>
 
           <div class="bubble assistant-bubble" :class="activeStatus(entry)">
-            <div class="panel-title-row" v-if="activeStatus(entry) === 'failed'">
+            <div v-if="activeStatus(entry) === 'failed'">
               <p class="bubble-label">请求失败</p>
-              <el-button size="small" circle plain @click="openRetryDialog(entry)">
-                <el-icon><Refresh /></el-icon>
-              </el-button>
             </div>
 
             <details v-if="hasReasoningContent(entry)" class="reasoning-panel" data-testid="reasoning-panel">
@@ -1756,21 +1729,6 @@ function formatTimestamp(value) {
       </div>
     </div>
 
-    <div v-if="showRetryDialog" class="dialog-mask">
-      <div class="dialog-card">
-        <h3>确认重试</h3>
-        <p>question: {{ retryEntry?.question }}</p>
-        <p>selectionSnapshot.text: {{ retryEntry?.selectionSnapshot?.text || "" }}</p>
-        <p>selectionSnapshot.emptySelection: {{ retryEntry?.selectionSnapshot?.emptySelection }}</p>
-        <p>headingContext.headingText: {{ retryEntry?.headingContext?.headingText || "" }}</p>
-        <p>retryConfirmed: true</p>
-        <div class="dialog-actions">
-          <button type="button" class="ghost-button" @click="showRetryDialog = false">取消</button>
-          <button type="button" class="primary-button" @click="confirmRetry">确认重试</button>
-        </div>
-      </div>
-    </div>
-
     <div v-if="showSnapshotDecision" class="dialog-mask">
       <div class="dialog-card">
         <h3>检测到上下文变化</h3>
@@ -1846,7 +1804,6 @@ function formatTimestamp(value) {
 .toolbox-actions,
 .composer-actions,
 .dialog-actions,
-.panel-title-row,
 .meta-line,
 .provider-row {
   display: flex;

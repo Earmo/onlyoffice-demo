@@ -1025,6 +1025,8 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).toContain("请求失败");
     expect(wrapper.text()).toContain("LLM_PROVIDER_UPSTREAM_ERROR");
     expect(wrapper.text()).not.toContain("初始版本回答");
+    expect(wrapper.find(".panel-title-row").exists()).toBe(false);
+    expect(wrapper.find('[data-testid="regenerate-entry"]').exists()).toBe(true);
 
     await wrapper.get('[data-testid="variant-prev"]').trigger("click");
     await flushPromises();
