@@ -54,6 +54,34 @@ class LlmConversationServiceTest {
   }
 
   @Test
+  void shouldUseActiveVariantTextForAssistantHistory() {
+    LlmProperties properties = new LlmProperties();
+    properties.setHistoryBudgetTokens(100);
+    properties.setDefaultSystemPrompt("sys");
+    LlmPromptWindowBuilder builder = new LlmPromptWindowBuilder();
+
+    DocumentLlmMessageEntity assistant = message("assistant", "非 active 版本");
+    assistant.setMessageId("assistant-active");
+
+    List<LlmProviderMessage> prompt = builder.buildMessages(
+        properties,
+        List.of(assistant),
+        Map.of("assistant-active", "active 版本"),
+        "后续问题",
+        "",
+        true,
+        false,
+        ""
+    );
+
+    assertThat(prompt).anySatisfy(message -> {
+      assertThat(message.role()).isEqualTo("assistant");
+      assertThat(message.content()).isEqualTo("active 版本");
+    });
+    assertThat(prompt.toString()).doesNotContain("非 active 版本");
+  }
+
+  @Test
   void shouldExposeProviderAndUsageMetaFromStreamChunk() {
     SpringAiProviderChunk chunk = new StubProvider(true).stream(new LlmRuntimeRequest(
         "stub-provider",
