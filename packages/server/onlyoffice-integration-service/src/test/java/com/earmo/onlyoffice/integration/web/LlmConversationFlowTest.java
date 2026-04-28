@@ -10,6 +10,7 @@ import com.earmo.onlyoffice.integration.service.llm.SpringAiProviderChunk;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -838,6 +839,39 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.messages[1].variants[1].status").value("completed"));
   }
 
+  @Test
+  void promptHistoryUsesOnlyActiveVariant() throws Exception {
+    stubStreamingProvider.enqueueSuccess("历史版本零", Duration.ofMillis(10));
+    stubStreamingProvider.enqueueSuccess("历史版本一", Duration.ofMillis(10));
+    stubStreamingProvider.enqueueSuccess("后续回复", Duration.ofMillis(10));
+    String documentId = createDocument("variant-history-user", "Variant History User");
+    String sessionId = createSession(documentId, "variant-history-user", "Variant History User");
+
+    MvcResult firstResult = streamMessage(documentId, sessionId, "variant-history-user", "Variant History User", "历史问题", null);
+    Thread.sleep(120L);
+    String assistantMessageId = jsonFieldFromSse(firstResult.getResponse().getContentAsString(StandardCharsets.UTF_8), "assistantMessageId");
+    streamMessage(documentId, sessionId, "variant-history-user", "Variant History User", "历史问题", assistantMessageId);
+    Thread.sleep(120L);
+
+    mockMvc.perform(
+            put("/api/llm/messages/{messageId}/active-variant", assistantMessageId)
+                .headers(TestAccessHeaders.headers("variant-history-user", "Variant History User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s","sessionId":"%s","variantIndex":0}
+                    """.formatted(documentId, sessionId))
+        )
+        .andExpect(status().isOk());
+
+    streamMessage(documentId, sessionId, "variant-history-user", "Variant History User", "后续问题", null);
+    Thread.sleep(120L);
+
+    LlmRuntimeRequest latestRequest = stubStreamingProvider.observedRequests().getLast();
+    String promptText = latestRequest.messages().toString();
+    assertThat(promptText).contains("历史版本零");
+    assertThat(promptText).doesNotContain("历史版本一");
+  }
+
   private String createDocument(String actorUser, String actorName) throws Exception {
     MvcResult result = mockMvc.perform(
             post("/api/documents")
@@ -934,6 +968,7 @@ class LlmConversationFlowTest {
   static final class StubStreamingProvider implements SpringAiLlmProvider {
 
     private final Queue<Scenario> scenarios = new ConcurrentLinkedQueue<>();
+    private final Queue<LlmRuntimeRequest> observedRequests = new ConcurrentLinkedQueue<>();
 
     void enqueueSuccess(String assistantText, Duration delay) {
       scenarios.add(new Scenario(assistantText, delay, Duration.ZERO, false, false));
@@ -953,6 +988,11 @@ class LlmConversationFlowTest {
 
     void reset() {
       scenarios.clear();
+      observedRequests.clear();
+    }
+
+    List<LlmRuntimeRequest> observedRequests() {
+      return List.copyOf(observedRequests);
     }
 
     @Override
@@ -962,6 +1002,7 @@ class LlmConversationFlowTest {
 
     @Override
     public Flux<SpringAiProviderChunk> stream(LlmRuntimeRequest request) {
+      observedRequests.add(request);
       Scenario scenario = scenarios.poll();
       if (scenario == null) {
         scenario = new Scenario("默认回复", Duration.ZERO, Duration.ZERO, false, false);

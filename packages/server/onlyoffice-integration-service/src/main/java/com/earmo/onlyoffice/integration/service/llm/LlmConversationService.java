@@ -559,7 +559,7 @@ public class LlmConversationService {
     // 当前这条 assistant 还是 pending 占位，不能参与 prompt window；
     // 其他未完成消息也一并剔除，避免把半截回复再次送回模型。
     history.removeIf(message -> message.getMessageId().equals(assistantMessage.getMessageId()) || STATUS_PENDING.equals(message.getStatus()));
-    applyActiveVariantsToHistory(history, request.documentId(), accessContext);
+    Map<String, String> activeAssistantTextByMessageId = activeVariantTextsByMessageId(history, request.documentId(), accessContext);
 
     LlmRuntimeRequest runtimeRequest = new LlmRuntimeRequest(
         runtimeSelection.providerName(),
@@ -570,6 +570,7 @@ public class LlmConversationService {
         promptWindowBuilder.buildMessages(
             llmProperties,
             history,
+            activeAssistantTextByMessageId,
             request.question(),
             request.selectionSnapshot().text(),
             request.selectionSnapshot().emptySelection(),
@@ -1111,6 +1112,24 @@ public class LlmConversationService {
       ).orElse(null);
       copyVariantToAssistantMessage(message, activeVariant);
     }
+  }
+
+  private Map<String, String> activeVariantTextsByMessageId(
+      List<DocumentLlmMessageEntity> history,
+      String documentId,
+      AccessContext accessContext
+  ) {
+    Map<String, List<DocumentLlmMessageVariantEntity>> variantsByMessageId = variantsByMessageId(history, documentId, accessContext);
+    Map<String, String> activeTexts = new LinkedHashMap<>();
+    for (DocumentLlmMessageEntity message : history) {
+      if (!"assistant".equals(message.getRole())) {
+        continue;
+      }
+      selectActiveVariant(message, variantsByMessageId.getOrDefault(message.getMessageId(), List.of()))
+          .map(DocumentLlmMessageVariantEntity::getAssistantText)
+          .ifPresent(text -> activeTexts.put(message.getMessageId(), text));
+    }
+    return activeTexts;
   }
 
   private Map<String, List<DocumentLlmMessageVariantEntity>> variantsByMessageId(

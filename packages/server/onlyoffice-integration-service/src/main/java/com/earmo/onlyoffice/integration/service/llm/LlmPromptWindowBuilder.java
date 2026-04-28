@@ -5,6 +5,7 @@ import com.earmo.onlyoffice.integration.data.entity.DocumentLlmMessageEntity;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,6 +35,19 @@ public class LlmPromptWindowBuilder {
       boolean includeHeading,
       String headingText
   ) {
+    return buildMessages(properties, history, Map.of(), question, snapshotText, emptySelection, includeHeading, headingText);
+  }
+
+  public List<LlmProviderMessage> buildMessages(
+      LlmProperties properties,
+      List<DocumentLlmMessageEntity> history,
+      Map<String, String> activeAssistantTextByMessageId,
+      String question,
+      String snapshotText,
+      boolean emptySelection,
+      boolean includeHeading,
+      String headingText
+  ) {
     String currentUserPrompt = buildCurrentUserPrompt(question, snapshotText, emptySelection, includeHeading, headingText);
     // 先扣掉系统提示词和当前问题的固定成本，历史消息只能消费剩余预算。
     int baseTokens = estimateTokens(properties.getDefaultSystemPrompt()) + estimateTokens(currentUserPrompt);
@@ -44,7 +58,9 @@ public class LlmPromptWindowBuilder {
     // 从最近消息开始回填预算，确保被截断时优先保留最新上下文。
     Collections.reverse(ordered);
     for (DocumentLlmMessageEntity entity : ordered) {
-      String content = "assistant".equals(entity.getRole()) ? entity.getAssistantText() : entity.getMessageText();
+      String content = "assistant".equals(entity.getRole())
+          ? activeAssistantTextByMessageId.getOrDefault(entity.getMessageId(), entity.getAssistantText())
+          : entity.getMessageText();
       int estimated = estimateTokens(content);
       // chars_div_4: estimatedTokens = ceil(charCount / 4.0)，按最新消息优先、倒序累积、超预算即停止。
       if (estimated > remainingBudget) {
