@@ -698,6 +698,88 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).not.toContain("旧版本思考");
   });
 
+  it("重新生成应写入同一 entry 的新 variant 而不是追加纵向消息", async () => {
+    mockSessionWithVariants();
+    apiMocks.startLlmMessageStream.mockImplementation((payload, handlers = {}) => {
+      expect(payload).toEqual(expect.objectContaining({
+        regenerateAssistantMessageId: "assistant-variants",
+        retryConfirmed: true
+      }));
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-1",
+          variantIndex: 1,
+          activeVariantIndex: 1,
+          provider: "stub-provider",
+          model: "fake-gpt"
+        });
+        handlers.onReasoningDelta?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-1",
+          variantIndex: 1,
+          reasoningText: "新版本思考"
+        });
+        handlers.onDelta?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-1",
+          variantIndex: 1,
+          delta: "新版本"
+        });
+        handlers.onDelta?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-1",
+          variantIndex: 1,
+          delta: "回答"
+        });
+        handlers.onCompleted?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-1",
+          variantIndex: 1,
+          activeVariantIndex: 1,
+          status: "completed",
+          assistantText: "新版本回答",
+          providerResponseMeta: {
+            provider: "stub-provider",
+            model: "fake-gpt",
+            reasoningContent: "新版本思考"
+          }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.findAll(".message-actions button")[1].trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".thread-entry")).toHaveLength(1);
+    expect(wrapper.text()).toContain("新版本回答");
+    expect(wrapper.text()).toContain("新版本思考");
+    expect(wrapper.text()).not.toContain("初始版本回答");
+  });
+
   it("应在切换会话时提示当前流式回复会被中断", async () => {
     const abort = vi.fn(() => Promise.resolve());
     apiMocks.listLlmSessions.mockResolvedValue([
@@ -941,6 +1023,56 @@ async function mountWorkbenchWithCompletedReply(options = {}) {
   await wrapper.find('button[title="发送问题"]').trigger("click");
   await flushPromises();
   return wrapper;
+}
+
+function mockSessionWithVariants(options = {}) {
+  apiMocks.listLlmSessions.mockResolvedValue([
+    {
+      sessionId: "session-variants",
+      documentId: "doc-1",
+      title: "多版本会话",
+      updatedTime: "2026-04-28T10:00:00Z"
+    }
+  ]);
+  apiMocks.getLlmSession.mockResolvedValue({
+    sessionId: "session-variants",
+    documentId: "doc-1",
+    title: "多版本会话",
+    lastSnapshotText: "历史选区",
+    lastSnapshotIsEmpty: false,
+    lastHeadingId: "heading-1",
+    lastHeadingText: "第一章",
+    messages: [
+      {
+        role: "user",
+        messageId: "user-variants",
+        question: "历史问题",
+        snapshotText: "历史选区",
+        snapshotEmptySelection: false,
+        includeHeading: true,
+        headingId: "heading-1",
+        headingText: "第一章"
+      },
+      {
+        role: "assistant",
+        messageId: "assistant-variants",
+        activeVariantIndex: options.activeVariantIndex ?? 0,
+        variants: options.variants || [
+          {
+            variantId: "variant-0",
+            variantIndex: 0,
+            status: "completed",
+            assistantText: "初始版本回答",
+            providerResponseMeta: {
+              provider: "stub-provider",
+              model: "fake-gpt",
+              reasoningContent: "初始版本思考"
+            }
+          }
+        ]
+      }
+    ]
+  });
 }
 
 function deferred() {
