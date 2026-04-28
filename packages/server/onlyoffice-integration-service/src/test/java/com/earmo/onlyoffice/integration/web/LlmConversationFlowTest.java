@@ -693,6 +693,151 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.messages[1].variants.length()").value(3));
   }
 
+  @Test
+  void streamEventsExposeVariantIdentity() throws Exception {
+    stubStreamingProvider.enqueueSuccess("带 variant 的回复", Duration.ofMillis(10));
+    String documentId = createDocument("variant-event-user", "Variant Event User");
+    String sessionId = createSession(documentId, "variant-event-user", "Variant Event User");
+
+    MvcResult result = streamMessage(documentId, sessionId, "variant-event-user", "Variant Event User", "检查 stream variant identity", null);
+    Thread.sleep(120L);
+    String streamBody = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+    String requestId = jsonFieldFromSse(streamBody, "requestId");
+    String variantId = jsonFieldFromSse(streamBody, "variantId");
+
+    assertThat(streamBody).contains("event:request-started");
+    assertThat(streamBody).contains("event:assistant-delta");
+    assertThat(streamBody).contains("event:reasoning-delta");
+    assertThat(streamBody).contains("event:assistant-meta");
+    assertThat(streamBody).contains("event:assistant-completed");
+    assertThat(streamBody).contains("\"variantId\":\"" + variantId + "\"");
+    assertThat(streamBody).contains("\"variantIndex\":0");
+    assertThat(streamBody).contains("\"activeVariantIndex\":0");
+
+    mockMvc.perform(
+            get("/api/llm/requests/{requestId}", requestId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("variant-event-user", "Variant Event User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.variantId").value(variantId))
+        .andExpect(jsonPath("$.variantIndex").value(0))
+        .andExpect(jsonPath("$.activeVariantIndex").value(0));
+  }
+
+  @Test
+  void cancelledRegenerateKeepsPreviousCompletedVariant() throws Exception {
+    stubStreamingProvider.enqueueSuccess("可用旧版本", Duration.ofMillis(10));
+    stubStreamingProvider.enqueuePartialThenSlowTerminal("被取消的新版本", Duration.ofMillis(350));
+    String documentId = createDocument("variant-cancel-user", "Variant Cancel User");
+    String sessionId = createSession(documentId, "variant-cancel-user", "Variant Cancel User");
+
+    MvcResult firstResult = streamMessage(documentId, sessionId, "variant-cancel-user", "Variant Cancel User", "取消 regenerate 问题", null);
+    Thread.sleep(120L);
+    String assistantMessageId = jsonFieldFromSse(firstResult.getResponse().getContentAsString(StandardCharsets.UTF_8), "assistantMessageId");
+
+    MvcResult regenerateResult = streamMessage(documentId, sessionId, "variant-cancel-user", "Variant Cancel User", "取消 regenerate 问题", assistantMessageId);
+    Thread.sleep(90L);
+    String regenerateBody = regenerateResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
+    String requestId = jsonFieldFromSse(regenerateBody, "requestId");
+    assertThat(jsonFieldFromSse(regenerateBody, "variantIndex")).isEqualTo("1");
+
+    mockMvc.perform(
+            post("/api/llm/requests/{requestId}/cancel", requestId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("variant-cancel-user", "Variant Cancel User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("cancelled"))
+        .andExpect(jsonPath("$.variantIndex").value(1));
+
+    Thread.sleep(420L);
+
+    mockMvc.perform(
+            get("/api/llm/sessions/{sessionId}", sessionId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("variant-cancel-user", "Variant Cancel User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.messages[1].activeVariantIndex").value(0))
+        .andExpect(jsonPath("$.messages[1].assistantText").value("可用旧版本"))
+        .andExpect(jsonPath("$.messages[1].variants[1].status").value("cancelled"))
+        .andExpect(jsonPath("$.messages[1].variants[1].assistantText").value("被取消的新"));
+  }
+
+  @Test
+  void switchActiveVariantPersistsScopedIndex() throws Exception {
+    stubStreamingProvider.enqueueSuccess("版本零", Duration.ofMillis(10));
+    stubStreamingProvider.enqueueSuccess("版本一", Duration.ofMillis(10));
+    String documentId = createDocument("variant-switch-user", "Variant Switch User");
+    String sessionId = createSession(documentId, "variant-switch-user", "Variant Switch User");
+
+    MvcResult firstResult = streamMessage(documentId, sessionId, "variant-switch-user", "Variant Switch User", "切换版本问题", null);
+    Thread.sleep(120L);
+    String assistantMessageId = jsonFieldFromSse(firstResult.getResponse().getContentAsString(StandardCharsets.UTF_8), "assistantMessageId");
+    streamMessage(documentId, sessionId, "variant-switch-user", "Variant Switch User", "切换版本问题", assistantMessageId);
+    Thread.sleep(120L);
+
+    mockMvc.perform(
+            put("/api/llm/messages/{messageId}/active-variant", assistantMessageId)
+                .headers(TestAccessHeaders.headers("variant-switch-user", "Variant Switch User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s","sessionId":"%s","variantIndex":0}
+                    """.formatted(documentId, sessionId))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.activeVariantIndex").value(0))
+        .andExpect(jsonPath("$.assistantText").value("版本零"));
+
+    mockMvc.perform(
+            get("/api/llm/sessions/{sessionId}", sessionId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("variant-switch-user", "Variant Switch User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.messages[1].activeVariantIndex").value(0))
+        .andExpect(jsonPath("$.messages[1].assistantText").value("版本零"));
+  }
+
+  @Test
+  void terminalCompletedDoesNotOverrideUserActiveSwitch() throws Exception {
+    stubStreamingProvider.enqueueSuccess("稳定旧版本", Duration.ofMillis(10));
+    stubStreamingProvider.enqueueSuccess("晚到新版本", Duration.ofMillis(260));
+    String documentId = createDocument("variant-race-user", "Variant Race User");
+    String sessionId = createSession(documentId, "variant-race-user", "Variant Race User");
+
+    MvcResult firstResult = streamMessage(documentId, sessionId, "variant-race-user", "Variant Race User", "active race 问题", null);
+    Thread.sleep(120L);
+    String assistantMessageId = jsonFieldFromSse(firstResult.getResponse().getContentAsString(StandardCharsets.UTF_8), "assistantMessageId");
+    MvcResult regenerateResult = streamMessage(documentId, sessionId, "variant-race-user", "Variant Race User", "active race 问题", assistantMessageId);
+    Thread.sleep(60L);
+    assertThat(jsonFieldFromSse(regenerateResult.getResponse().getContentAsString(StandardCharsets.UTF_8), "variantIndex")).isEqualTo("1");
+
+    mockMvc.perform(
+            put("/api/llm/messages/{messageId}/active-variant", assistantMessageId)
+                .headers(TestAccessHeaders.headers("variant-race-user", "Variant Race User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s","sessionId":"%s","variantIndex":0}
+                    """.formatted(documentId, sessionId))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.activeVariantIndex").value(0));
+
+    Thread.sleep(340L);
+
+    mockMvc.perform(
+            get("/api/llm/sessions/{sessionId}", sessionId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("variant-race-user", "Variant Race User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.messages[1].activeVariantIndex").value(0))
+        .andExpect(jsonPath("$.messages[1].assistantText").value("稳定旧版本"))
+        .andExpect(jsonPath("$.messages[1].variants[1].status").value("completed"));
+  }
+
   private String createDocument(String actorUser, String actorName) throws Exception {
     MvcResult result = mockMvc.perform(
             post("/api/documents")
