@@ -349,6 +349,68 @@ describe("EditorAiWorkbench", () => {
     );
   });
 
+  it("切换模型导致编辑器选区暂时丢失时不应弹出上下文变化确认", async () => {
+    mockSessionWithVariants();
+    const wrapper = mountWorkbench({
+      runtimeContext: runtimeContext({
+        selectedText: "历史选区",
+        hasEmptySelection: false
+      })
+    });
+    await flushPromises();
+
+    wrapper.vm.selectedModel = "fake-gpt-2";
+    await wrapper.setProps({
+      runtimeContext: runtimeContext({
+        selectedText: "",
+        hasEmptySelection: true,
+        activeHeadingNode: { id: "heading-1", text: "第一章", label: "第一章" }
+      })
+    });
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("切换模型后继续问");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.vm.showSnapshotDecision).toBe(false);
+    expect(apiMocks.startLlmMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "stub-provider",
+        model: "fake-gpt-2",
+        question: "切换模型后继续问"
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("当前非空选区真的变化时仍应提示是否新开会话", async () => {
+    mockSessionWithVariants();
+    const wrapper = mountWorkbench({
+      runtimeContext: runtimeContext({
+        selectedText: "历史选区",
+        hasEmptySelection: false
+      })
+    });
+    await flushPromises();
+
+    await wrapper.setProps({
+      runtimeContext: runtimeContext({
+        selectedText: "新的选区",
+        hasEmptySelection: false,
+        activeHeadingNode: { id: "heading-1", text: "第一章", label: "第一章" }
+      })
+    });
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("新选区提问");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.vm.showSnapshotDecision).toBe(true);
+    expect(apiMocks.startLlmMessageStream).not.toHaveBeenCalled();
+  });
+
   it("应渲染并清洗 reasoning Markdown", async () => {
     apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
       queueMicrotask(() => {

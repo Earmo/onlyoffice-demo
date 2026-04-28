@@ -703,11 +703,30 @@ async function handleSendClick() {
   if (!canSend.value) {
     return;
   }
-  if (conversationEntries.value.length > 0 && currentSessionContextSignature.value && currentSessionContextSignature.value !== liveContextSignature.value) {
+  if (shouldAskSnapshotDecision()) {
     showSnapshotDecision.value = true;
     return;
   }
   await sendCurrentQuestion({ retryConfirmed: false, createNewSessionFirst: false });
+}
+
+function shouldAskSnapshotDecision() {
+  if (!conversationEntries.value.length || !currentSessionContextSignature.value) {
+    return false;
+  }
+  if (currentSessionContextSignature.value === liveContextSignature.value) {
+    return false;
+  }
+  return hasMeaningfulLiveContext();
+}
+
+function hasMeaningfulLiveContext() {
+  if (!isExcludedSelection.value && props.runtimeContext.selectedText?.trim()) {
+    return true;
+  }
+  const currentSignature = parseContextSignature(currentSessionContextSignature.value);
+  const liveHeadingText = currentHeadingText.value.trim();
+  return Boolean(liveHeadingText && liveHeadingText !== currentSignature.headingText);
 }
 
 async function sendCurrentQuestion(options) {
@@ -1131,6 +1150,15 @@ function buildContextSignature(context) {
     Boolean(context?.emptySelection),
     context?.headingText || ""
   ]);
+}
+
+function parseContextSignature(signature) {
+  try {
+    const [text = "", emptySelection = true, headingText = ""] = JSON.parse(signature || "[]");
+    return { text, emptySelection, headingText };
+  } catch {
+    return { text: "", emptySelection: true, headingText: "" };
+  }
 }
 
 function isBootstrapStale(token, documentId) {
