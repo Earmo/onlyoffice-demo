@@ -59,7 +59,7 @@ insert into document_llm_message_variant (
   updated_time
 )
 select
-  random_uuid(),
+  message_id,
   message_id,
   session_id,
   document_id,

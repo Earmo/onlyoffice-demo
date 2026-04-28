@@ -590,11 +590,16 @@ class LlmConversationFlowTest {
         "select assistant_text from document_llm_message_variant where message_id = 'assistant-pending-v0'",
         String.class
     );
+    String completedVariantId = jdbcTemplate.queryForObject(
+        "select variant_id from document_llm_message_variant where message_id = 'assistant-completed-v0'",
+        String.class
+    );
 
     assertThat(variantCount).isEqualTo(2);
     assertThat(completedActiveIndex).isZero();
     assertThat(userActiveIndexCount).isEqualTo(1);
     assertThat(pendingAssistantText).isNull();
+    assertThat(completedVariantId).isEqualTo("assistant-completed-v0");
   }
 
   @Test
