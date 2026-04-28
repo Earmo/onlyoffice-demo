@@ -13,8 +13,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,6 +26,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -528,6 +533,66 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.assistantText").value("partia"))
         .andExpect(jsonPath("$.providerResponseMeta.reasoningContent").value("先分析选区上下文，"))
         .andExpect(jsonPath("$.errorCode").value("LLM_REQUEST_CANCELLED"));
+  }
+
+  @Test
+  void flywayMigratesExistingAssistantRowsToVariantZero() {
+    DataSource dataSource = new DriverManagerDataSource(
+        "jdbc:h2:mem:llm-variant-migration-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+        "sa",
+        ""
+    );
+    Flyway.configure()
+        .dataSource(dataSource)
+        .locations("classpath:db/migration")
+        .target(MigrationVersion.fromVersion("9"))
+        .load()
+        .migrate();
+    JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+    jdbcTemplate.update("""
+        insert into document_llm_message (
+          message_id, session_id, document_id, tenant_id, actor_user, role,
+          assistant_text, status, provider_usage_json, provider_meta_json,
+          finish_reason, error_code, created_time
+        )
+        values
+          ('assistant-completed-v0', 'session-v0', 'doc-v0', 'tenant-v0', 'user-v0', 'assistant',
+           '历史完成正文', 'completed', '{"totalTokens":3}', '{"reasoningContent":"历史思考"}',
+           'stop', null, timestamp '2026-04-28 00:00:00'),
+          ('assistant-pending-v0', 'session-v0', 'doc-v0', 'tenant-v0', 'user-v0', 'assistant',
+           null, 'pending', null, '{"provider":"stub-provider"}',
+           null, null, timestamp '2026-04-28 00:00:01'),
+          ('user-message-v0', 'session-v0', 'doc-v0', 'tenant-v0', 'user-v0', 'user',
+           null, 'completed', null, null, null, null, timestamp '2026-04-28 00:00:02')
+        """);
+
+    Flyway.configure()
+        .dataSource(dataSource)
+        .locations("classpath:db/migration")
+        .load()
+        .migrate();
+
+    Integer variantCount = jdbcTemplate.queryForObject(
+        "select count(*) from document_llm_message_variant",
+        Integer.class
+    );
+    Integer completedActiveIndex = jdbcTemplate.queryForObject(
+        "select active_variant_index from document_llm_message where message_id = 'assistant-completed-v0'",
+        Integer.class
+    );
+    Integer userActiveIndexCount = jdbcTemplate.queryForObject(
+        "select count(*) from document_llm_message where message_id = 'user-message-v0' and active_variant_index is null",
+        Integer.class
+    );
+    String pendingAssistantText = jdbcTemplate.queryForObject(
+        "select assistant_text from document_llm_message_variant where message_id = 'assistant-pending-v0'",
+        String.class
+    );
+
+    assertThat(variantCount).isEqualTo(2);
+    assertThat(completedActiveIndex).isZero();
+    assertThat(userActiveIndexCount).isEqualTo(1);
+    assertThat(pendingAssistantText).isNull();
   }
 
   private String createDocument(String actorUser, String actorName) throws Exception {
