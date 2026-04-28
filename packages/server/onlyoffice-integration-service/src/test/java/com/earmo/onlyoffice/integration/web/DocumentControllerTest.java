@@ -5,6 +5,7 @@ import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentEditorSessionMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmMessageMapper;
+import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmMessageVariantMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmRequestMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentLlmSessionMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
@@ -107,6 +108,9 @@ class DocumentControllerTest {
 
   @MockBean
   private DocumentLlmMessageMapper documentLlmMessageMapper;
+
+  @MockBean
+  private DocumentLlmMessageVariantMapper documentLlmMessageVariantMapper;
 
   @MockBean
   private OnlyofficeCommandService onlyofficeCommandService;

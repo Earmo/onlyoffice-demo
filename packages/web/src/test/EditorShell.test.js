@@ -235,9 +235,9 @@ describe("EditorShell", () => {
     await flushPromises();
 
     expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/doc-1/editor-config?readonly=false");
-    expect(wrapper.find(".stage-edge-toggle").exists()).toBe(true);
+    expect(wrapper.find(".drawer-collapse-btn").exists()).toBe(true);
 
-    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await wrapper.find(".drawer-collapse-btn").trigger("click");
     await flushPromises();
 
     expect(wrapper.find(".ai-workbench-stub").exists()).toBe(true);
@@ -266,7 +266,7 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    await wrapper.find(".stage-edge-toggle").trigger("click");
+    await wrapper.find(".drawer-collapse-btn").trigger("click");
     await flushPromises();
 
     await wrapper.find(".emit-capture").trigger("click");
@@ -407,7 +407,7 @@ describe("EditorShell", () => {
 
     expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/doc-2/editor-config?readonly=true");
     expect(wrapper.find(".floating-console").isVisible()).toBe(false);
-    expect(wrapper.find(".stage-edge-toggle").exists()).toBe(false);
+    expect(wrapper.find(".drawer-collapse-btn").exists()).toBe(false);
   });
 
   it("应在 SSE healthy 时停止 save-status polling 与 heartbeat 轮询并消费 runtime-events", async () => {
