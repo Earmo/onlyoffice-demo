@@ -24,6 +24,23 @@ public class DocumentLlmMessageRepository {
     documentLlmMessageMapper.update(entity);
   }
 
+  public int updateActiveVariantIndex(
+      String messageId,
+      String documentId,
+      String tenantId,
+      String actorUser,
+      int activeVariantIndex
+  ) {
+    Optional<DocumentLlmMessageEntity> entityOptional = findMessageByScope(messageId, documentId, tenantId, actorUser);
+    if (entityOptional.isEmpty()) {
+      return 0;
+    }
+    DocumentLlmMessageEntity entity = entityOptional.get();
+    entity.setActiveVariantIndex(activeVariantIndex);
+    documentLlmMessageMapper.update(entity);
+    return 1;
+  }
+
   public Optional<DocumentLlmMessageEntity> findMessageByScope(
       String messageId,
       String documentId,

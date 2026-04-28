@@ -73,6 +73,10 @@ public class DocumentLlmMessageEntity {
   @Column("retry_of_message_id")
   private String retryOfMessageId;
 
+  /** 当前 assistant message 展示和写回使用的 variantIndex。 */
+  @Column("active_variant_index")
+  private Integer activeVariantIndex;
+
   /** 模型 usage 元数据 JSON。 */
   @Column("provider_usage_json")
   private String providerUsageJson;

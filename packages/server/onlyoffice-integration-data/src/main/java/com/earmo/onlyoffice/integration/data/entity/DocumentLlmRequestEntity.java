@@ -41,6 +41,14 @@ public class DocumentLlmRequestEntity {
   @Column("assistant_message_id")
   private String assistantMessageId;
 
+  /** 本次请求生成的 assistant variant 主键。 */
+  @Column("variant_id")
+  private String variantId;
+
+  /** 本次请求生成的 assistant variant 序号。 */
+  @Column("variant_index")
+  private Integer variantIndex;
+
   /** 上游 provider 的 request id。 */
   @Column("provider_request_id")
   private String providerRequestId;
