@@ -457,6 +457,102 @@ function applySessionSummary(session) {
   });
 }
 
+function normalizeAssistantVariants(messageOrEntry = {}) {
+  const rawVariants = Array.isArray(messageOrEntry.variants) && messageOrEntry.variants.length
+    ? messageOrEntry.variants
+    : [{
+      variantId: messageOrEntry.variantId || "",
+      variantIndex: Number.isInteger(messageOrEntry.variantIndex) ? messageOrEntry.variantIndex : 0,
+      assistantText: messageOrEntry.assistantText || messageOrEntry.streamingText || "",
+      streamingText: messageOrEntry.streamingText || "",
+      streamingReasoningText: messageOrEntry.streamingReasoningText || "",
+      status: messageOrEntry.status || "completed",
+      errorCode: messageOrEntry.errorCode || "",
+      finishReason: messageOrEntry.finishReason || "",
+      usage: messageOrEntry.usage || null,
+      providerResponseMeta: messageOrEntry.providerResponseMeta || {},
+      createdTime: messageOrEntry.createdTime || ""
+    }];
+
+  return rawVariants
+    .map((variant, position) => ({
+      variantId: variant?.variantId || "",
+      variantIndex: Number.isInteger(variant?.variantIndex) ? variant.variantIndex : position,
+      assistantText: variant?.assistantText || "",
+      streamingText: variant?.streamingText || "",
+      streamingReasoningText: variant?.streamingReasoningText || "",
+      status: variant?.status || messageOrEntry.status || "completed",
+      errorCode: variant?.errorCode || "",
+      finishReason: variant?.finishReason || "",
+      usage: variant?.usage || null,
+      providerResponseMeta: variant?.providerResponseMeta || {},
+      createdTime: variant?.createdTime || ""
+    }))
+    .sort((left, right) => left.variantIndex - right.variantIndex);
+}
+
+function activeVariant(entry = {}) {
+  const variants = Array.isArray(entry.variants) && entry.variants.length
+    ? entry.variants
+    : normalizeAssistantVariants(entry);
+  const activeIndex = Number.isInteger(entry.activeVariantIndex) ? entry.activeVariantIndex : 0;
+  return variants.find(variant => variant.variantIndex === activeIndex) || variants[activeIndex] || variants[0] || {};
+}
+
+function setActiveVariantIndex(entry, index) {
+  if (!entry) {
+    return;
+  }
+  const variants = normalizeAssistantVariants(entry);
+  const target = variants.find(variant => variant.variantIndex === index);
+  entry.variants = variants;
+  entry.activeVariantIndex = target ? target.variantIndex : variants[0]?.variantIndex || 0;
+  syncEntryFromActiveVariant(entry);
+}
+
+function syncEntryFromActiveVariant(entry) {
+  const variant = activeVariant(entry);
+  entry.status = variant.status || entry.status || "completed";
+  entry.assistantText = variant.assistantText || variant.streamingText || "";
+  entry.streamingText = variant.streamingText || "";
+  entry.streamingReasoningText = variant.streamingReasoningText || "";
+  entry.usage = variant.usage || null;
+  entry.finishReason = variant.finishReason || "";
+  entry.providerResponseMeta = variant.providerResponseMeta || {};
+  entry.errorCode = variant.errorCode || "";
+  entry.responseMessage = humanizeResponseState(variant);
+}
+
+function isActiveVariantInProgress(entry) {
+  return activeVariant(entry).status === "in_progress";
+}
+
+function buildAssistantEntry(message, existingEntry = null) {
+  const variants = normalizeAssistantVariants(message);
+  const activeIndex = Number.isInteger(message.activeVariantIndex)
+    ? message.activeVariantIndex
+    : variants[0]?.variantIndex || 0;
+  const entry = existingEntry || {
+    key: message.messageId,
+    question: "",
+    selectionSnapshot: {
+      text: message.snapshotText || "",
+      emptySelection: Boolean(message.snapshotEmptySelection)
+    },
+    headingContext: {
+      includeHeading: Boolean(message.includeHeading),
+      headingId: message.headingId || "",
+      headingText: message.headingText || ""
+    }
+  };
+  entry.assistantMessageId = message.messageId;
+  entry.requestId = "";
+  entry.variants = variants;
+  entry.activeVariantIndex = activeIndex;
+  syncEntryFromActiveVariant(entry);
+  return entry;
+}
+
 function buildConversationEntries(messages) {
   const entries = [];
   for (const message of messages) {
@@ -483,48 +579,18 @@ function buildConversationEntries(messages) {
         finishReason: "",
         providerResponseMeta: {},
         errorCode: "",
-        responseMessage: ""
+        responseMessage: "",
+        variants: [],
+        activeVariantIndex: 0
       });
       continue;
     }
     const lastEntry = entries.at(-1);
     if (lastEntry && !lastEntry.assistantMessageId) {
-      lastEntry.assistantMessageId = message.messageId;
-      lastEntry.status = message.status || "completed";
-      lastEntry.assistantText = message.assistantText || "";
-      lastEntry.streamingText = "";
-      lastEntry.streamingReasoningText = "";
-      lastEntry.usage = message.usage || null;
-      lastEntry.finishReason = message.finishReason || "";
-      lastEntry.providerResponseMeta = message.providerResponseMeta || {};
-      lastEntry.errorCode = message.errorCode || "";
-      lastEntry.responseMessage = humanizeResponseState(message);
+      buildAssistantEntry(message, lastEntry);
       continue;
     }
-    entries.push({
-      key: message.messageId,
-      question: "",
-      selectionSnapshot: {
-        text: message.snapshotText || "",
-        emptySelection: Boolean(message.snapshotEmptySelection)
-      },
-      headingContext: {
-        includeHeading: Boolean(message.includeHeading),
-        headingId: message.headingId || "",
-        headingText: message.headingText || ""
-      },
-      assistantMessageId: message.messageId,
-      requestId: "",
-      status: message.status || "completed",
-      assistantText: message.assistantText || "",
-      streamingText: "",
-      streamingReasoningText: "",
-      usage: message.usage || null,
-      finishReason: message.finishReason || "",
-      providerResponseMeta: message.providerResponseMeta || {},
-      errorCode: message.errorCode || "",
-      responseMessage: humanizeResponseState(message)
-    });
+    entries.push(buildAssistantEntry(message));
   }
   return entries;
 }
@@ -1048,15 +1114,17 @@ function handleOutlineCommand(node) {
 }
 
 function renderAssistantText(entry) {
-  return entry.assistantText || entry.streamingText || "";
+  const variant = activeVariant(entry);
+  return variant.assistantText || variant.streamingText || "";
 }
 
 function getReasoningText(entry) {
-  const reasoningContent = entry?.providerResponseMeta?.reasoningContent;
+  const variant = activeVariant(entry);
+  const reasoningContent = variant?.providerResponseMeta?.reasoningContent;
   if (typeof reasoningContent === "string" && reasoningContent.trim()) {
     return reasoningContent.trim();
   }
-  return (entry?.streamingReasoningText || "").trim();
+  return (variant?.streamingReasoningText || "").trim();
 }
 
 function hasReasoningContent(entry) {
@@ -1064,7 +1132,7 @@ function hasReasoningContent(entry) {
 }
 
 function reasoningTitle(entry) {
-  return entry?.status === "in_progress" ? "深度思考中" : "深度思考";
+  return isActiveVariantInProgress(entry) ? "深度思考中" : "深度思考";
 }
 
 function renderMarkdownHtml(text) {
@@ -1076,6 +1144,30 @@ function renderMarkdownHtml(text) {
 
 function renderReasoningHtml(entry) {
   return renderMarkdownHtml(getReasoningText(entry));
+}
+
+function renderAssistantHtml(entry) {
+  return renderMarkdownHtml(renderAssistantText(entry));
+}
+
+function activeStatus(entry) {
+  return activeVariant(entry).status || entry?.status || "";
+}
+
+function activeErrorCode(entry) {
+  return activeVariant(entry).errorCode || "";
+}
+
+function activeFinishReason(entry) {
+  return activeVariant(entry).finishReason || "";
+}
+
+function activeProviderMeta(entry) {
+  return activeVariant(entry).providerResponseMeta || {};
+}
+
+function activeUsage(entry) {
+  return activeVariant(entry).usage || null;
 }
 
 function mergeProviderResponseMeta(entry, incomingMeta = {}) {
@@ -1289,8 +1381,8 @@ function formatTimestamp(value) {
             <p>{{ entry.question }}</p>
           </div>
 
-          <div class="bubble assistant-bubble" :class="entry.status">
-            <div class="panel-title-row" v-if="entry.status === 'failed'">
+          <div class="bubble assistant-bubble" :class="activeStatus(entry)">
+            <div class="panel-title-row" v-if="activeStatus(entry) === 'failed'">
               <p class="bubble-label">请求失败</p>
               <el-button size="small" circle plain @click="openRetryDialog(entry)">
                 <el-icon><Refresh /></el-icon>
@@ -1306,11 +1398,11 @@ function formatTimestamp(value) {
               v-if="renderAssistantText(entry)"
               class="markdown-body assistant-answer"
               data-testid="assistant-answer"
-              v-html="md.render(renderAssistantText(entry))"
+              v-html="renderAssistantHtml(entry)"
             ></div>
             <p v-else class="assistant-placeholder" data-testid="assistant-answer">{{ entry.responseMessage }}</p>
 
-            <div class="message-actions" v-if="entry.status !== 'failed'">
+            <div class="message-actions" v-if="activeStatus(entry) !== 'failed'">
               <el-button size="small" text @click="handleCopy(renderAssistantText(entry))">
                 <el-icon><DocumentCopy /></el-icon>
               </el-button>
@@ -1321,7 +1413,7 @@ function formatTimestamp(value) {
                 <el-icon><Delete /></el-icon>
               </el-button>
               <el-button
-                v-if="entry.status === 'completed'"
+                v-if="activeStatus(entry) === 'completed'"
                 size="small"
                 text
                 type="primary"
@@ -1333,15 +1425,15 @@ function formatTimestamp(value) {
             </div>
 
             <div class="meta-line">
-              <span>errorCode: {{ entry.errorCode || "-" }}</span>
-              <span>finishReason: {{ entry.finishReason || "-" }}</span>
-              <span>provider: {{ entry.providerResponseMeta?.provider || "-" }}</span>
-              <span>model: {{ entry.providerResponseMeta?.model || "-" }}</span>
+              <span>errorCode: {{ activeErrorCode(entry) || "-" }}</span>
+              <span>finishReason: {{ activeFinishReason(entry) || "-" }}</span>
+              <span>provider: {{ activeProviderMeta(entry)?.provider || "-" }}</span>
+              <span>model: {{ activeProviderMeta(entry)?.model || "-" }}</span>
             </div>
-            <div class="meta-line" v-if="entry.usage?.totalTokens">
-              <span>promptTokens: {{ entry.usage?.promptTokens ?? "-" }}</span>
-              <span>completionTokens: {{ entry.usage?.completionTokens ?? "-" }}</span>
-              <span>totalTokens: {{ entry.usage?.totalTokens ?? "-" }}</span>
+            <div class="meta-line" v-if="activeUsage(entry)?.totalTokens">
+              <span>promptTokens: {{ activeUsage(entry)?.promptTokens ?? "-" }}</span>
+              <span>completionTokens: {{ activeUsage(entry)?.completionTokens ?? "-" }}</span>
+              <span>totalTokens: {{ activeUsage(entry)?.totalTokens ?? "-" }}</span>
             </div>
           </div>
         </div>
