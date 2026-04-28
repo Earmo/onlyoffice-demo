@@ -1759,11 +1759,11 @@ function formatTimestamp(value) {
 
     <div v-if="showSnapshotDecision" class="dialog-mask">
       <div class="dialog-card">
-        <h3>检测到上下文变化</h3>
-        <p>当前快照和当前线程不同，是否新开会话？</p>
+        <h3>当前引用内容已变化</h3>
+        <p>你这次提问将使用新的选中文本或章节上下文。要新开一个会话，还是继续在当前会话里提问？</p>
         <div class="dialog-actions">
           <button type="button" class="primary-button" @click="confirmSnapshotDecision(true)">新开会话</button>
-          <button type="button" class="ghost-button" @click="confirmSnapshotDecision(false)">继续当前会话</button>
+          <button type="button" class="ghost-button" @click="confirmSnapshotDecision(false)">继续提问</button>
           <button type="button" class="ghost-button" @click="showSnapshotDecision = false">取消</button>
         </div>
       </div>
