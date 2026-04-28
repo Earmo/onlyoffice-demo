@@ -44,7 +44,7 @@ Last activity: 2026-04-28
 - [Phase 17-03]: Active variant switches use optimistic UI with backend persistence and rollback on failure.
 - [Phase 17-04]: Phase 17 文档将 assistant message 定义为稳定轮次容器，variants 承载具体回复。
 - [Phase 17-04]: 全量 verify 暴露的 Phase 17 mapper slice 测试缺口按回归阻塞修复处理。
-- [Phase 17-04]: rg 在当前环境被拒绝访问时，使用 git grep / Select-String 执行等价审计。
+- [Phase 17-04]: rg 文档覆盖检查与敏感 info 日志负断言均已通过。
 
 ### Performance Metrics
 
