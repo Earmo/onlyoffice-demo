@@ -4,7 +4,7 @@ milestone: v1.1.0
 milestone_name: AI 对话式文档辅助生成
 status: in_progress
 stopped_at: None
-last_updated: "2026-04-28T03:44:51.436Z"
+last_updated: "2026-04-28T04:00:09.353Z"
 last_activity: 2026-04-28
 progress:
   total_phases: 6
@@ -39,6 +39,9 @@ Last activity: 2026-04-28
 - [Phase 17-02]: Completed variant 只有在用户未于 request start 后显式切换 active variant 时才自动切 active。
 - [Phase 17-02]: Prompt history 在发送给 provider 前，将 assistant message 投影为 active variant 文本。
 - [Phase 17-02]: 验证使用 data+service Maven reactor，避免本地旧 data SNAPSHOT class 干扰。
+- [Phase 17-03]: Frontend assistant entries normalize variants and route rendering, reasoning, meta, copy, and writeback through activeVariant.
+- [Phase 17-03]: Regenerate streams merge into the existing assistant entry by request and variant identity instead of appending vertical messages.
+- [Phase 17-03]: Active variant switches use optimistic UI with backend persistence and rollback on failure.
 
 ### Performance Metrics
 
@@ -46,8 +49,9 @@ Last activity: 2026-04-28
 |-------|------|----------|-------|-------|
 | 17-java-ai-chatgpt | 01 | 11min | 3 | 15 |
 | 17-java-ai-chatgpt | 02 | 19min | 3 | 7 |
+| 17-java-ai-chatgpt | 03 | 12min | 3 | 3 |
 
 ### Last Session
 
-- **Completed:** 17-02-PLAN.md
+- **Completed:** 17-03-PLAN.md
 - **Stopped At:** None

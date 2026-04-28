@@ -105,7 +105,7 @@ Plans:
 **Status:** In Progress (2/4 plans executed, updated 2026-04-28)
 **Requirements**: PH17-01, PH17-02, PH17-03, PH17-04, PH17-05, PH17-06, PH17-07, PH17-08, PH17-09
 **Depends on:** Phase 16
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -115,7 +115,7 @@ Plans:
 - [x] 17-02-PLAN.md — 后端 regenerate、stream、prompt history 语义
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 17-03-PLAN.md — 前端 variants entry、版本切换 UI 与操作路径
+- [x] 17-03-PLAN.md — 前端 variants entry、版本切换 UI 与操作路径
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 17-04-PLAN.md — 协议文档、回归验证和安全收口
