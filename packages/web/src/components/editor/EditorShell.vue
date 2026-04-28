@@ -112,6 +112,13 @@ const runtimeContext = computed(() => ({
   saveStatus: saveStatus.value
 }));
 
+/**
+ * 从失败响应中读取后端统一错误文案。
+ *
+ * @param {Response} response - fetch 返回的失败响应。
+ * @param {string} fallbackMessage - 响应体不可解析时的兜底文案。
+ * @returns {Promise<string>} 可展示给用户的错误信息。
+ */
 async function readErrorMessage(response, fallbackMessage) {
   try {
     const payload = await response.json();
@@ -149,12 +156,20 @@ function resetBridgeState() {
   activeHeadingNode.value = null;
 }
 
+/**
+ * 销毁当前 ONLYOFFICE 插件桥并重置桥接相关 UI 状态。
+ */
 function disposeBridge() {
   onlyofficeBridge?.dispose();
   onlyofficeBridge = null;
   resetBridgeState();
 }
 
+/**
+ * 懒创建 ONLYOFFICE 桥接实例。
+ *
+ * @returns {ReturnType<typeof createOnlyofficeBridge> | null} 可用桥接实例；编辑器配置未加载时返回 null。
+ */
 function ensureBridge() {
   if (!editorPayload.value) {
     return null;
@@ -178,6 +193,12 @@ function toBridgeErrorMessage(error, fallbackMessage) {
   return fallbackMessage;
 }
 
+/**
+ * 等待隐藏插件完成 ready 握手。
+ *
+ * @param {{suppressErrors?: boolean}} options - 是否静默处理握手失败。
+ * @returns {Promise<boolean>} true 表示后续可安全发起选区/目录/写回请求。
+ */
 async function waitForBridgeReady(options = {}) {
   const { suppressErrors = false } = options;
   const bridge = ensureBridge();
@@ -209,6 +230,11 @@ async function waitForBridgeReady(options = {}) {
   }
 }
 
+/**
+ * 通过桥接插件读取当前 ONLYOFFICE 选区。
+ *
+ * @returns {Promise<object | null>} 插件返回的选区快照；桥接不可用时返回 null。
+ */
 async function captureSelectedText() {
   if (!(await waitForBridgeReady())) {
     return null;

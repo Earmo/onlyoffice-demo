@@ -74,6 +74,13 @@ const props = defineProps({
 
 const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "insert-image", "insert-html", "close"]);
 
+// AI 工作台把状态拆成 5 组：
+// 1. 抽屉展示与 provider 能力；
+// 2. 会话列表与当前会话；
+// 3. 当前请求和流式响应；
+// 4. 选区/标题上下文快照；
+// 5. AI 回复写回文档的弹窗状态。
+// 这些状态都留在页面层，避免底层 API 模块感知 UI 交互细节。
 const writeBackStore = useWriteBackStore();
 const drawerVisible = ref(false);
 const capabilityStatus = ref("bridge-pending");
@@ -101,6 +108,9 @@ const writeBackMode = ref("cursor");
 const writeBackHasSelection = ref(false);
 const variantSwitching = ref({});
 
+// token 用于隔离异步竞态：
+// 文档切换、会话切换、流式响应都可能让旧请求晚于新请求返回，
+// 每次启动新流程时递增 token，回包时再确认仍然属于当前上下文。
 let bootstrapToken = 0;
 let sessionLoadToken = 0;
 let sessionLoadRequestedId = "";
@@ -217,6 +227,12 @@ onBeforeUnmount(() => {
   abortActiveStream();
 });
 
+/**
+ * 将 AI 工作台恢复到新文档进入时的初始态。
+ *
+ * <p>该方法会主动中止当前流，清空会话、请求、错误、模型选择和写回状态，
+ * 防止上一份文档的上下文泄漏到当前文档。
+ */
 function resetWorkbench() {
   abortActiveStream();
   capabilityStatus.value = props.runtimeContext.bridgeReady ? "capability-loading" : "bridge-pending";
@@ -237,6 +253,12 @@ function resetWorkbench() {
   selectedModel.value = "";
 }
 
+/**
+ * 中止当前正在读取的 AI SSE 流。
+ *
+ * <p>只清理“当前请求”层状态，不清空已完成的会话消息，
+ * 因此可用于切换会话、关闭抽屉、组件卸载等多个入口。
+ */
 function abortActiveStream() {
   activeStream.value?.abort?.();
   activeStream.value = null;
@@ -244,10 +266,21 @@ function abortActiveStream() {
   currentRequestState.value = "";
 }
 
+/**
+ * 判断当前是否存在仍需用户确认的在飞请求。
+ *
+ * @returns {boolean} true 表示切换会话或关闭时应先收口当前请求。
+ */
 function hasActiveRequestState() {
   return Boolean(activeStream.value || currentRequestId.value || currentRequestState.value === "in_progress");
 }
 
+/**
+ * 在切换会话前确认是否需要停止正在生成的回复。
+ *
+ * @param {string} targetSessionId - 用户准备切换到的会话 ID。
+ * @returns {Promise<boolean>} true 表示允许继续切换。
+ */
 async function confirmSessionSwitch(targetSessionId) {
   if (!shouldConfirmSessionSwitch(targetSessionId)) {
     return true;

@@ -7,6 +7,12 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * AI 对话会话持久化实体。
+ *
+ * <p>一条记录代表某个用户在某份文档下的一条对话线程，
+ * 会话级字段保存最近一次上下文快照，消息明细保存在 document_llm_message 表。
+ */
 @Table("document_llm_session")
 @Getter
 @Setter

@@ -7,6 +7,19 @@ const RUNTIME_EVENT_PATH = documentId => `/api/documents/${encodeURIComponent(do
 // 1. 原生 EventSource 不能带当前项目依赖的 access context 自定义请求头；
 // 2. 我们需要在文档切换、showConsole 关闭、组件卸载时精确 abort 当前流；
 // 3. 我们希望把“服务器正常关闭流”和“流异常失败”区分开，交给外层状态机分别处理。
+/**
+ * 建立文档运行态 SSE 流。
+ *
+ * @param {object} options - 流式订阅配置。
+ * @param {string} options.documentId - 当前文档 ID。
+ * @param {(payload: object) => void} [options.onSaveStatus] - 保存状态事件回调。
+ * @param {(payload: object) => void} [options.onSessionActive] - 编辑会话活跃事件回调。
+ * @param {(payload: object) => void} [options.onKeepalive] - 服务端保活事件回调。
+ * @param {(payload: object) => void} [options.onRuntimeError] - 服务端运行态错误事件回调。
+ * @param {(error: Error) => void} [options.onError] - fetch/read 失败回调。
+ * @param {() => void} [options.onComplete] - 服务端正常结束流时触发。
+ * @returns {{abort: () => Promise<void>, ready: Promise<void>}} 流控制句柄。
+ */
 export function startRuntimeEventStream(options) {
   const {
     documentId,
@@ -115,6 +128,12 @@ export function startRuntimeEventStream(options) {
   };
 }
 
+/**
+ * 从累计 buffer 中切出所有完整 SSE frame。
+ *
+ * @param {string} buffer - 当前已经解码但尚未全部消费的文本。
+ * @returns {{frames: string[], buffer: string}} 完整帧数组和未完成的尾部文本。
+ */
 function extractCompleteFrames(buffer) {
   // SSE 规范里，空行表示“一个 frame 结束”。
   // 这里每次只切出已经完整结束的 frame，最后那个没遇到空行的尾巴继续留给下次 read()。
@@ -135,6 +154,12 @@ function extractCompleteFrames(buffer) {
   };
 }
 
+/**
+ * 根据事件名把单个 SSE frame 分发给对应处理器。
+ *
+ * @param {string} frame - 已完整结束的 SSE frame。
+ * @param {object} handlers - 运行态事件处理器集合。
+ */
 function dispatchFrame(frame, handlers) {
   // 14.1 只关心四类命名事件：
   // - save-status：真正驱动右侧保存状态卡片；
@@ -166,6 +191,12 @@ function dispatchFrame(frame, handlers) {
   }
 }
 
+/**
+ * 解析本项目使用的 SSE 最小字段集。
+ *
+ * @param {string} frame - 单个 SSE frame 文本。
+ * @returns {{name: string, payload: unknown}} 事件名和 data 解析结果。
+ */
 function parseSseFrame(frame) {
   // 这里只实现 14.1 真正会用到的最小 SSE 子集：
   // - `event:` 决定事件名；
@@ -204,6 +235,12 @@ function parseSseFrame(frame) {
   };
 }
 
+/**
+ * 将 SSE data 字段解析成业务 payload。
+ *
+ * @param {string} rawData - data 行拼接后的原始文本。
+ * @returns {unknown} JSON 对象、字符串或 null。
+ */
 function parseEventPayload(rawData) {
   if (!rawData) {
     return null;

@@ -4,6 +4,13 @@ const LLM_MESSAGE_STREAM_PATH = "/api/llm/messages/stream";
 
 // 这里不用 EventSource，而是自己用 fetch + reader 解析 SSE：
 // Phase 14.2 的流式接口是 POST，且必须携带 JSON body、鉴权头和可中止控制。
+/**
+ * 发起一次 AI 对话流式请求。
+ *
+ * @param {object} payload - 后端 SendLlmMessageRequest 对应的请求体。
+ * @param {object} options - 各类 AI SSE 事件处理器。
+ * @returns {{ready: Promise<void>, done: Promise<void>, abort: () => Promise<void>}} 流控制句柄。
+ */
 export function startLlmMessageStream(payload, options = {}) {
   const {
     onStarted,
@@ -110,6 +117,12 @@ export function startLlmMessageStream(payload, options = {}) {
   };
 }
 
+/**
+ * 切分 fetch reader 累计出来的 SSE 文本。
+ *
+ * @param {string} buffer - 已解码的累计文本。
+ * @returns {{frames: string[], buffer: string}} 完整帧与未完成尾帧。
+ */
 function extractCompleteFrames(buffer) {
   // SSE 以空行分帧，reader 每次 read() 可能只拿到半帧，这里负责把完整帧和残留 buffer 拆开。
   const frames = [];
@@ -128,6 +141,12 @@ function extractCompleteFrames(buffer) {
   };
 }
 
+/**
+ * 将 AI 流事件路由到 UI 状态机。
+ *
+ * @param {string} frame - 单个完整 SSE frame。
+ * @param {object} handlers - 调用方传入的事件处理器。
+ */
 function dispatchFrame(frame, handlers) {
   if (!frame.trim()) {
     return;
@@ -161,6 +180,12 @@ function dispatchFrame(frame, handlers) {
   }
 }
 
+/**
+ * 解析 AI SSE frame 中的 event/data 字段。
+ *
+ * @param {string} frame - 单个 SSE frame 文本。
+ * @returns {{name: string, payload: unknown}} 标准化事件对象。
+ */
 function parseSseFrame(frame) {
   // 只解析 SSE 标准字段 event/data；多行 data 会在这里重新拼回一个 JSON 字符串。
   const lines = frame.split("\n");
@@ -192,6 +217,12 @@ function parseSseFrame(frame) {
   };
 }
 
+/**
+ * 解析 AI 事件体。
+ *
+ * @param {string} rawData - 多行 data 拼接后的文本。
+ * @returns {unknown} JSON DTO、原始字符串或 null。
+ */
 function parseEventPayload(rawData) {
   if (!rawData) {
     return null;

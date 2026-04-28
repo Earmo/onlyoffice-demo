@@ -17,10 +17,25 @@ export const ONLYOFFICE_AI_BRIDGE_EVENTS = {
   htmlInserted: "onlyoffice-ai-bridge:html-inserted"
 };
 
+/**
+ * 创建统一的桥接错误对象，便于 UI 直接展示中文提示。
+ *
+ * @param {string} message - 具体错误文案。
+ * @returns {Error} 标准 Error 实例。
+ */
 function createBridgeError(message) {
   return new Error(message || "文档桥接暂不可用，请稍后重试。");
 }
 
+/**
+ * 创建宿主页到 ONLYOFFICE 隐藏插件的请求-响应桥。
+ *
+ * @param {object} options - 桥接依赖。
+ * @param {() => object | null} options.getEditor - 获取 ONLYOFFICE editor 实例。
+ * @param {() => HTMLIFrameElement | null} options.getIframe - 获取编辑器 iframe。
+ * @param {number} [options.requestTimeoutMs=10000] - 单次桥接请求超时时间。
+ * @returns {object} 暴露给 EditorShell 的桥接控制器。
+ */
 export function createOnlyofficeBridge({
   getEditor,
   getIframe,

@@ -7,6 +7,12 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * AI 会话消息持久化实体。
+ *
+ * <p>user 消息保存用户问题和发送时上下文；assistant 消息作为稳定轮次容器，
+ * 当前展示内容由 activeVariantIndex 指向 document_llm_message_variant 中的具体版本。
+ */
 @Table("document_llm_message")
 @Getter
 @Setter

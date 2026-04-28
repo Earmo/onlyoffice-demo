@@ -7,6 +7,11 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * assistant 消息多版本回复持久化实体。
+ *
+ * <p>同一 assistant message 下可以有多个 variant，用于支持类似 ChatGPT 的重新生成与版本切换。
+ */
 @Table("document_llm_message_variant")
 @Getter
 @Setter

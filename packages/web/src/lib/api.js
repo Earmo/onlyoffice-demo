@@ -3,10 +3,23 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 // 本地开发和独立调试时，前端需要自己带上最小访问上下文，
 // 否则后端的 AccessContextResolver 会把请求当成“完全没有身份来源”而直接拒绝。
 // 真正接入上游系统后，这些默认值可以被外部注入的 env 覆盖，或进一步替换成网关透传值。
+/**
+ * 判断字符串是否可以安全写入浏览器请求头。
+ *
+ * @param {string} value - 待检查的 header value。
+ * @returns {boolean} true 表示所有字符都位于 ISO-8859-1 范围内。
+ */
 function isIso88591Safe(value) {
   return /^[\u0000-\u00FF]*$/.test(value);
 }
 
+/**
+ * 将 env 或表单里的访问上下文字段规整成 fetch 可接受的 header value。
+ *
+ * @param {unknown} value - 外部输入值，可能为空、非字符串或包含中文。
+ * @param {string} fallbackValue - 输入不可用时使用的 ASCII 兜底值。
+ * @returns {string} 可直接放入请求头的值。
+ */
 function normalizeHeaderValue(value, fallbackValue) {
   const stringValue = String(value ?? "").trim();
   if (!stringValue) {
@@ -19,6 +32,11 @@ function normalizeHeaderValue(value, fallbackValue) {
   return isIso88591Safe(stringValue) ? stringValue : fallbackValue;
 }
 
+/**
+ * 读取前端运行环境中的默认访问上下文。
+ *
+ * @returns {Record<string, string>} 后端 AccessContextResolver 需要的最小 header 集合。
+ */
 function resolveDefaultAccessContextHeaders() {
   return {
     "X-Tenant-Id": normalizeHeaderValue(import.meta.env.VITE_ACCESS_CONTEXT_TENANT_ID, "native"),
@@ -39,6 +57,12 @@ export function buildApiUrl(path) {
 
 const CUSTOM_CONTEXT_STORAGE_KEY = "MOCK_ACCESS_CONTEXT";
 
+/**
+ * 获取本地调试覆盖的访问上下文。
+ *
+ * @returns {{tenantId?: string, actorUser?: string, actorName?: string, sourceSystem?: string} | null}
+ *   用户在工作台里保存过的上下文；不存在或 JSON 损坏时返回 null。
+ */
 export function getCustomAccessContext() {
   try {
     const stored = localStorage.getItem(CUSTOM_CONTEXT_STORAGE_KEY);
@@ -48,6 +72,12 @@ export function getCustomAccessContext() {
   }
 }
 
+/**
+ * 保存或清空本地调试访问上下文。
+ *
+ * @param {{tenantId?: string, actorUser?: string, actorName?: string, sourceSystem?: string} | null} context
+ *   传入对象时写入 localStorage，传入 null/undefined 时清空。
+ */
 export function saveCustomAccessContext(context) {
   // 允许传 null 作为“清空上下文”的语义，方便后续扩展重置动作。
   if (!context) {
@@ -57,6 +87,12 @@ export function saveCustomAccessContext(context) {
   }
 }
 
+/**
+ * 合并默认上下文、本地调试上下文和调用方自定义 header。
+ *
+ * @param {HeadersInit} headers - 单次请求额外传入的 header，优先级最高。
+ * @returns {Record<string, string>} 发送给后端的最终 header 集合。
+ */
 export function createAccessContextHeaders(headers = {}) {
   const defaultAccessContextHeaders = resolveDefaultAccessContextHeaders();
   const customContext = getCustomAccessContext() || {};
@@ -84,6 +120,13 @@ export function createAccessContextHeaders(headers = {}) {
   };
 }
 
+/**
+ * 项目统一 fetch 入口。
+ *
+ * @param {string} path - API 路径，支持相对路径并自动拼接 VITE_API_BASE_URL。
+ * @param {RequestInit} options - 原生 fetch 参数。
+ * @returns {Promise<Response>} 原生 fetch response。
+ */
 export function apiFetch(path, options = {}) {
   // 项目内统一通过 apiFetch 发请求，避免有人漏带访问上下文头。
   return fetch(buildApiUrl(path), {

@@ -7,6 +7,12 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * 单次 AI 请求执行状态实体。
+ *
+ * <p>该表把 user message、assistant message、assistant variant 与 provider 请求状态串起来，
+ * 用于轮询查询、取消请求、流式终态补偿和问题排查。
+ */
 @Table("document_llm_request")
 @Getter
 @Setter
