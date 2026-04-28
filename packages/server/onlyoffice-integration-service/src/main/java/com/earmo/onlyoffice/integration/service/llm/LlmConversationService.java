@@ -3,14 +3,17 @@ package com.earmo.onlyoffice.integration.service.llm;
 import com.earmo.onlyoffice.integration.config.LlmProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmMessageEntity;
+import com.earmo.onlyoffice.integration.data.entity.DocumentLlmMessageVariantEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmRequestEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmSessionEntity;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmMessageRepository;
+import com.earmo.onlyoffice.integration.data.repository.DocumentLlmMessageVariantRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmRequestRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmSessionRepository;
 import com.earmo.onlyoffice.integration.model.llm.CreateLlmSessionRequest;
 import com.earmo.onlyoffice.integration.model.llm.LlmCapabilityResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmMessageResponse;
+import com.earmo.onlyoffice.integration.model.llm.LlmMessageVariantResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmProviderOptionResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmRequestStatusResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmSessionDetailResponse;
@@ -32,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -75,6 +80,7 @@ public class LlmConversationService {
   private final SpringAiProviderRegistry providerRegistry;
   private final DocumentLlmSessionRepository documentLlmSessionRepository;
   private final DocumentLlmMessageRepository documentLlmMessageRepository;
+  private final DocumentLlmMessageVariantRepository documentLlmMessageVariantRepository;
   private final DocumentLlmRequestRepository documentLlmRequestRepository;
   private final LlmConversationAccessGuard accessGuard;
   private final LlmRequestExecutionRegistry executionRegistry;
@@ -90,6 +96,7 @@ public class LlmConversationService {
       SpringAiProviderRegistry providerRegistry,
       DocumentLlmSessionRepository documentLlmSessionRepository,
       DocumentLlmMessageRepository documentLlmMessageRepository,
+      DocumentLlmMessageVariantRepository documentLlmMessageVariantRepository,
       DocumentLlmRequestRepository documentLlmRequestRepository,
       LlmConversationAccessGuard accessGuard,
       LlmRequestExecutionRegistry executionRegistry,
@@ -101,6 +108,7 @@ public class LlmConversationService {
     this.providerRegistry = providerRegistry;
     this.documentLlmSessionRepository = documentLlmSessionRepository;
     this.documentLlmMessageRepository = documentLlmMessageRepository;
+    this.documentLlmMessageVariantRepository = documentLlmMessageVariantRepository;
     this.documentLlmRequestRepository = documentLlmRequestRepository;
     this.accessGuard = accessGuard;
     this.executionRegistry = executionRegistry;
@@ -241,17 +249,66 @@ public class LlmConversationService {
    */
   public LlmSessionDetailResponse getSession(String documentId, String sessionId, AccessContext accessContext) {
     DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
-    List<LlmMessageResponse> messages = documentLlmMessageRepository.findMessagesBySessionScope(
+    List<DocumentLlmMessageEntity> messageEntities = documentLlmMessageRepository.findMessagesBySessionScope(
+        sessionId,
+        documentId,
+        accessContext.tenantId(),
+        accessContext.actorUser(),
+        llmProperties.getSession().getMaxMessagesPerSession()
+    );
+    Map<String, List<DocumentLlmMessageVariantEntity>> variantsByMessageId = variantsByMessageId(
+        messageEntities,
+        documentId,
+        accessContext
+    );
+    List<LlmMessageResponse> messages = messageEntities.stream()
+        .map(message -> toMessageResponse(message, variantsByMessageId.getOrDefault(message.getMessageId(), List.of())))
+        .toList();
+    return toSessionDetail(session, messages);
+  }
+
+  /**
+   * 显式切换 assistant message 的 active variant。
+   */
+  public LlmMessageResponse setActiveVariant(String documentId, String messageId, com.earmo.onlyoffice.integration.model.llm.SetLlmActiveVariantRequest request, AccessContext accessContext) {
+    DocumentLlmMessageEntity assistantMessage = accessGuard.requireAssistantMessage(documentId, request.sessionId(), messageId, accessContext);
+    List<DocumentLlmMessageVariantEntity> variants = documentLlmMessageVariantRepository.findByMessageScope(
+        messageId,
+        documentId,
+        accessContext.tenantId(),
+        accessContext.actorUser()
+    );
+    DocumentLlmMessageVariantEntity selectedVariant = variants.stream()
+        .filter(variant -> request.variantId() != null && request.variantId().equals(variant.getVariantId())
+            || request.variantIndex() != null && request.variantIndex().equals(variant.getVariantIndex()))
+        .findFirst()
+        .orElseThrow(() -> new LlmApiException(LlmErrorCodes.LLM_SESSION_NOT_FOUND, HttpStatus.NOT_FOUND, "assistant variant 不存在。"));
+    assistantMessage.setActiveVariantIndex(selectedVariant.getVariantIndex());
+    copyVariantToAssistantMessage(assistantMessage, selectedVariant);
+    documentLlmMessageRepository.update(assistantMessage);
+    log.info(
+        "已切换 LLM active variant，documentId={}, sessionId={}, assistantMessageId={}, variantIndex={}, activeVariantIndex={}",
+        documentId,
+        request.sessionId(),
+        messageId,
+        selectedVariant.getVariantIndex(),
+        assistantMessage.getActiveVariantIndex()
+    );
+    return toMessageResponse(assistantMessage, variants);
+  }
+
+  private List<LlmMessageResponse> loadSessionMessages(String sessionId, String documentId, AccessContext accessContext) {
+    List<DocumentLlmMessageEntity> messageEntities = documentLlmMessageRepository.findMessagesBySessionScope(
             sessionId,
             documentId,
             accessContext.tenantId(),
             accessContext.actorUser(),
             llmProperties.getSession().getMaxMessagesPerSession()
-        )
-        .stream()
-        .map(this::toMessageResponse)
+        );
+    Map<String, List<DocumentLlmMessageVariantEntity>> variantsByMessageId = variantsByMessageId(messageEntities, documentId, accessContext);
+    return messageEntities.stream()
+        .map(message -> toMessageResponse(message, variantsByMessageId.getOrDefault(message.getMessageId(), List.of())))
         .toList();
-    return toSessionDetail(session, messages);
   }
 
   /**
@@ -361,6 +418,7 @@ public class LlmConversationService {
     RuntimeSelection runtimeSelection = resolveSelection(request);
     DocumentLlmSessionEntity session = accessGuard.requireSession(request.documentId(), request.sessionId(), accessContext);
     Instant now = Instant.now();
+    boolean regenerate = request.regenerateAssistantMessageId() != null && !request.regenerateAssistantMessageId().isBlank();
     boolean firstConversationTurn = documentLlmMessageRepository.findMessagesBySessionScope(
         session.getSessionId(),
         session.getDocumentId(),
@@ -369,43 +427,90 @@ public class LlmConversationService {
         1
     ).isEmpty();
 
-    // 固定的建单顺序：
-    // 1. user message 先落库，保证问题上下文可追溯
-    // 2. assistant message 以 pending 预插，占住最终结果位置
-    // 3. request 记录独立保存执行态，便于取消、回查和终态仲裁
-    DocumentLlmMessageEntity userMessage = new DocumentLlmMessageEntity();
-    userMessage.setMessageId(UUID.randomUUID().toString());
-    userMessage.setSessionId(session.getSessionId());
-    userMessage.setDocumentId(request.documentId());
-    userMessage.setTenantId(accessContext.tenantId());
-    userMessage.setActorUser(accessContext.actorUser());
-    userMessage.setRole("user");
-    userMessage.setMessageText(request.question());
-    userMessage.setSnapshotText(request.selectionSnapshot().text());
-    userMessage.setSnapshotIsEmpty(request.selectionSnapshot().emptySelection());
-    userMessage.setHeadingId(request.headingContext().headingId());
-    userMessage.setHeadingText(request.headingContext().headingText());
-    userMessage.setIncludeHeading(request.headingContext().includeHeading());
-    userMessage.setStatus(STATUS_COMPLETED);
-    userMessage.setCreatedTime(now);
-    documentLlmMessageRepository.insert(userMessage);
+    DocumentLlmMessageEntity assistantMessage;
+    DocumentLlmMessageEntity userMessage;
+    Integer previousActiveVariantIndex;
+    if (regenerate) {
+      assistantMessage = accessGuard.requireAssistantMessage(
+          request.documentId(),
+          session.getSessionId(),
+          request.regenerateAssistantMessageId(),
+          accessContext
+      );
+      previousActiveVariantIndex = assistantMessage.getActiveVariantIndex();
+      List<DocumentLlmMessageEntity> messages = documentLlmMessageRepository.findMessagesBySessionScope(
+          session.getSessionId(),
+          session.getDocumentId(),
+          accessContext.tenantId(),
+          accessContext.actorUser(),
+          llmProperties.getSession().getMaxMessagesPerSession()
+      );
+      userMessage = findUserMessageForAssistant(messages, assistantMessage)
+          .orElseThrow(() -> new LlmApiException(LlmErrorCodes.LLM_SESSION_NOT_FOUND, HttpStatus.BAD_REQUEST, "regenerate 原始 user 消息不存在。"));
+      log.info(
+          "开始 LLM regenerate 建单，documentId={}, sessionId={}, assistantMessageId={}, previousActiveVariantIndex={}",
+          request.documentId(),
+          session.getSessionId(),
+          assistantMessage.getMessageId(),
+          previousActiveVariantIndex
+      );
+    } else {
+      previousActiveVariantIndex = null;
+      // 固定的首次建单顺序：user message、assistant 容器、variant 0、request。
+      userMessage = new DocumentLlmMessageEntity();
+      userMessage.setMessageId(UUID.randomUUID().toString());
+      userMessage.setSessionId(session.getSessionId());
+      userMessage.setDocumentId(request.documentId());
+      userMessage.setTenantId(accessContext.tenantId());
+      userMessage.setActorUser(accessContext.actorUser());
+      userMessage.setRole("user");
+      userMessage.setMessageText(request.question());
+      userMessage.setSnapshotText(request.selectionSnapshot().text());
+      userMessage.setSnapshotIsEmpty(request.selectionSnapshot().emptySelection());
+      userMessage.setHeadingId(request.headingContext().headingId());
+      userMessage.setHeadingText(request.headingContext().headingText());
+      userMessage.setIncludeHeading(request.headingContext().includeHeading());
+      userMessage.setStatus(STATUS_COMPLETED);
+      userMessage.setCreatedTime(now);
+      documentLlmMessageRepository.insert(userMessage);
 
-    DocumentLlmMessageEntity assistantMessage = new DocumentLlmMessageEntity();
-    assistantMessage.setMessageId(UUID.randomUUID().toString());
-    assistantMessage.setSessionId(session.getSessionId());
-    assistantMessage.setDocumentId(request.documentId());
-    assistantMessage.setTenantId(accessContext.tenantId());
-    assistantMessage.setActorUser(accessContext.actorUser());
-    assistantMessage.setRole("assistant");
-    assistantMessage.setSnapshotText(request.selectionSnapshot().text());
-    assistantMessage.setSnapshotIsEmpty(request.selectionSnapshot().emptySelection());
-    assistantMessage.setHeadingId(request.headingContext().headingId());
-    assistantMessage.setHeadingText(request.headingContext().headingText());
-    assistantMessage.setIncludeHeading(request.headingContext().includeHeading());
-    assistantMessage.setStatus(STATUS_PENDING);
-    assistantMessage.setProviderMetaJson(writeJson(initialProviderMeta(runtimeSelection)));
-    assistantMessage.setCreatedTime(now);
-    documentLlmMessageRepository.insert(assistantMessage);
+      assistantMessage = new DocumentLlmMessageEntity();
+      assistantMessage.setMessageId(UUID.randomUUID().toString());
+      assistantMessage.setSessionId(session.getSessionId());
+      assistantMessage.setDocumentId(request.documentId());
+      assistantMessage.setTenantId(accessContext.tenantId());
+      assistantMessage.setActorUser(accessContext.actorUser());
+      assistantMessage.setRole("assistant");
+      assistantMessage.setSnapshotText(request.selectionSnapshot().text());
+      assistantMessage.setSnapshotIsEmpty(request.selectionSnapshot().emptySelection());
+      assistantMessage.setHeadingId(request.headingContext().headingId());
+      assistantMessage.setHeadingText(request.headingContext().headingText());
+      assistantMessage.setIncludeHeading(request.headingContext().includeHeading());
+      assistantMessage.setStatus(STATUS_PENDING);
+      assistantMessage.setActiveVariantIndex(0);
+      assistantMessage.setProviderMetaJson(writeJson(initialProviderMeta(runtimeSelection)));
+      assistantMessage.setCreatedTime(now);
+      documentLlmMessageRepository.insert(assistantMessage);
+    }
+
+    DocumentLlmMessageVariantEntity variant = documentLlmMessageVariantRepository.createNextVariantForMessageScope(
+        assistantMessage.getMessageId(),
+        request.documentId(),
+        accessContext.tenantId(),
+        accessContext.actorUser(),
+        STATUS_PENDING,
+        now
+    );
+    variant.setProviderMetaJson(writeJson(initialProviderMeta(runtimeSelection)));
+    documentLlmMessageVariantRepository.update(variant);
+    log.info(
+        "已创建 LLM message variant，documentId={}, sessionId={}, assistantMessageId={}, variantId={}, variantIndex={}",
+        request.documentId(),
+        session.getSessionId(),
+        assistantMessage.getMessageId(),
+        variant.getVariantId(),
+        variant.getVariantIndex()
+    );
 
     // request 记录只承载执行态，不直接保存文本内容。
     DocumentLlmRequestEntity requestEntity = new DocumentLlmRequestEntity();
@@ -416,6 +521,8 @@ public class LlmConversationService {
     requestEntity.setActorUser(accessContext.actorUser());
     requestEntity.setUserMessageId(userMessage.getMessageId());
     requestEntity.setAssistantMessageId(assistantMessage.getMessageId());
+    requestEntity.setVariantId(variant.getVariantId());
+    requestEntity.setVariantIndex(variant.getVariantIndex());
     requestEntity.setStatus(STATUS_IN_PROGRESS);
     requestEntity.setCancelRequested(false);
     requestEntity.setStartedTime(now);
@@ -450,6 +557,7 @@ public class LlmConversationService {
     // 当前这条 assistant 还是 pending 占位，不能参与 prompt window；
     // 其他未完成消息也一并剔除，避免把半截回复再次送回模型。
     history.removeIf(message -> message.getMessageId().equals(assistantMessage.getMessageId()) || STATUS_PENDING.equals(message.getStatus()));
+    applyActiveVariantsToHistory(history, request.documentId(), accessContext);
 
     LlmRuntimeRequest runtimeRequest = new LlmRuntimeRequest(
         runtimeSelection.providerName(),
@@ -486,6 +594,8 @@ public class LlmConversationService {
         userMessage,
         assistantMessage,
         requestEntity,
+        variant,
+        previousActiveVariantIndex,
         request,
         accessContext,
         runtimeSelection,
@@ -612,23 +722,33 @@ public class LlmConversationService {
       preparedRequest.requestEntity().setFinishedTime(Instant.now());
       documentLlmRequestRepository.update(preparedRequest.requestEntity());
 
-      // assistant 消息在 terminal path 一次性落最终文本与元数据，避免 token 级频繁更新。
-      preparedRequest.assistantMessage().setAssistantText(accumulator.assistantText.toString());
-      preparedRequest.assistantMessage().setStatus(STATUS_COMPLETED);
-      preparedRequest.assistantMessage().setFinishReason(accumulator.finishReason);
-      preparedRequest.assistantMessage().setProviderUsageJson(writeJson(accumulator.usage));
-      preparedRequest.assistantMessage().setProviderMetaJson(writeJson(filterProviderResponseMeta(accumulator.providerMeta)));
-      preparedRequest.assistantMessage().setErrorCode(null);
+      applyFinalVariantContent(preparedRequest.variant(), accumulator);
+      documentLlmMessageVariantRepository.update(preparedRequest.variant());
+      if (shouldAutoActivateCompletedVariant(preparedRequest)) {
+        preparedRequest.assistantMessage().setActiveVariantIndex(preparedRequest.variant().getVariantIndex());
+      } else {
+        log.info(
+            "LLM completed terminal 未覆盖用户 active variant 选择，requestId={}, assistantMessageId={}, variantIndex={}, activeVariantIndex={}",
+            requestId,
+            preparedRequest.assistantMessage().getMessageId(),
+            preparedRequest.variant().getVariantIndex(),
+            preparedRequest.assistantMessage().getActiveVariantIndex()
+        );
+      }
+      copyVariantToAssistantMessage(preparedRequest.assistantMessage(), activeVariantForMessage(preparedRequest.assistantMessage(), preparedRequest.variant()));
       documentLlmMessageRepository.update(preparedRequest.assistantMessage());
 
       preparedRequest.session().setUpdatedTime(Instant.now());
       documentLlmSessionRepository.update(preparedRequest.session());
 
       log.info(
-          "LLM 请求已完成，requestId={}, documentId={}, sessionId={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, responseChars={}, finishReason={}, usage={}",
+          "LLM 请求已完成，requestId={}, documentId={}, sessionId={}, assistantMessageId={}, variantIndex={}, activeVariantIndex={}, provider={}, model={}, upstreamRequestId={}, chunkCount={}, responseChars={}, finishReason={}, usage={}",
           requestId,
           preparedRequest.request().documentId(),
           preparedRequest.request().sessionId(),
+          preparedRequest.assistantMessage().getMessageId(),
+          preparedRequest.variant().getVariantIndex(),
+          preparedRequest.assistantMessage().getActiveVariantIndex(),
           preparedRequest.runtimeSelection().providerName(),
           preparedRequest.runtimeSelection().model(),
           accumulator.providerRequestId,
@@ -769,7 +889,7 @@ public class LlmConversationService {
         errorCode,
         exception.getMessage()
     );
-    markRequestFailed(preparedRequest.requestEntity(), preparedRequest.assistantMessage(), errorCode, accumulator);
+    markRequestFailed(preparedRequest.requestEntity(), preparedRequest.assistantMessage(), preparedRequest.variant(), errorCode, accumulator);
     sink.send("assistant-error", errorEvent(preparedRequest, errorCode, accumulator));
     // 错误信息已经通过 SSE 显式返回给前端，这里只需要正常结束流，
     // 避免 response 已经切到 text/event-stream 后又被 Spring 当成 JSON 异常响应二次处理。
@@ -831,9 +951,23 @@ public class LlmConversationService {
     requestEntity.setFinishedTime(Instant.now());
     documentLlmRequestRepository.update(requestEntity);
 
-    assistantMessage.setStatus(STATUS_CANCELLED);
-    applyPartialAssistantContent(assistantMessage, accumulator);
-    assistantMessage.setErrorCode(LlmErrorCodes.LLM_REQUEST_CANCELLED);
+    DocumentLlmMessageVariantEntity variant = documentLlmMessageVariantRepository.findByMessageScope(
+            assistantMessage.getMessageId(),
+            requestEntity.getVariantId(),
+            requestEntity.getDocumentId(),
+            accessContext.tenantId(),
+            accessContext.actorUser()
+        )
+        .orElse(null);
+    if (variant != null) {
+      variant.setStatus(STATUS_CANCELLED);
+      applyPartialVariantContent(variant, accumulator);
+      variant.setErrorCode(LlmErrorCodes.LLM_REQUEST_CANCELLED);
+      variant.setUpdatedTime(Instant.now());
+      documentLlmMessageVariantRepository.update(variant);
+    }
+    DocumentLlmMessageVariantEntity activeVariant = activeVariantForMessage(assistantMessage, variant);
+    copyVariantToAssistantMessage(assistantMessage, activeVariant);
     documentLlmMessageRepository.update(assistantMessage);
   }
 
@@ -843,36 +977,165 @@ public class LlmConversationService {
   private void markRequestFailed(
       DocumentLlmRequestEntity requestEntity,
       DocumentLlmMessageEntity assistantMessage,
+      DocumentLlmMessageVariantEntity variant,
       String errorCode,
       StreamAccumulator accumulator
   ) {
     requestEntity.setStatus(STATUS_FAILED);
     requestEntity.setFinishedTime(Instant.now());
     documentLlmRequestRepository.update(requestEntity);
-    assistantMessage.setStatus(STATUS_FAILED);
-    applyPartialAssistantContent(assistantMessage, accumulator);
-    assistantMessage.setErrorCode(errorCode);
+    variant.setStatus(STATUS_FAILED);
+    applyPartialVariantContent(variant, accumulator);
+    variant.setErrorCode(errorCode);
+    variant.setUpdatedTime(Instant.now());
+    documentLlmMessageVariantRepository.update(variant);
+    DocumentLlmMessageVariantEntity activeVariant = activeVariantForMessage(assistantMessage, variant);
+    copyVariantToAssistantMessage(assistantMessage, activeVariant);
     documentLlmMessageRepository.update(assistantMessage);
   }
 
-  private void applyPartialAssistantContent(
-      DocumentLlmMessageEntity assistantMessage,
+  private void applyPartialVariantContent(
+      DocumentLlmMessageVariantEntity variant,
       StreamAccumulator accumulator
   ) {
     if (accumulator == null || !accumulator.hasPartialContent()) {
       return;
     }
-    assistantMessage.setAssistantText(accumulator.assistantText.toString());
+    variant.setAssistantText(accumulator.assistantText.toString());
     if (accumulator.finishReason != null && !accumulator.finishReason.isBlank()) {
-      assistantMessage.setFinishReason(accumulator.finishReason);
+      variant.setFinishReason(accumulator.finishReason);
     }
     if (hasUsage(accumulator.usage)) {
-      assistantMessage.setProviderUsageJson(writeJson(accumulator.usage));
+      variant.setProviderUsageJson(writeJson(accumulator.usage));
     }
     Map<String, Object> filteredMeta = filterProviderResponseMeta(accumulator.providerMeta);
     if (!filteredMeta.isEmpty()) {
-      assistantMessage.setProviderMetaJson(writeJson(filteredMeta));
+      variant.setProviderMetaJson(writeJson(filteredMeta));
     }
+  }
+
+  private void applyFinalVariantContent(DocumentLlmMessageVariantEntity variant, StreamAccumulator accumulator) {
+    variant.setAssistantText(accumulator.assistantText.toString());
+    variant.setStatus(STATUS_COMPLETED);
+    variant.setFinishReason(accumulator.finishReason);
+    variant.setProviderUsageJson(writeJson(accumulator.usage));
+    variant.setProviderMetaJson(writeJson(filterProviderResponseMeta(accumulator.providerMeta)));
+    variant.setErrorCode(null);
+    variant.setUpdatedTime(Instant.now());
+  }
+
+  private boolean shouldAutoActivateCompletedVariant(PreparedRequest preparedRequest) {
+    Integer currentActive = preparedRequest.assistantMessage().getActiveVariantIndex();
+    Integer previousActive = preparedRequest.previousActiveVariantIndex();
+    return currentActive == null && previousActive == null || currentActive != null && currentActive.equals(previousActive);
+  }
+
+  private DocumentLlmMessageVariantEntity activeVariantForMessage(
+      DocumentLlmMessageEntity assistantMessage,
+      DocumentLlmMessageVariantEntity fallbackVariant
+  ) {
+    Integer activeVariantIndex = assistantMessage.getActiveVariantIndex();
+    if (activeVariantIndex == null) {
+      return fallbackVariant;
+    }
+    return documentLlmMessageVariantRepository.findByMessageScope(
+            assistantMessage.getMessageId(),
+            assistantMessage.getDocumentId(),
+            assistantMessage.getTenantId(),
+            assistantMessage.getActorUser()
+        )
+        .stream()
+        .filter(variant -> activeVariantIndex.equals(variant.getVariantIndex()))
+        .findFirst()
+        .orElse(fallbackVariant);
+  }
+
+  private void copyVariantToAssistantMessage(
+      DocumentLlmMessageEntity assistantMessage,
+      DocumentLlmMessageVariantEntity variant
+  ) {
+    if (variant == null) {
+      return;
+    }
+    assistantMessage.setAssistantText(variant.getAssistantText());
+    assistantMessage.setStatus(variant.getStatus());
+    assistantMessage.setFinishReason(variant.getFinishReason());
+    assistantMessage.setProviderUsageJson(variant.getProviderUsageJson());
+    assistantMessage.setProviderMetaJson(variant.getProviderMetaJson());
+    assistantMessage.setErrorCode(variant.getErrorCode());
+  }
+
+  private Optional<DocumentLlmMessageEntity> findUserMessageForAssistant(
+      List<DocumentLlmMessageEntity> messages,
+      DocumentLlmMessageEntity assistantMessage
+  ) {
+    DocumentLlmMessageEntity latestUser = null;
+    for (DocumentLlmMessageEntity message : messages) {
+      if ("user".equals(message.getRole())) {
+        latestUser = message;
+      }
+      if (message.getMessageId().equals(assistantMessage.getMessageId())) {
+        return Optional.ofNullable(latestUser);
+      }
+    }
+    return Optional.empty();
+  }
+
+  private void applyActiveVariantsToHistory(
+      List<DocumentLlmMessageEntity> history,
+      String documentId,
+      AccessContext accessContext
+  ) {
+    Map<String, List<DocumentLlmMessageVariantEntity>> variantsByMessageId = variantsByMessageId(history, documentId, accessContext);
+    for (DocumentLlmMessageEntity message : history) {
+      if (!"assistant".equals(message.getRole())) {
+        continue;
+      }
+      DocumentLlmMessageVariantEntity activeVariant = selectActiveVariant(
+          message,
+          variantsByMessageId.getOrDefault(message.getMessageId(), List.of())
+      ).orElse(null);
+      copyVariantToAssistantMessage(message, activeVariant);
+    }
+  }
+
+  private Map<String, List<DocumentLlmMessageVariantEntity>> variantsByMessageId(
+      List<DocumentLlmMessageEntity> messages,
+      String documentId,
+      AccessContext accessContext
+  ) {
+    List<String> assistantMessageIds = messages.stream()
+        .filter(message -> "assistant".equals(message.getRole()))
+        .map(DocumentLlmMessageEntity::getMessageId)
+        .toList();
+    return documentLlmMessageVariantRepository.findByMessageIdsScope(
+            assistantMessageIds,
+            documentId,
+            accessContext.tenantId(),
+            accessContext.actorUser()
+        )
+        .stream()
+        .collect(Collectors.groupingBy(DocumentLlmMessageVariantEntity::getMessageId, LinkedHashMap::new, Collectors.toList()));
+  }
+
+  private Optional<DocumentLlmMessageVariantEntity> selectActiveVariant(
+      DocumentLlmMessageEntity message,
+      List<DocumentLlmMessageVariantEntity> variants
+  ) {
+    if (variants == null || variants.isEmpty()) {
+      return Optional.empty();
+    }
+    Integer activeVariantIndex = message.getActiveVariantIndex();
+    if (activeVariantIndex != null) {
+      Optional<DocumentLlmMessageVariantEntity> active = variants.stream()
+          .filter(variant -> activeVariantIndex.equals(variant.getVariantIndex()))
+          .findFirst();
+      if (active.isPresent()) {
+        return active;
+      }
+    }
+    return variants.stream().filter(variant -> STATUS_COMPLETED.equals(variant.getStatus())).findFirst()
+        .or(() -> variants.stream().findFirst());
   }
 
   private boolean hasUsage(LlmProviderUsage usage) {
@@ -1023,6 +1286,9 @@ public class LlmConversationService {
         preparedRequest.request().sessionId(),
         preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
+        preparedRequest.variant().getVariantId(),
+        preparedRequest.variant().getVariantIndex(),
+        preparedRequest.assistantMessage().getActiveVariantIndex(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
         null,
@@ -1047,6 +1313,9 @@ public class LlmConversationService {
         preparedRequest.request().sessionId(),
         preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
+        preparedRequest.variant().getVariantId(),
+        preparedRequest.variant().getVariantIndex(),
+        preparedRequest.assistantMessage().getActiveVariantIndex(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
         delta,
@@ -1071,6 +1340,9 @@ public class LlmConversationService {
         preparedRequest.request().sessionId(),
         preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
+        preparedRequest.variant().getVariantId(),
+        preparedRequest.variant().getVariantIndex(),
+        preparedRequest.assistantMessage().getActiveVariantIndex(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
         null,
@@ -1095,6 +1367,9 @@ public class LlmConversationService {
         preparedRequest.request().sessionId(),
         preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
+        preparedRequest.variant().getVariantId(),
+        preparedRequest.variant().getVariantIndex(),
+        preparedRequest.assistantMessage().getActiveVariantIndex(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
         null,
@@ -1120,6 +1395,9 @@ public class LlmConversationService {
         preparedRequest.request().sessionId(),
         preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
+        preparedRequest.variant().getVariantId(),
+        preparedRequest.variant().getVariantIndex(),
+        preparedRequest.assistantMessage().getActiveVariantIndex(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
         null,
@@ -1148,6 +1426,9 @@ public class LlmConversationService {
         preparedRequest.request().sessionId(),
         preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
+        preparedRequest.variant().getVariantId(),
+        preparedRequest.variant().getVariantIndex(),
+        preparedRequest.assistantMessage().getActiveVariantIndex(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
         null,
@@ -1172,6 +1453,9 @@ public class LlmConversationService {
         preparedRequest.request().sessionId(),
         preparedRequest.session().getTitle(),
         preparedRequest.assistantMessage().getMessageId(),
+        preparedRequest.variant().getVariantId(),
+        preparedRequest.variant().getVariantIndex(),
+        preparedRequest.assistantMessage().getActiveVariantIndex(),
         preparedRequest.runtimeSelection().providerName(),
         preparedRequest.runtimeSelection().model(),
         null,
@@ -1193,17 +1477,28 @@ public class LlmConversationService {
       DocumentLlmRequestEntity requestEntity,
       DocumentLlmMessageEntity assistantMessage
   ) {
+    DocumentLlmMessageVariantEntity variant = requestEntity.getVariantId() == null ? null : documentLlmMessageVariantRepository.findByMessageScope(
+            assistantMessage.getMessageId(),
+            requestEntity.getVariantId(),
+            requestEntity.getDocumentId(),
+            requestEntity.getTenantId(),
+            requestEntity.getActorUser()
+        )
+        .orElse(null);
     return new LlmRequestStatusResponse(
         requestEntity.getDocumentId(),
         requestEntity.getRequestId(),
         requestEntity.getSessionId(),
         requestEntity.getAssistantMessageId(),
+        requestEntity.getVariantId(),
+        requestEntity.getVariantIndex(),
+        assistantMessage.getActiveVariantIndex(),
         requestEntity.getStatus(),
-        assistantMessage.getAssistantText(),
-        readUsage(assistantMessage.getProviderUsageJson()),
-        assistantMessage.getFinishReason(),
-        readMeta(assistantMessage.getProviderMetaJson()),
-        Optional.ofNullable(assistantMessage.getErrorCode()).orElse(STATUS_CANCELLED.equals(requestEntity.getStatus()) ? LlmErrorCodes.LLM_REQUEST_CANCELLED : null),
+        variant == null ? assistantMessage.getAssistantText() : variant.getAssistantText(),
+        readUsage(variant == null ? assistantMessage.getProviderUsageJson() : variant.getProviderUsageJson()),
+        variant == null ? assistantMessage.getFinishReason() : variant.getFinishReason(),
+        readMeta(variant == null ? assistantMessage.getProviderMetaJson() : variant.getProviderMetaJson()),
+        Optional.ofNullable(variant == null ? assistantMessage.getErrorCode() : variant.getErrorCode()).orElse(STATUS_CANCELLED.equals(requestEntity.getStatus()) ? LlmErrorCodes.LLM_REQUEST_CANCELLED : null),
         requestEntity.getStartedTime(),
         requestEntity.getFinishedTime()
     );
@@ -1250,22 +1545,46 @@ public class LlmConversationService {
    * 把消息实体转换为前端消息 DTO。
    */
   private LlmMessageResponse toMessageResponse(DocumentLlmMessageEntity entity) {
+    return toMessageResponse(entity, List.of());
+  }
+
+  private LlmMessageResponse toMessageResponse(DocumentLlmMessageEntity entity, List<DocumentLlmMessageVariantEntity> variants) {
+    Optional<DocumentLlmMessageVariantEntity> activeVariant = selectActiveVariant(entity, variants);
+    List<LlmMessageVariantResponse> variantResponses = variants == null ? List.of() : variants.stream()
+        .map(this::toVariantResponse)
+        .toList();
     return new LlmMessageResponse(
         entity.getMessageId(),
         entity.getRole(),
         entity.getMessageText(),
-        entity.getAssistantText(),
+        activeVariant.map(DocumentLlmMessageVariantEntity::getAssistantText).orElse(entity.getAssistantText()),
         entity.getSnapshotText(),
         entity.isSnapshotIsEmpty(),
         entity.getHeadingId(),
         entity.getHeadingText(),
         entity.isIncludeHeading(),
-        entity.getStatus(),
-        entity.getErrorCode(),
-        entity.getFinishReason(),
-        readUsage(entity.getProviderUsageJson()),
-        readMeta(entity.getProviderMetaJson()),
+        activeVariant.map(DocumentLlmMessageVariantEntity::getStatus).orElse(entity.getStatus()),
+        activeVariant.map(DocumentLlmMessageVariantEntity::getErrorCode).orElse(entity.getErrorCode()),
+        activeVariant.map(DocumentLlmMessageVariantEntity::getFinishReason).orElse(entity.getFinishReason()),
+        readUsage(activeVariant.map(DocumentLlmMessageVariantEntity::getProviderUsageJson).orElse(entity.getProviderUsageJson())),
+        readMeta(activeVariant.map(DocumentLlmMessageVariantEntity::getProviderMetaJson).orElse(entity.getProviderMetaJson())),
+        variantResponses,
+        entity.getActiveVariantIndex(),
         entity.getCreatedTime()
+    );
+  }
+
+  private LlmMessageVariantResponse toVariantResponse(DocumentLlmMessageVariantEntity variant) {
+    return new LlmMessageVariantResponse(
+        variant.getVariantId(),
+        variant.getVariantIndex() == null ? 0 : variant.getVariantIndex(),
+        variant.getAssistantText(),
+        variant.getStatus(),
+        variant.getErrorCode(),
+        variant.getFinishReason(),
+        readUsage(variant.getProviderUsageJson()),
+        readMeta(variant.getProviderMetaJson()),
+        variant.getCreatedTime()
     );
   }
 
@@ -1407,6 +1726,8 @@ public class LlmConversationService {
       DocumentLlmMessageEntity userMessage,
       DocumentLlmMessageEntity assistantMessage,
       DocumentLlmRequestEntity requestEntity,
+      DocumentLlmMessageVariantEntity variant,
+      Integer previousActiveVariantIndex,
       SendLlmMessageRequest request,
       AccessContext accessContext,
       RuntimeSelection runtimeSelection,

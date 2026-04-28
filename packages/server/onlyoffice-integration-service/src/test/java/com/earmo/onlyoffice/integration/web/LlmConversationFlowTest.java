@@ -770,9 +770,19 @@ class LlmConversationFlowTest {
   private String jsonFieldFromSse(String body, String key) {
     String needle = "\"" + key + "\":\"";
     int start = body.indexOf(needle);
+    if (start >= 0) {
+      int valueStart = start + needle.length();
+      int valueEnd = body.indexOf('"', valueStart);
+      return body.substring(valueStart, valueEnd);
+    }
+    needle = "\"" + key + "\":";
+    start = body.indexOf(needle);
     assertThat(start).isGreaterThanOrEqualTo(0);
     int valueStart = start + needle.length();
-    int valueEnd = body.indexOf('"', valueStart);
+    int valueEnd = body.indexOf(',', valueStart);
+    if (valueEnd < 0) {
+      valueEnd = body.indexOf('}', valueStart);
+    }
     return body.substring(valueStart, valueEnd);
   }
 

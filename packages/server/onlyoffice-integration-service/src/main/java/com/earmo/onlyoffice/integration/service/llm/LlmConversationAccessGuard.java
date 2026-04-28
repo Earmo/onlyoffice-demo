@@ -1,8 +1,10 @@
 package com.earmo.onlyoffice.integration.service.llm;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.data.entity.DocumentLlmMessageEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmRequestEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmSessionEntity;
+import com.earmo.onlyoffice.integration.data.repository.DocumentLlmMessageRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmRequestRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmSessionRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,7 @@ public class LlmConversationAccessGuard {
 
   private final DocumentLlmSessionRepository documentLlmSessionRepository;
   private final DocumentLlmRequestRepository documentLlmRequestRepository;
+  private final DocumentLlmMessageRepository documentLlmMessageRepository;
 
   /**
    * 校验并返回当前用户有权访问的会话。
@@ -54,5 +57,27 @@ public class LlmConversationAccessGuard {
           }
           throw new LlmApiException(LlmErrorCodes.LLM_SESSION_NOT_FOUND, HttpStatus.NOT_FOUND, "对话请求不存在。");
         });
+  }
+
+  public DocumentLlmMessageEntity requireAssistantMessage(
+      String documentId,
+      String sessionId,
+      String messageId,
+      AccessContext accessContext
+  ) {
+    DocumentLlmMessageEntity message = documentLlmMessageRepository.findMessageByScope(
+            messageId,
+            documentId,
+            accessContext.tenantId(),
+            accessContext.actorUser()
+        )
+        .orElseThrow(() -> new LlmApiException(LlmErrorCodes.LLM_SESSION_NOT_FOUND, HttpStatus.NOT_FOUND, "assistant 消息不存在。"));
+    if (!sessionId.equals(message.getSessionId())) {
+      throw new LlmApiException(LlmErrorCodes.LLM_SESSION_NOT_FOUND, HttpStatus.BAD_REQUEST, "regenerate assistant message 不属于当前会话。");
+    }
+    if (!"assistant".equals(message.getRole())) {
+      throw new LlmApiException(LlmErrorCodes.LLM_SESSION_NOT_FOUND, HttpStatus.BAD_REQUEST, "regenerate 目标必须是 assistant 消息。");
+    }
+    return message;
   }
 }

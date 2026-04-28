@@ -4,10 +4,12 @@ import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.model.llm.CreateLlmSessionRequest;
 import com.earmo.onlyoffice.integration.model.llm.LlmCapabilityResponse;
+import com.earmo.onlyoffice.integration.model.llm.LlmMessageResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmRequestStatusResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmSessionDetailResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmSessionSummaryResponse;
 import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;
+import com.earmo.onlyoffice.integration.model.llm.SetLlmActiveVariantRequest;
 import com.earmo.onlyoffice.integration.service.llm.LlmConversationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -79,6 +81,16 @@ public class LlmController {
   public SseEmitter streamMessage(@Valid @RequestBody SendLlmMessageRequest request, HttpServletRequest httpRequest) {
     AccessContext accessContext = accessContextResolver.resolve(httpRequest);
     return llmConversationService.streamMessage(request, accessContext);
+  }
+
+  @PutMapping("/messages/{messageId}/active-variant")
+  public LlmMessageResponse setActiveVariant(
+      @PathVariable String messageId,
+      @Valid @RequestBody SetLlmActiveVariantRequest request,
+      HttpServletRequest httpRequest
+  ) {
+    AccessContext accessContext = accessContextResolver.resolve(httpRequest);
+    return llmConversationService.setActiveVariant(request.documentId(), messageId, request, accessContext);
   }
 
   @Deprecated(forRemoval = false)
