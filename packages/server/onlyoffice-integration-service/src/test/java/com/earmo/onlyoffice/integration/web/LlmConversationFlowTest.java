@@ -36,6 +36,7 @@ import reactor.core.publisher.Flux;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -595,6 +596,103 @@ class LlmConversationFlowTest {
     assertThat(pendingAssistantText).isNull();
   }
 
+  @Test
+  void regenerateCreatesVariantWithoutNewConversationEntry() throws Exception {
+    stubStreamingProvider.enqueueSuccess("首轮回复", Duration.ofMillis(10));
+    stubStreamingProvider.enqueueSuccess("重新生成回复", Duration.ofMillis(10));
+    String documentId = createDocument("regen-user", "Regen User");
+    String sessionId = createSession(documentId, "regen-user", "Regen User");
+
+    MvcResult firstResult = streamMessage(documentId, sessionId, "regen-user", "Regen User", "原始问题", null);
+    Thread.sleep(120L);
+    String firstBody = firstResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
+    String assistantMessageId = jsonFieldFromSse(firstBody, "assistantMessageId");
+    assertThat(jsonFieldFromSse(firstBody, "variantIndex")).isEqualTo("0");
+
+    MvcResult regenerateResult = streamMessage(documentId, sessionId, "regen-user", "Regen User", "原始问题", assistantMessageId);
+    Thread.sleep(120L);
+    String regenerateBody = regenerateResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
+    assertThat(jsonFieldFromSse(regenerateBody, "assistantMessageId")).isEqualTo(assistantMessageId);
+    assertThat(jsonFieldFromSse(regenerateBody, "variantIndex")).isEqualTo("1");
+
+    mockMvc.perform(
+            get("/api/llm/sessions/{sessionId}", sessionId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("regen-user", "Regen User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.messages.length()").value(2))
+        .andExpect(jsonPath("$.messages[1].messageId").value(assistantMessageId))
+        .andExpect(jsonPath("$.messages[1].variants.length()").value(2))
+        .andExpect(jsonPath("$.messages[1].variants[0].variantIndex").value(0))
+        .andExpect(jsonPath("$.messages[1].variants[1].variantIndex").value(1));
+  }
+
+  @Test
+  void regenerateRejectsAssistantFromAnotherSession() throws Exception {
+    stubStreamingProvider.enqueueSuccess("第一会话回复", Duration.ofMillis(10));
+    String documentId = createDocument("regen-scope-user", "Regen Scope User");
+    String firstSessionId = createSession(documentId, "regen-scope-user", "Regen Scope User");
+    String secondSessionId = createSession(documentId, "regen-scope-user", "Regen Scope User");
+
+    MvcResult firstResult = streamMessage(documentId, firstSessionId, "regen-scope-user", "Regen Scope User", "第一会话问题", null);
+    Thread.sleep(120L);
+    String assistantMessageId = jsonFieldFromSse(firstResult.getResponse().getContentAsString(StandardCharsets.UTF_8), "assistantMessageId");
+
+    mockMvc.perform(
+            post("/api/llm/messages/stream")
+                .headers(TestAccessHeaders.headers("regen-scope-user", "Regen Scope User"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .content("""
+                    {
+                      "documentId":"%s",
+                      "sessionId":"%s",
+                      "provider":"stub-provider",
+                      "model":"fake-gpt",
+                      "question":"错误 session regenerate",
+                      "selectionSnapshot":{"text":"","emptySelection":true},
+                      "headingContext":{"includeHeading":false,"headingId":"","headingText":""},
+                      "retryConfirmed":true,
+                      "regenerateAssistantMessageId":"%s"
+                    }
+                    """.formatted(documentId, secondSessionId, assistantMessageId))
+        )
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void concurrentRegenerateCreatesDistinctVariantIndexes() throws Exception {
+    stubStreamingProvider.enqueueSuccess("首轮回复", Duration.ofMillis(10));
+    stubStreamingProvider.enqueueSuccess("重新生成 A", Duration.ofMillis(60));
+    stubStreamingProvider.enqueueSuccess("重新生成 B", Duration.ofMillis(60));
+    String documentId = createDocument("regen-race-user", "Regen Race User");
+    String sessionId = createSession(documentId, "regen-race-user", "Regen Race User");
+
+    MvcResult firstResult = streamMessage(documentId, sessionId, "regen-race-user", "Regen Race User", "并发 regenerate 问题", null);
+    Thread.sleep(120L);
+    String assistantMessageId = jsonFieldFromSse(firstResult.getResponse().getContentAsString(StandardCharsets.UTF_8), "assistantMessageId");
+
+    MvcResult firstRegenerate = streamMessage(documentId, sessionId, "regen-race-user", "Regen Race User", "并发 regenerate 问题", assistantMessageId);
+    MvcResult secondRegenerate = streamMessage(documentId, sessionId, "regen-race-user", "Regen Race User", "并发 regenerate 问题", assistantMessageId);
+    Thread.sleep(180L);
+    String firstBody = firstRegenerate.getResponse().getContentAsString(StandardCharsets.UTF_8);
+    String secondBody = secondRegenerate.getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+    assertThat(firstBody).contains("event:request-started");
+    assertThat(secondBody).contains("event:request-started");
+    assertThat(jsonFieldFromSse(firstBody, "variantIndex")).isNotEqualTo(jsonFieldFromSse(secondBody, "variantIndex"));
+
+    mockMvc.perform(
+            get("/api/llm/sessions/{sessionId}", sessionId)
+                .param("documentId", documentId)
+                .headers(TestAccessHeaders.headers("regen-race-user", "Regen Race User"))
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.messages.length()").value(2))
+        .andExpect(jsonPath("$.messages[1].variants.length()").value(3));
+  }
+
   private String createDocument(String actorUser, String actorName) throws Exception {
     MvcResult result = mockMvc.perform(
             post("/api/documents")
@@ -607,6 +705,56 @@ class LlmConversationFlowTest {
         .andExpect(status().isOk())
         .andReturn();
     return jsonValue(result, "documentId");
+  }
+
+  private String createSession(String documentId, String actorUser, String actorName) throws Exception {
+    MvcResult result = mockMvc.perform(
+            post("/api/llm/sessions")
+                .headers(TestAccessHeaders.headers(actorUser, actorName))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"documentId":"%s"}
+                    """.formatted(documentId))
+        )
+        .andExpect(status().isOk())
+        .andReturn();
+    return jsonValue(result, "sessionId");
+  }
+
+  private MvcResult streamMessage(
+      String documentId,
+      String sessionId,
+      String actorUser,
+      String actorName,
+      String question,
+      String regenerateAssistantMessageId
+  ) throws Exception {
+    String regenerateField = regenerateAssistantMessageId == null
+        ? ""
+        : """
+                      ,"regenerateAssistantMessageId":"%s"
+            """.formatted(regenerateAssistantMessageId);
+    return mockMvc.perform(
+            post("/api/llm/messages/stream")
+                .headers(TestAccessHeaders.headers(actorUser, actorName))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .content("""
+                    {
+                      "documentId":"%s",
+                      "sessionId":"%s",
+                      "provider":"stub-provider",
+                      "model":"fake-gpt",
+                      "question":"%s",
+                      "selectionSnapshot":{"text":"选区内容","emptySelection":false},
+                      "headingContext":{"includeHeading":true,"headingId":"heading-1","headingText":"第一章"},
+                      "retryConfirmed":%s
+                      %s
+                    }
+                    """.formatted(documentId, sessionId, question, regenerateAssistantMessageId != null, regenerateField))
+        )
+        .andExpect(request().asyncStarted())
+        .andReturn();
   }
 
   private String jsonValue(MvcResult result, String key) throws Exception {
