@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: AI 对话式文档辅助生成
-status: in_progress
+status: complete
 stopped_at: None
-last_updated: "2026-04-28T04:00:09.353Z"
+last_updated: "2026-04-28T04:20:31.593Z"
 last_activity: 2026-04-28
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 18
-  completed_plans: 17
-  percent: 94
+  completed_plans: 18
+  percent: 100
 ---
 
 ## Accumulated Context
@@ -42,6 +42,9 @@ Last activity: 2026-04-28
 - [Phase 17-03]: Frontend assistant entries normalize variants and route rendering, reasoning, meta, copy, and writeback through activeVariant.
 - [Phase 17-03]: Regenerate streams merge into the existing assistant entry by request and variant identity instead of appending vertical messages.
 - [Phase 17-03]: Active variant switches use optimistic UI with backend persistence and rollback on failure.
+- [Phase 17-04]: Phase 17 文档将 assistant message 定义为稳定轮次容器，variants 承载具体回复。
+- [Phase 17-04]: 全量 verify 暴露的 Phase 17 mapper slice 测试缺口按回归阻塞修复处理。
+- [Phase 17-04]: rg 在当前环境被拒绝访问时，使用 git grep / Select-String 执行等价审计。
 
 ### Performance Metrics
 
@@ -50,8 +53,9 @@ Last activity: 2026-04-28
 | 17-java-ai-chatgpt | 01 | 11min | 3 | 15 |
 | 17-java-ai-chatgpt | 02 | 19min | 3 | 7 |
 | 17-java-ai-chatgpt | 03 | 12min | 3 | 3 |
+| 17-java-ai-chatgpt | 04 | 12min | 3 | 4 |
 
 ### Last Session
 
-- **Completed:** 17-03-PLAN.md
+- **Completed:** 17-04-PLAN.md
 - **Stopped At:** None

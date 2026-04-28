@@ -29,7 +29,7 @@
 - [x] **PH17-05**: 前端消息 entry 使用 `variants + activeVariantIndex`，展示、reasoning、meta、复制、写回、重新生成均读取 active variant
 - [x] **PH17-06**: 既有 assistant_text 数据迁移或兼容为 variant 0，旧会话加载不空白
 - [x] **PH17-07**: 失败或取消的 regenerate variant 不破坏既有 completed 版本，并有自动化测试覆盖 active 行为
-- [ ] **PH17-08**: docs/llm-workbench-phase14.md 记录多版本 regenerate 数据模型、协议、UI 行为和验证方式
+- [x] **PH17-08**: docs/llm-workbench-phase14.md 记录多版本 regenerate 数据模型、协议、UI 行为和验证方式
 - [x] **PH17-09**: regenerate、variant 创建、active 切换、terminal 状态具备 info 级可观测日志，且不记录敏感正文或密钥
 
 ### Content Writeback
@@ -78,7 +78,7 @@
 | PH17-05 | Phase 17 | Complete |
 | PH17-06 | Phase 17 | Complete |
 | PH17-07 | Phase 17 | Complete |
-| PH17-08 | Phase 17 | Pending |
+| PH17-08 | Phase 17 | Complete |
 | PH17-09 | Phase 17 | Complete |
 
 **Coverage:**

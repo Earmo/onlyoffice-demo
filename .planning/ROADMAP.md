@@ -20,7 +20,7 @@
 | 14.3 | SSE 接管编辑会话存活续期 | ✅ Complete | runtime-events SSE 接管编辑会话存活，移除浏览器 5 秒 heartbeat 轮询和 REST heartbeat 接口 | TBD | 5 |
 | 15 | AI 写回与抽屉收口 | ○ Planned | 将 AI 回复插入当前光标/选区，并完成抽屉替换与验证 | WRIT-01, WRIT-02 | 4 |
 | 16 | LLM 流式推送与深度思考 UI | ✅ Complete | 修复深度思考展示顺序、Markdown、折叠体验，并实现首 token 即 SSE 增量推送 | AIX-03 | 4 |
-| 17 | 将当前 Java 后端的 AI 对话重新生成功能改造成类似 ChatGPT 的多版本切换模式 | ◐ In Progress | 将重新生成改造成同一 assistant 消息下的多版本切换体验 | PH17-01, PH17-02, PH17-03, PH17-04, PH17-05, PH17-06, PH17-07, PH17-08, PH17-09 | 9 |
+| 17 | 将当前 Java 后端的 AI 对话重新生成功能改造成类似 ChatGPT 的多版本切换模式 | ✅ Complete | 将重新生成改造成同一 assistant 消息下的多版本切换体验 | PH17-01, PH17-02, PH17-03, PH17-04, PH17-05, PH17-06, PH17-07, PH17-08, PH17-09 | 9 |
 
 ## Phase Details
 
@@ -102,10 +102,10 @@ Plans:
 ### Phase 17: 将当前 Java 后端的 AI 对话重新生成功能改造成类似 ChatGPT 的多版本切换模式
 
 **Goal:** 将当前 Java 后端和前端 AI 工作台的重新生成功能改造成同一 assistant 消息下的多版本切换模式，保留请求审计、流式 reasoning、写回和失败取消语义。
-**Status:** In Progress (2/4 plans executed, updated 2026-04-28)
+**Status:** Complete (4/4 plans executed, updated 2026-04-28)
 **Requirements**: PH17-01, PH17-02, PH17-03, PH17-04, PH17-05, PH17-06, PH17-07, PH17-08, PH17-09
 **Depends on:** Phase 16
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -118,10 +118,8 @@ Plans:
 - [x] 17-03-PLAN.md — 前端 variants entry、版本切换 UI 与操作路径
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 17-04-PLAN.md — 协议文档、回归验证和安全收口
+- [x] 17-04-PLAN.md — 协议文档、回归验证和安全收口
 
 ## Next Up
 
-**Execute Phase 17: 将当前 Java 后端的 AI 对话重新生成功能改造成类似 ChatGPT 的多版本切换模式**
-
-`$gsd-execute-phase 17`
+Phase 17 已完成，可继续执行后续未完成的里程碑计划。
