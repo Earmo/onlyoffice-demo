@@ -762,7 +762,7 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.messages[1].activeVariantIndex").value(0))
         .andExpect(jsonPath("$.messages[1].assistantText").value("可用旧版本"))
         .andExpect(jsonPath("$.messages[1].variants[1].status").value("cancelled"))
-        .andExpect(jsonPath("$.messages[1].variants[1].assistantText").value("被取消的新"));
+        .andExpect(jsonPath("$.messages[1].variants[1].assistantText").value("被取消"));
   }
 
   @Test

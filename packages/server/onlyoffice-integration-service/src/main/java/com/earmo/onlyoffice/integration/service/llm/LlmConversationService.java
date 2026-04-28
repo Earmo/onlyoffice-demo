@@ -35,15 +35,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
@@ -87,6 +87,7 @@ public class LlmConversationService {
   private final LlmPromptWindowBuilder promptWindowBuilder;
   private final ObjectMapper objectMapper;
   private final Executor llmExecutor;
+  private final Map<String, Instant> explicitActiveSwitchTimes = new ConcurrentHashMap<>();
 
   /**
    * 注入会话流程所需的仓储、provider 适配器和执行器。
@@ -286,6 +287,7 @@ public class LlmConversationService {
     assistantMessage.setActiveVariantIndex(selectedVariant.getVariantIndex());
     copyVariantToAssistantMessage(assistantMessage, selectedVariant);
     documentLlmMessageRepository.update(assistantMessage);
+    explicitActiveSwitchTimes.put(messageId, Instant.now());
     log.info(
         "已切换 LLM active variant，documentId={}, sessionId={}, assistantMessageId={}, variantIndex={}, activeVariantIndex={}",
         documentId,
@@ -1025,6 +1027,18 @@ public class LlmConversationService {
   }
 
   private boolean shouldAutoActivateCompletedVariant(PreparedRequest preparedRequest) {
+    DocumentLlmMessageEntity currentAssistantMessage = documentLlmMessageRepository.findMessageByScope(
+            preparedRequest.assistantMessage().getMessageId(),
+            preparedRequest.assistantMessage().getDocumentId(),
+            preparedRequest.assistantMessage().getTenantId(),
+            preparedRequest.assistantMessage().getActorUser()
+        )
+        .orElse(preparedRequest.assistantMessage());
+    preparedRequest.assistantMessage().setActiveVariantIndex(currentAssistantMessage.getActiveVariantIndex());
+    Instant explicitSwitchTime = explicitActiveSwitchTimes.get(preparedRequest.assistantMessage().getMessageId());
+    if (explicitSwitchTime != null && explicitSwitchTime.isAfter(preparedRequest.requestEntity().getStartedTime())) {
+      return false;
+    }
     Integer currentActive = preparedRequest.assistantMessage().getActiveVariantIndex();
     Integer previousActive = preparedRequest.previousActiveVariantIndex();
     return currentActive == null && previousActive == null || currentActive != null && currentActive.equals(previousActive);
