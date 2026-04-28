@@ -780,6 +780,125 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).not.toContain("初始版本回答");
   });
 
+  it("重新生成取消后应恢复旧 completed active variant 并保留取消状态", async () => {
+    mockSessionWithVariants();
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-cancel-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-cancelled",
+          variantIndex: 1,
+          activeVariantIndex: 1
+        });
+        handlers.onDelta?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-cancel-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-cancelled",
+          variantIndex: 1,
+          delta: "半截新版本"
+        });
+        handlers.onCancelled?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-cancel-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-cancelled",
+          variantIndex: 1,
+          status: "cancelled",
+          assistantText: "半截新版本",
+          errorCode: "LLM_REQUEST_CANCELLED"
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.findAll(".message-actions button")[1].trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".thread-entry")).toHaveLength(1);
+    expect(wrapper.text()).toContain("初始版本回答");
+    expect(wrapper.text()).not.toContain("半截新版本");
+    expect(wrapper.vm.conversationEntries[0].variants).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        variantIndex: 1,
+        status: "cancelled",
+        errorCode: "LLM_REQUEST_CANCELLED"
+      })
+    ]));
+  });
+
+  it("重新生成断流回查应按 variant identity 合并并保留 terminal reasoning", async () => {
+    mockSessionWithVariants();
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-reconcile-variant",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-reconciled",
+          variantIndex: 1,
+          activeVariantIndex: 1
+        });
+        handlers.onDelta?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-reconcile-variant",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-reconciled",
+          variantIndex: 1,
+          delta: "临时"
+        });
+        handlers.onComplete?.();
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+    apiMocks.getLlmRequest.mockResolvedValueOnce({
+      documentId: "doc-1",
+      sessionId: "session-variants",
+      requestId: "request-reconcile-variant",
+      assistantMessageId: "assistant-variants",
+      variantId: "variant-reconciled",
+      variantIndex: 1,
+      activeVariantIndex: 1,
+      status: "completed",
+      assistantText: "回查完成版本",
+      providerResponseMeta: {
+        provider: "stub-provider",
+        model: "fake-gpt",
+        reasoningContent: "回查终态思考"
+      }
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.findAll(".message-actions button")[1].trigger("click");
+    await flushPromises();
+
+    expect(apiMocks.getLlmRequest).toHaveBeenCalledWith("request-reconcile-variant", "doc-1");
+    expect(wrapper.findAll(".thread-entry")).toHaveLength(1);
+    expect(wrapper.text()).toContain("回查完成版本");
+    expect(wrapper.text()).toContain("回查终态思考");
+    expect(wrapper.text()).not.toContain("初始版本回答");
+  });
+
   it("应在切换会话时提示当前流式回复会被中断", async () => {
     const abort = vi.fn(() => Promise.resolve());
     apiMocks.listLlmSessions.mockResolvedValue([

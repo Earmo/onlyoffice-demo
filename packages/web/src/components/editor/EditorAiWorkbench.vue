@@ -527,6 +527,85 @@ function isActiveVariantInProgress(entry) {
   return activeVariant(entry).status === "in_progress";
 }
 
+function findVariant(entry, event = {}) {
+  const variants = normalizeAssistantVariants(entry);
+  entry.variants = variants;
+  if (event?.variantId) {
+    const byId = variants.find(variant => variant.variantId === event.variantId);
+    if (byId) {
+      return byId;
+    }
+  }
+  if (Number.isInteger(event?.variantIndex)) {
+    const byIndex = variants.find(variant => variant.variantIndex === event.variantIndex);
+    if (byIndex) {
+      return byIndex;
+    }
+  }
+  return activeVariant(entry);
+}
+
+function upsertVariantFromEvent(entry, event = {}) {
+  if (!entry) {
+    return {};
+  }
+  const variants = normalizeAssistantVariants(entry);
+  const eventIndex = Number.isInteger(event?.variantIndex)
+    ? event.variantIndex
+    : Number.isInteger(entry.activeVariantIndex) ? entry.activeVariantIndex : variants.length;
+  let variant = event?.variantId
+    ? variants.find(item => item.variantId === event.variantId)
+    : variants.find(item => item.variantIndex === eventIndex);
+  if (!variant) {
+    variant = {
+      variantId: event?.variantId || "",
+      variantIndex: eventIndex,
+      assistantText: "",
+      streamingText: "",
+      streamingReasoningText: "",
+      status: "in_progress",
+      errorCode: "",
+      finishReason: "",
+      usage: null,
+      providerResponseMeta: {},
+      createdTime: event?.startedTime || event?.createdTime || ""
+    };
+    variants.push(variant);
+  }
+  variant.variantId = event?.variantId || variant.variantId;
+  variant.variantIndex = eventIndex;
+  if (event?.providerResponseMeta || event?.provider || event?.model) {
+    variant.providerResponseMeta = {
+      ...(variant.providerResponseMeta || {}),
+      ...(event?.providerResponseMeta || {}),
+      provider: event?.provider || variant.providerResponseMeta?.provider,
+      model: event?.model || variant.providerResponseMeta?.model
+    };
+  }
+  entry.variants = variants.sort((left, right) => left.variantIndex - right.variantIndex);
+  return variant;
+}
+
+function appendVariantDelta(entry, event = {}) {
+  const variant = upsertVariantFromEvent(entry, event);
+  variant.status = "in_progress";
+  variant.streamingText = `${variant.streamingText || ""}${event?.delta || ""}`;
+  entry.activeVariantIndex = variant.variantIndex;
+  syncEntryFromActiveVariant(entry);
+}
+
+function appendVariantReasoningDelta(entry, event = {}) {
+  const reasoningText = event?.reasoningText || "";
+  if (!reasoningText) {
+    return;
+  }
+  const variant = upsertVariantFromEvent(entry, event);
+  variant.status = "in_progress";
+  variant.streamingReasoningText = `${variant.streamingReasoningText || ""}${reasoningText}`;
+  entry.activeVariantIndex = variant.variantIndex;
+  syncEntryFromActiveVariant(entry);
+}
+
 function buildAssistantEntry(message, existingEntry = null) {
   const variants = normalizeAssistantVariants(message);
   const activeIndex = Number.isInteger(message.activeVariantIndex)
@@ -639,7 +718,8 @@ async function sendCurrentQuestion(options) {
       question: retryPayload.question,
       selectionSnapshot: retryPayload.selectionSnapshot,
       headingContext: retryPayload.headingContext,
-      retryConfirmed: true
+      retryConfirmed: true,
+      regenerateAssistantMessageId: retryPayload.regenerateAssistantMessageId || ""
     } : {
       documentId,
       sessionId: targetSessionId,
@@ -658,7 +738,10 @@ async function sendCurrentQuestion(options) {
       retryConfirmed: Boolean(mode.retryConfirmed)
     };
 
-    const pendingEntry = {
+    const regenerateEntry = payload.regenerateAssistantMessageId
+      ? conversationEntries.value.find(entry => entry.assistantMessageId === payload.regenerateAssistantMessageId)
+      : null;
+    const pendingEntry = regenerateEntry || {
       key: `pending-${Date.now()}`,
       question: payload.question,
       selectionSnapshot: payload.selectionSnapshot,
@@ -676,10 +759,15 @@ async function sendCurrentQuestion(options) {
         model: payload.model
       },
       errorCode: "",
-      responseMessage: "等待模型返回..."
+      responseMessage: "等待模型返回...",
+      variants: [],
+      activeVariantIndex: 0
     };
-    // UI 先插入一个本地 pending 条目，后面再用 request-started 补齐 requestId/assistantMessageId。
-    conversationEntries.value = [...conversationEntries.value, pendingEntry];
+    pendingEntry.pendingRegeneratePrevActiveIndex = regenerateEntry ? pendingEntry.activeVariantIndex : null;
+    if (!regenerateEntry) {
+      // UI 先插入一个本地 pending 条目，后面再用 request-started 补齐 requestId/assistantMessageId。
+      conversationEntries.value = [...conversationEntries.value, pendingEntry];
+    }
     currentSessionContextSignature.value = buildContextSignature({
       text: payload.selectionSnapshot.text,
       emptySelection: payload.selectionSnapshot.emptySelection,
@@ -693,12 +781,12 @@ async function sendCurrentQuestion(options) {
         }
         pendingEntry.assistantMessageId = event.assistantMessageId || pendingEntry.assistantMessageId;
         pendingEntry.requestId = event.requestId || pendingEntry.requestId;
-        pendingEntry.providerResponseMeta = {
-          ...(pendingEntry.providerResponseMeta || {}),
-          ...(event.providerResponseMeta || {}),
-          provider: event.provider || pendingEntry.providerResponseMeta?.provider,
-          model: event.model || pendingEntry.providerResponseMeta?.model
-        };
+        const variant = upsertVariantFromEvent(pendingEntry, event);
+        variant.status = "in_progress";
+        pendingEntry.activeVariantIndex = Number.isInteger(event.activeVariantIndex)
+          ? event.activeVariantIndex
+          : variant.variantIndex;
+        syncEntryFromActiveVariant(pendingEntry);
         if (event.sessionTitle) {
           currentSessionTitle.value = event.sessionTitle;
           sessions.value = sessions.value.map(session => session.sessionId === targetSessionId
@@ -710,50 +798,46 @@ async function sendCurrentQuestion(options) {
         conversationEntries.value = [...conversationEntries.value];
       },
       onDelta(event) {
-        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "", pendingEntry, event)) {
           return;
         }
-        pendingEntry.status = "in_progress";
-        pendingEntry.streamingText = `${pendingEntry.streamingText || ""}${event?.delta || ""}`;
+        appendVariantDelta(pendingEntry, event);
         pendingEntry.responseMessage = "正在请求模型";
         conversationEntries.value = [...conversationEntries.value];
       },
       onReasoningDelta(event) {
-        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "", pendingEntry, event)) {
           return;
         }
-        const reasoningText = event?.reasoningText || "";
-        if (!reasoningText) {
-          return;
-        }
-        pendingEntry.status = "in_progress";
-        pendingEntry.streamingReasoningText = `${pendingEntry.streamingReasoningText || ""}${reasoningText}`;
+        appendVariantReasoningDelta(pendingEntry, event);
         if (!pendingEntry.responseMessage || pendingEntry.responseMessage === "等待模型返回...") {
           pendingEntry.responseMessage = "正在深度思考...";
         }
         conversationEntries.value = [...conversationEntries.value];
       },
       onMeta(event) {
-        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "", pendingEntry, event)) {
           return;
         }
-        pendingEntry.usage = event?.usage || pendingEntry.usage;
-        pendingEntry.finishReason = event?.finishReason || pendingEntry.finishReason;
-        pendingEntry.providerResponseMeta = mergeProviderResponseMeta(pendingEntry, event?.providerResponseMeta || {});
+        const variant = upsertVariantFromEvent(pendingEntry, event);
+        variant.usage = event?.usage || variant.usage;
+        variant.finishReason = event?.finishReason || variant.finishReason;
+        variant.providerResponseMeta = mergeProviderResponseMeta(pendingEntry, event?.providerResponseMeta || {}, variant);
+        syncEntryFromActiveVariant(pendingEntry);
         conversationEntries.value = [...conversationEntries.value];
       },
       onCompleted(event) {
-        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "", pendingEntry, event)) {
           return;
         }
         applyStreamTerminalResult(pendingEntry, {
           ...event,
           status: "completed",
-          assistantText: event?.assistantText || pendingEntry.streamingText
+          assistantText: event?.assistantText || findVariant(pendingEntry, event).streamingText || ""
         });
       },
       onCancelled(event) {
-        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "")) {
+        if (!isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || event?.requestId || "", pendingEntry, event)) {
           return;
         }
         applyStreamTerminalResult(pendingEntry, {
@@ -765,10 +849,12 @@ async function sendCurrentQuestion(options) {
       },
       async onError(eventOrError) {
         if (isTerminalStreamPayload(eventOrError)) {
-          applyStreamTerminalResult(pendingEntry, {
-            ...eventOrError,
-            status: "failed"
-          });
+          if (isCurrentRequestTarget(documentId, targetSessionId, pendingEntry.requestId || eventOrError?.requestId || "", pendingEntry, eventOrError)) {
+            applyStreamTerminalResult(pendingEntry, {
+              ...eventOrError,
+              status: "failed"
+            });
+          }
           return;
         }
         // 网络中断或页面切换导致的非终态异常，只允许做一次 request 查询补偿。
@@ -805,7 +891,7 @@ async function reconcileRequestOnce(entry, sessionId, documentId, originalError)
   }
   try {
     const result = await getLlmRequest(entry.requestId, documentId);
-    if (!isCurrentRequestTarget(documentId, sessionId, entry.requestId)) {
+    if (!isCurrentRequestTarget(documentId, sessionId, entry.requestId, entry, result)) {
       return;
     }
     if (["completed", "failed", "cancelled"].includes(result.status)) {
@@ -827,16 +913,20 @@ async function cancelSending() {
 
 function applyStreamTerminalResult(entry, event) {
   // 把 SSE terminal event 规范化成与 GET /requests/{id} 相同的结构，后续统一复用 applyRequestResult。
+  const variant = findVariant(entry, event);
   applyRequestResult(entry, {
     documentId: props.runtimeContext.documentId,
     requestId: event.requestId || entry.requestId,
     sessionId: event.sessionId || currentSessionId.value,
     assistantMessageId: event.assistantMessageId || entry.assistantMessageId,
+    variantId: event.variantId || variant.variantId || "",
+    variantIndex: Number.isInteger(event.variantIndex) ? event.variantIndex : variant.variantIndex,
+    activeVariantIndex: event.activeVariantIndex,
     status: event.status,
-    assistantText: event.assistantText || entry.assistantText || entry.streamingText || "",
+    assistantText: event.assistantText || variant.assistantText || variant.streamingText || "",
     usage: event.usage || null,
     finishReason: event.finishReason || "",
-    providerResponseMeta: mergeProviderResponseMeta(entry, event.providerResponseMeta || {}),
+    providerResponseMeta: mergeProviderResponseMeta(entry, event.providerResponseMeta || {}, variant),
     errorCode: event.errorCode || "",
     startedTime: event.startedTime || "",
     finishedTime: event.finishedTime || ""
@@ -850,20 +940,30 @@ function applyRequestResult(entry, result) {
   // 不论结果来自流式终态、取消接口还是最终态回查，UI 收口都在这里，避免三套状态机。
   entry.assistantMessageId = result.assistantMessageId || entry.assistantMessageId;
   entry.requestId = result.requestId || entry.requestId;
-  entry.status = result.status;
-  entry.assistantText = result.assistantText || entry.assistantText || entry.streamingText || "";
-  entry.providerResponseMeta = mergeProviderResponseMeta(entry, result.providerResponseMeta || {});
-  entry.streamingText = "";
-  entry.streamingReasoningText = "";
-  entry.usage = result.usage || null;
-  entry.finishReason = result.finishReason || "";
-  entry.errorCode = result.errorCode || "";
+  const variant = upsertVariantFromEvent(entry, result);
+  variant.status = result.status;
+  variant.assistantText = result.assistantText || variant.assistantText || variant.streamingText || "";
+  variant.providerResponseMeta = mergeProviderResponseMeta(entry, result.providerResponseMeta || {}, variant);
+  variant.streamingText = "";
+  variant.streamingReasoningText = "";
+  variant.usage = result.usage || null;
+  variant.finishReason = result.finishReason || "";
+  variant.errorCode = result.errorCode || "";
+  if (result.status === "completed") {
+    entry.activeVariantIndex = Number.isInteger(result.activeVariantIndex) ? result.activeVariantIndex : variant.variantIndex;
+  } else if (Number.isInteger(entry.pendingRegeneratePrevActiveIndex)) {
+    entry.activeVariantIndex = entry.pendingRegeneratePrevActiveIndex;
+  } else {
+    entry.activeVariantIndex = Number.isInteger(result.activeVariantIndex) ? result.activeVariantIndex : variant.variantIndex;
+  }
+  syncEntryFromActiveVariant(entry);
   entry.responseMessage = humanizeResult(result);
   conversationEntries.value = [...conversationEntries.value];
   if (["completed", "failed", "cancelled"].includes(result.status) && currentRequestId.value === entry.requestId) {
     currentRequestId.value = "";
     currentRequestState.value = "";
     activeStream.value = null;
+    entry.pendingRegeneratePrevActiveIndex = null;
   }
 }
 
@@ -902,16 +1002,20 @@ function findActiveConversationEntry() {
 }
 
 function buildLocalCancelledResult(entry) {
+  const variant = activeVariant(entry);
   return {
     documentId: props.runtimeContext.documentId,
     requestId: entry.requestId || "",
     sessionId: currentSessionId.value,
     assistantMessageId: entry.assistantMessageId || "",
+    variantId: variant.variantId || "",
+    variantIndex: variant.variantIndex,
+    activeVariantIndex: entry.activeVariantIndex,
     status: "cancelled",
-    assistantText: entry.assistantText || entry.streamingText || "",
+    assistantText: variant.assistantText || variant.streamingText || "",
     usage: null,
     finishReason: "",
-    providerResponseMeta: entry.providerResponseMeta || {},
+    providerResponseMeta: variant.providerResponseMeta || {},
     errorCode: "LLM_REQUEST_CANCELLED",
     startedTime: "",
     finishedTime: ""
@@ -922,11 +1026,16 @@ function markPendingEntryFailed(entry, error) {
   if (!entry) {
     return;
   }
-  entry.status = "failed";
-  entry.assistantText = entry.assistantText || entry.streamingText || "";
-  entry.errorCode = error?.errorCode || "NETWORK_ERROR";
+  const variant = activeVariant(entry);
+  variant.status = "failed";
+  variant.assistantText = variant.assistantText || variant.streamingText || "";
+  variant.errorCode = error?.errorCode || "NETWORK_ERROR";
+  if (Number.isInteger(entry.pendingRegeneratePrevActiveIndex)) {
+    entry.activeVariantIndex = entry.pendingRegeneratePrevActiveIndex;
+  }
+  syncEntryFromActiveVariant(entry);
   entry.responseMessage = error?.message || "请求失败";
-  entry.streamingText = "";
+  variant.streamingText = "";
   conversationEntries.value = [...conversationEntries.value];
   currentRequestId.value = "";
   currentRequestState.value = "";
@@ -942,10 +1051,21 @@ function isActiveStreamTarget(documentId, sessionId) {
   return documentId === props.runtimeContext.documentId && sessionId === currentSessionId.value;
 }
 
-function isCurrentRequestTarget(documentId, sessionId, requestId) {
-  return documentId === props.runtimeContext.documentId
-    && sessionId === currentSessionId.value
-    && (!currentRequestId.value || requestId === currentRequestId.value || !requestId);
+function isCurrentRequestTarget(documentId, sessionId, requestId, entry = null, event = null) {
+  if (documentId !== props.runtimeContext.documentId || sessionId !== currentSessionId.value) {
+    return false;
+  }
+  if (currentRequestId.value && requestId && requestId !== currentRequestId.value) {
+    return false;
+  }
+  if (entry && event?.assistantMessageId && entry.assistantMessageId && event.assistantMessageId !== entry.assistantMessageId) {
+    return false;
+  }
+  if (entry && event?.variantId) {
+    const variant = findVariant(entry, event);
+    return !variant.variantId || variant.variantId === event.variantId;
+  }
+  return true;
 }
 
 function humanizeResult(result) {
@@ -1093,7 +1213,8 @@ function handleRegenerate(entryIndex) {
     retryPayload: {
       question: entry.question,
       selectionSnapshot: entry.selectionSnapshot,
-      headingContext: entry.headingContext
+      headingContext: entry.headingContext,
+      regenerateAssistantMessageId: entry.assistantMessageId
     }
   });
 }
@@ -1170,12 +1291,12 @@ function activeUsage(entry) {
   return activeVariant(entry).usage || null;
 }
 
-function mergeProviderResponseMeta(entry, incomingMeta = {}) {
-  const existing = { ...(entry?.providerResponseMeta || {}) };
+function mergeProviderResponseMeta(entry, incomingMeta = {}, variant = activeVariant(entry)) {
+  const existing = { ...(variant?.providerResponseMeta || {}) };
   const incoming = { ...(incomingMeta || {}) };
   const incomingReasoning = typeof incoming.reasoningContent === "string" ? incoming.reasoningContent.trim() : "";
   const existingReasoning = typeof existing.reasoningContent === "string" ? existing.reasoningContent.trim() : "";
-  const streamedReasoning = (entry?.streamingReasoningText || "").trim();
+  const streamedReasoning = (variant?.streamingReasoningText || entry?.streamingReasoningText || "").trim();
 
   if (!incomingReasoning) {
     delete incoming.reasoningContent;
