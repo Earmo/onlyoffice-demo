@@ -1513,12 +1513,21 @@ function formatTimestamp(value) {
 .composer-actions,
 .dialog-actions,
 .panel-title-row,
-.message-actions,
 .meta-line,
 .provider-row {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.message-actions .el-button + .el-button {
+  margin-left: 0;
 }
 
 .workbench-top-bar,

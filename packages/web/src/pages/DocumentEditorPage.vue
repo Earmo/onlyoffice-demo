@@ -245,9 +245,11 @@ onMounted(loadEditorPageData);
           <el-button link type="primary" @click="router.push('/')" class="back-button">
             <el-icon style="margin-right: 4px;"><ArrowLeft /></el-icon> 返回文档列表
           </el-button>
+
+          <el-divider style="margin: 16px 0" />
+
           <div class="sidebar-header-row">
             <div class="sidebar-header-meta">
-              <p class="eyebrow">独立编辑工作台</p>
               <h1 class="sidebar-doc-title" :title="currentDocument?.title || currentDocumentId">
                 {{ currentDocument?.title || currentDocumentId }}
               </h1>
@@ -256,23 +258,13 @@ onMounted(loadEditorPageData);
               <el-icon size="16"><DArrowLeft /></el-icon>
             </el-button>
           </div>
-          <p class="muted-copy sidebar-notice" style="margin-bottom: 12px;">
-            当前工作台已为 AI 对话侧栏预留选区与章节导航能力。离开页面前会显式结束编辑会话。
-          </p>
+          <p class="muted-copy" style="margin-top: 8px;">最近保存：<code>{{ formatTimestamp(currentDocument?.lastSavedTime) }}</code></p>
+          <p class="muted-copy" style="margin-bottom: 12px;">当前状态：<el-tag size="small">{{ currentDocument?.status || "未知" }}</el-tag></p>
           <div class="toolbar-actions">
             <el-button type="primary" size="small" :disabled="isLoading || isLeaving" @click="handleFullRefresh">
               重置并刷新编辑器
             </el-button>
           </div>
-        </div>
-
-        <el-divider style="margin: 16px 0" />
-
-        <div class="sidebar-section">
-          <p class="eyebrow">当前文档</p>
-          <h2 style="margin: 4px 0 8px; font-size: 16px;">{{ currentDocument?.title || "未命名文档" }}</h2>
-          <p class="muted-copy">最近保存：<code>{{ formatTimestamp(currentDocument?.lastSavedTime) }}</code></p>
-          <p class="muted-copy">当前状态：<el-tag size="small">{{ currentDocument?.status || "未知" }}</el-tag></p>
         </div>
 
         <el-divider style="margin: 16px 0" />
