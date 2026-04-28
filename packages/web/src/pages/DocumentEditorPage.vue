@@ -228,12 +228,15 @@ onMounted(loadEditorPageData);
 
     <el-container key="content" v-else class="editor-layout">
       <div
-        v-if="!isSidebarOpen"
-        class="sidebar-strip-toggle"
+        class="drawer-collapse-btn drawer-collapse-btn-left"
+        :class="{ 'is-open': isSidebarOpen }"
         @click="toggleSidebar"
-        title="展开侧边栏"
+        :title="isSidebarOpen ? '收起侧边栏' : '展开侧边栏'"
       >
-        <el-icon><DArrowRight /></el-icon>
+        <el-icon>
+          <DArrowLeft v-if="isSidebarOpen" />
+          <DArrowRight v-else />
+        </el-icon>
       </div>
 
       <el-aside
@@ -254,9 +257,7 @@ onMounted(loadEditorPageData);
                 {{ currentDocument?.title || currentDocumentId }}
               </h1>
             </div>
-            <el-button type="primary" @click="toggleSidebar" title="收起侧边栏" style="padding: 8px;">
-              <el-icon size="16"><DArrowLeft /></el-icon>
-            </el-button>
+            
           </div>
           <p class="muted-copy" style="margin-top: 8px;">最近保存：<code>{{ formatTimestamp(currentDocument?.lastSavedTime) }}</code></p>
           <p class="muted-copy" style="margin-bottom: 12px;">当前状态：<el-tag size="small">{{ currentDocument?.status || "未知" }}</el-tag></p>
@@ -319,6 +320,8 @@ onMounted(loadEditorPageData);
 }
 
 .editor-layout {
+  position: relative;
+  position: relative;
   height: 100vh;
   min-height: 0;
 }
@@ -339,29 +342,7 @@ onMounted(loadEditorPageData);
   flex-direction: column;
 }
 
-.sidebar-strip-toggle {
-  height: 48px;
-  width: 24px;
-  background: var(--el-color-primary);
-  border: 1px solid var(--el-color-primary);
-  border-left: none;
-  border-radius: 0 4px 4px 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 100;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
-  margin-top: auto;
-  margin-bottom: auto;
-  color: #fff;
-  transition: all 0.2s ease;
-}
 
-.sidebar-strip-toggle:hover {
-  background-color: var(--el-color-primary-light-3);
-  border-color: var(--el-color-primary-light-3);
-}
 
 .back-button {
   margin-bottom: 12px;
@@ -484,5 +465,40 @@ onMounted(loadEditorPageData);
   display: flex;
   align-items: center;
   padding: 6px 0;
+}
+
+.drawer-collapse-btn {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 60px;
+  background: #ffffff;
+  border: 1px solid #dcdfe6;
+  color: #1677ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+.drawer-collapse-btn:hover {
+  background: #f4f8ff;
+  border-color: #b7d7ff;
+  color: #1677ff;
+  width: 24px;
+}
+.drawer-collapse-btn:active {
+  transform: translateY(-50%) scale(0.96);
+}
+.drawer-collapse-btn-left {
+  left: 0;
+  border-radius: 0 14px 14px 0;
+  border-left: none;
+}
+.drawer-collapse-btn-left.is-open {
+  left: 300px;
 }
 </style>

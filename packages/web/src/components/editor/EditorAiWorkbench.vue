@@ -1166,11 +1166,7 @@ function formatTimestamp(value) {
   <div class="ai-workbench-shell">
     <div class="workbench-top-bar">
       <div class="top-actions-left">
-        <el-tooltip content="收起侧边栏" placement="bottom">
-          <el-button type="primary" @click="emit('close')" style="padding: 8px; border: none; border-radius: 6px;">
-            <el-icon size="16"><DArrowRight /></el-icon>
-          </el-button>
-        </el-tooltip>
+        
         <span class="session-title"><b>{{ currentSessionTitle }}</b></span>
         <el-tag
           v-if="props.runtimeContext.saveStatus"

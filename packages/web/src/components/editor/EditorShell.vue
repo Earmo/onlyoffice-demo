@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { DArrowLeft } from "@element-plus/icons-vue";
+import { DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
 import { apiFetch, buildApiUrl, createAccessContextHeaders } from "../../lib/api";
 import EditorAiWorkbench from "./EditorAiWorkbench.vue";
@@ -894,12 +894,16 @@ defineExpose({
       </div>
 
       <div
-        v-if="shouldShowConsole && !isConsoleOpen"
-        class="stage-edge-toggle"
-        title="打开 AI 对话工作台"
+        v-if="shouldShowConsole"
+        class="drawer-collapse-btn drawer-collapse-btn-right"
+        :class="{ 'is-open': isConsoleOpen }"
         @click="toggleConsole"
+        :title="isConsoleOpen ? '收起 AI 对话工作台' : '打开 AI 对话工作台'"
       >
-        <el-icon><DArrowLeft /></el-icon>
+        <el-icon>
+          <DArrowRight v-if="isConsoleOpen" />
+          <DArrowLeft v-else />
+        </el-icon>
       </div>
     </el-main>
 
@@ -951,32 +955,7 @@ defineExpose({
   height: 100%;
 }
 
-.stage-edge-toggle {
-  /* 抽屉收起时保留一条窄触发条，方便快速唤起右侧工作台。 */
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 24px;
-  height: 48px;
-  background: var(--el-color-primary);
-  border: 1px solid var(--el-color-primary);
-  border-right: none;
-  border-radius: 4px 0 0 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 100;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.05);
-  color: #fff;
-  transition: all 0.2s ease;
-}
 
-.stage-edge-toggle:hover {
-  background-color: var(--el-color-primary-light-3);
-  border-color: var(--el-color-primary-light-3);
-}
 
 .floating-console {
   width: 800px;
@@ -1183,5 +1162,51 @@ defineExpose({
 
 .save-status-events time {
   color: var(--el-text-color-secondary);
+}
+
+
+.drawer-collapse-btn {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 60px;
+  background: #ffffff;
+  border: 1px solid #dcdfe6;
+  color: #1677ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+.drawer-collapse-btn:hover {
+  background: #f4f8ff;
+  border-color: #b7d7ff;
+  color: #1677ff;
+  width: 24px;
+}
+.drawer-collapse-btn:active {
+  transform: translateY(-50%) scale(0.96);
+}
+.drawer-collapse-btn-right {
+  right: 0;
+  border-radius: 14px 0 0 14px;
+  border-right: none;
+}
+.drawer-collapse-btn-right.is-open {
+  right: 800px;
+}
+@media (max-width: 1439px) {
+  .drawer-collapse-btn-right.is-open {
+    right: 450px;
+  }
+}
+@media (max-width: 900px) {
+  .drawer-collapse-btn-right.is-open {
+    right: 100vw;
+  }
 }
 </style>
