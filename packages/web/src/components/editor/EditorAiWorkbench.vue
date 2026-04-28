@@ -96,6 +96,7 @@ const selectedModel = ref("");
 const activeStream = ref(null);
 const writeBackDialogVisible = ref(false);
 const writeBackHtml = ref("");
+const writebackPreviewRef = ref(null);
 const writeBackMode = ref("cursor");
 const writeBackHasSelection = ref(false);
 const variantSwitching = ref({});
@@ -1440,9 +1441,10 @@ function openWriteBackDialog(entry) {
 }
 
 function confirmWriteBack() {
+  const currentHtml = writebackPreviewRef.value ? writebackPreviewRef.value.innerHTML : writeBackHtml.value;
   writeBackStore.status = "loading";
   emit("insert-html", {
-    html: writeBackHtml.value,
+    html: currentHtml,
   });
 }
 
@@ -1778,9 +1780,11 @@ function formatTimestamp(value) {
       append-to-body
     >
       <div
+        ref="writebackPreviewRef"
         class="writeback-preview markdown-body"
+        contenteditable="true"
         v-html="writeBackHtml"
-        style="max-height:320px;overflow-y:auto;border:1px solid var(--el-border-color);border-radius:4px;padding:12px;margin-bottom:16px;"
+        style="max-height:320px;overflow-y:auto;border:1px solid var(--el-border-color);border-radius:4px;padding:12px;margin-bottom:16px;outline:none;"
       ></div>
 
       <el-alert
@@ -1791,7 +1795,7 @@ function formatTimestamp(value) {
         description="注意：确认框打开后文档选区可能因焦点转移而失效。如「替换选区」未能替换预期内容，请关闭此框在文档中重新选中后写入。"
       />
 
-      <el-radio-group v-model="writeBackMode" style="display:flex;flex-direction:column;gap:8px;">
+      <el-radio-group v-model="writeBackMode" style="display:flex;flex-direction:row;gap:16px;justify-content:center;">
         <el-radio value="cursor">插入到光标</el-radio>
         <el-radio value="replace" :disabled="!writeBackHasSelection">
           替换当前选区
