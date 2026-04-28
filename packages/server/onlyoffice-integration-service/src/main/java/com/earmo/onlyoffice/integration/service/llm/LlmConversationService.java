@@ -962,16 +962,20 @@ public class LlmConversationService {
             accessContext.actorUser()
         )
         .orElse(null);
-    if (variant != null) {
+    boolean variantUpdated = false;
+    if (variant != null && (accumulator != null || !executionRegistry.hasExecution(requestEntity.getRequestId()))) {
       variant.setStatus(STATUS_CANCELLED);
       applyPartialVariantContent(variant, accumulator);
       variant.setErrorCode(LlmErrorCodes.LLM_REQUEST_CANCELLED);
       variant.setUpdatedTime(Instant.now());
       documentLlmMessageVariantRepository.update(variant);
+      variantUpdated = true;
     }
-    DocumentLlmMessageVariantEntity activeVariant = activeVariantForMessage(assistantMessage, variant);
-    copyVariantToAssistantMessage(assistantMessage, activeVariant);
-    documentLlmMessageRepository.update(assistantMessage);
+    if (variantUpdated) {
+      DocumentLlmMessageVariantEntity activeVariant = activeVariantForMessage(assistantMessage, variant);
+      copyVariantToAssistantMessage(assistantMessage, activeVariant);
+      documentLlmMessageRepository.update(assistantMessage);
+    }
   }
 
   /**
