@@ -23,12 +23,12 @@
 ### AI Conversation Variants
 
 - [x] **PH17-01**: 后端持久化 `document_llm_message_variant`，并为 assistant message 维护 `active_variant_index`
-- [ ] **PH17-02**: 首次生成创建 assistant message + variant 0；重新生成在同一 assistant message 下新增 variant，不新增重复 user/assistant 消息
+- [x] **PH17-02**: 首次生成创建 assistant message + variant 0；重新生成在同一 assistant message 下新增 variant，不新增重复 user/assistant 消息
 - [x] **PH17-03**: SSE、request status、session detail DTO 暴露 `variantId`、`variantIndex`、`activeVariantIndex` 和必要的 variants 数组
-- [ ] **PH17-04**: prompt history 对每个 assistant message 只使用 active variant 文本
+- [x] **PH17-04**: prompt history 对每个 assistant message 只使用 active variant 文本
 - [ ] **PH17-05**: 前端消息 entry 使用 `variants + activeVariantIndex`，展示、reasoning、meta、复制、写回、重新生成均读取 active variant
 - [x] **PH17-06**: 既有 assistant_text 数据迁移或兼容为 variant 0，旧会话加载不空白
-- [ ] **PH17-07**: 失败或取消的 regenerate variant 不破坏既有 completed 版本，并有自动化测试覆盖 active 行为
+- [x] **PH17-07**: 失败或取消的 regenerate variant 不破坏既有 completed 版本，并有自动化测试覆盖 active 行为
 - [ ] **PH17-08**: docs/llm-workbench-phase14.md 记录多版本 regenerate 数据模型、协议、UI 行为和验证方式
 - [x] **PH17-09**: regenerate、variant 创建、active 切换、terminal 状态具备 info 级可观测日志，且不记录敏感正文或密钥
 
@@ -72,12 +72,12 @@
 | WRIT-02 | Phase 15 | Pending |
 | AIX-03 | Phase 16 | Complete |
 | PH17-01 | Phase 17 | Complete |
-| PH17-02 | Phase 17 | Pending |
+| PH17-02 | Phase 17 | Complete |
 | PH17-03 | Phase 17 | Complete |
-| PH17-04 | Phase 17 | Pending |
+| PH17-04 | Phase 17 | Complete |
 | PH17-05 | Phase 17 | Pending |
 | PH17-06 | Phase 17 | Complete |
-| PH17-07 | Phase 17 | Pending |
+| PH17-07 | Phase 17 | Complete |
 | PH17-08 | Phase 17 | Pending |
 | PH17-09 | Phase 17 | Complete |
 

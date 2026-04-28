@@ -3,14 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: AI 对话式文档辅助生成
 status: in_progress
-last_updated: "2026-04-28T03:21:12.164Z"
+stopped_at: None
+last_updated: "2026-04-28T03:44:51.436Z"
 last_activity: 2026-04-28
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 18
-  completed_plans: 15
-  percent: 83
+  completed_plans: 17
+  percent: 94
 ---
 
 ## Accumulated Context
@@ -34,14 +35,19 @@ Last activity: 2026-04-28
 - Phase 17 Plan 01 使用 `document_llm_message_variant` 表承载 assistant 多版本回复，`document_llm_message.active_variant_index` 保存当前版本。
 - LLM variant DTO 新字段保留向后兼容构造器，避免破坏既有 controller/service 调用点。
 - Phase 17 Plan 01 的 service 层测试验证使用 data+service reactor，避免本机旧 data SNAPSHOT artifact 干扰编译。
+- [Phase 17-02]: Regenerate 复用原 user/assistant 轮次，只在 assistant message 下分配新 variant。
+- [Phase 17-02]: Completed variant 只有在用户未于 request start 后显式切换 active variant 时才自动切 active。
+- [Phase 17-02]: Prompt history 在发送给 provider 前，将 assistant message 投影为 active variant 文本。
+- [Phase 17-02]: 验证使用 data+service Maven reactor，避免本地旧 data SNAPSHOT class 干扰。
 
 ### Performance Metrics
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 17-java-ai-chatgpt | 01 | 11min | 3 | 15 |
+| 17-java-ai-chatgpt | 02 | 19min | 3 | 7 |
 
 ### Last Session
 
-- **Completed:** 17-01-PLAN.md
+- **Completed:** 17-02-PLAN.md
 - **Stopped At:** None
