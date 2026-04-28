@@ -51,7 +51,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      TZ: Asia/Shanghai
+      # MinIO 镜像不内置完整 zoneinfo，使用 POSIX 写法确保 date 显示 +0800。
+      TZ: CST-8
       MINIO_ROOT_USER: onlyoffice
       MINIO_ROOT_PASSWORD: onlyoffice123
     healthcheck:
