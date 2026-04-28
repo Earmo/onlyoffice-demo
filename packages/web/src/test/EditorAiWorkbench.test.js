@@ -623,6 +623,81 @@ describe("EditorAiWorkbench", () => {
     expect(testNodes.indexOf(reasoningPanel.element)).toBeLessThan(testNodes.indexOf(assistantAnswer.element));
   });
 
+  it("应从历史 variants 只渲染 active variant", async () => {
+    apiMocks.listLlmSessions.mockResolvedValue([
+      {
+        sessionId: "session-variants",
+        documentId: "doc-1",
+        title: "多版本会话",
+        updatedTime: "2026-04-28T10:00:00Z"
+      }
+    ]);
+    apiMocks.getLlmSession.mockResolvedValue({
+      sessionId: "session-variants",
+      documentId: "doc-1",
+      title: "多版本会话",
+      lastSnapshotText: "历史选区",
+      lastSnapshotIsEmpty: false,
+      lastHeadingId: "heading-1",
+      lastHeadingText: "第一章",
+      messages: [
+        {
+          role: "user",
+          messageId: "user-variants",
+          question: "历史问题",
+          snapshotText: "历史选区",
+          snapshotEmptySelection: false,
+          includeHeading: true,
+          headingId: "heading-1",
+          headingText: "第一章"
+        },
+        {
+          role: "assistant",
+          messageId: "assistant-variants",
+          activeVariantIndex: 1,
+          variants: [
+            {
+              variantId: "variant-0",
+              variantIndex: 0,
+              status: "completed",
+              assistantText: "旧版本回答",
+              providerResponseMeta: {
+                provider: "stub-provider",
+                model: "fake-gpt",
+                reasoningContent: "旧版本思考"
+              }
+            },
+            {
+              variantId: "variant-1",
+              variantIndex: 1,
+              status: "completed",
+              assistantText: "当前版本回答",
+              finishReason: "stop",
+              usage: { promptTokens: 2, completionTokens: 3, totalTokens: 5 },
+              providerResponseMeta: {
+                provider: "stub-provider",
+                model: "fake-gpt-2",
+                reasoningContent: "当前版本思考"
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    expect(wrapper.findAll(".thread-entry")).toHaveLength(1);
+    expect(wrapper.text()).toContain("当前版本回答");
+    expect(wrapper.text()).toContain("当前版本思考");
+    expect(wrapper.text()).toContain("provider: stub-provider");
+    expect(wrapper.text()).toContain("model: fake-gpt-2");
+    expect(wrapper.text()).toContain("promptTokens: 2");
+    expect(wrapper.text()).not.toContain("旧版本回答");
+    expect(wrapper.text()).not.toContain("旧版本思考");
+  });
+
   it("应在切换会话时提示当前流式回复会被中断", async () => {
     const abort = vi.fn(() => Promise.resolve());
     apiMocks.listLlmSessions.mockResolvedValue([
