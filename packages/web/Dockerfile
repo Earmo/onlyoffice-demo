@@ -10,6 +10,9 @@ RUN pnpm build
 
 FROM nginx:1.25-alpine
 
+ENV TZ=Asia/Shanghai
+RUN apk add --no-cache tzdata
+
 # 运行阶段只保留静态产物和 nginx 配置，减小镜像体积。
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
