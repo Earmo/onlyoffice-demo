@@ -1626,7 +1626,7 @@ function formatTimestamp(value) {
             ></div>
             <p v-else class="assistant-placeholder" data-testid="assistant-answer">{{ entry.responseMessage }}</p>
 
-            <div class="message-actions" v-if="variantCount(entry) > 1 || activeStatus(entry) !== 'failed'">
+            <div class="message-actions">
               <div v-if="variantCount(entry) > 1" class="variant-switcher" aria-label="切换回复版本">
                 <el-button
                   size="small"

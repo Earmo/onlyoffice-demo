@@ -597,6 +597,8 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).toContain("失败前回答");
     expect(wrapper.text()).toContain("失败前思考");
     expect(wrapper.text()).toContain("LLM_PROVIDER_UPSTREAM_ERROR");
+    expect(wrapper.find('[data-testid="regenerate-entry"]').exists()).toBe(true);
+    expect(wrapper.find('button[title="将回复写入文档"]').exists()).toBe(false);
   });
 
   it("应在流异常断开后只回查一次最终态", async () => {
