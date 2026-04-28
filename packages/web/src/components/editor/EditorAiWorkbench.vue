@@ -12,6 +12,7 @@ import {
   deleteLlmSession,
   renameLlmSession,
   listLlmSessions,
+  setLlmActiveVariant,
   startLlmMessageStream
 } from "./editorAiApi";
 import markdownit from "markdown-it";
@@ -99,6 +100,7 @@ const writeBackDialogVisible = ref(false);
 const writeBackHtml = ref("");
 const writeBackMode = ref("cursor");
 const writeBackHasSelection = ref(false);
+const variantSwitching = ref({});
 
 let bootstrapToken = 0;
 let sessionLoadToken = 0;
@@ -1203,6 +1205,14 @@ function handleCopy(text) {
   }
 }
 
+function handleCopyEntry(entry) {
+  if (isActiveVariantInProgress(entry)) {
+    ElMessage.info("当前版本仍在生成中，完成后再复制");
+    return;
+  }
+  handleCopy(renderAssistantText(entry));
+}
+
 function handleRegenerate(entryIndex) {
   const entry = conversationEntries.value[entryIndex];
   if (!entry) {
@@ -1291,6 +1301,67 @@ function activeUsage(entry) {
   return activeVariant(entry).usage || null;
 }
 
+function variantCount(entry) {
+  return normalizeAssistantVariants(entry).length;
+}
+
+function activeVariantPosition(entry) {
+  const variants = normalizeAssistantVariants(entry);
+  const activeIndex = activeVariant(entry).variantIndex;
+  const position = variants.findIndex(variant => variant.variantIndex === activeIndex);
+  return position >= 0 ? position : 0;
+}
+
+function variantSwitchKey(entry) {
+  return entry?.assistantMessageId || entry?.key || "";
+}
+
+function isVariantSwitching(entry) {
+  return Boolean(variantSwitching.value[variantSwitchKey(entry)]);
+}
+
+function activeVariantCounter(entry) {
+  return `${activeVariantPosition(entry) + 1}/${variantCount(entry)}`;
+}
+
+function canSwitchVariant(entry, direction) {
+  const nextPosition = activeVariantPosition(entry) + direction;
+  return nextPosition >= 0 && nextPosition < variantCount(entry) && !isVariantSwitching(entry);
+}
+
+async function switchActiveVariant(entry, direction) {
+  if (!entry || !canSwitchVariant(entry, direction)) {
+    return;
+  }
+  const variants = normalizeAssistantVariants(entry);
+  const previousIndex = entry.activeVariantIndex;
+  const target = variants[activeVariantPosition(entry) + direction];
+  const key = variantSwitchKey(entry);
+  variantSwitching.value = { ...variantSwitching.value, [key]: true };
+  setActiveVariantIndex(entry, target.variantIndex);
+  conversationEntries.value = [...conversationEntries.value];
+  try {
+    const result = await setLlmActiveVariant({
+      documentId: props.runtimeContext.documentId,
+      sessionId: currentSessionId.value,
+      assistantMessageId: entry.assistantMessageId,
+      variantId: target.variantId || "",
+      variantIndex: target.variantIndex
+    });
+    if (Number.isInteger(result?.activeVariantIndex)) {
+      setActiveVariantIndex(entry, result.activeVariantIndex);
+    }
+  } catch (error) {
+    setActiveVariantIndex(entry, previousIndex);
+    ElMessage.error(error?.message || "切换版本失败");
+  } finally {
+    const nextSwitching = { ...variantSwitching.value };
+    delete nextSwitching[key];
+    variantSwitching.value = nextSwitching;
+    conversationEntries.value = [...conversationEntries.value];
+  }
+}
+
 function mergeProviderResponseMeta(entry, incomingMeta = {}, variant = activeVariant(entry)) {
   const existing = { ...(variant?.providerResponseMeta || {}) };
   const incoming = { ...(incomingMeta || {}) };
@@ -1319,9 +1390,13 @@ function mergeProviderResponseMeta(entry, incomingMeta = {}, variant = activeVar
 }
 
 function openWriteBackDialog(entry) {
+  if (isActiveVariantInProgress(entry)) {
+    ElMessage.info("当前版本仍在生成中，完成后再写入文档");
+    return;
+  }
   // 对话框打开后焦点会离开 ONLYOFFICE，选区状态必须使用打开瞬间的快照。
   writeBackHasSelection.value = !props.runtimeContext.hasEmptySelection;
-  const rawHtml = md.render(entry.assistantText || "");
+  const rawHtml = md.render(renderAssistantText(entry));
   writeBackHtml.value = DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS: WRITE_BACK_ALLOWED_TAGS,
     ALLOWED_ATTR: WRITE_BACK_ALLOWED_ATTR,
@@ -1524,7 +1599,30 @@ function formatTimestamp(value) {
             <p v-else class="assistant-placeholder" data-testid="assistant-answer">{{ entry.responseMessage }}</p>
 
             <div class="message-actions" v-if="activeStatus(entry) !== 'failed'">
-              <el-button size="small" text @click="handleCopy(renderAssistantText(entry))">
+              <div v-if="variantCount(entry) > 1" class="variant-switcher" aria-label="切换回复版本">
+                <el-button
+                  size="small"
+                  text
+                  data-testid="variant-prev"
+                  :disabled="!canSwitchVariant(entry, -1)"
+                  @click="switchActiveVariant(entry, -1)"
+                >‹</el-button>
+                <span class="variant-counter" data-testid="variant-counter">{{ activeVariantCounter(entry) }}</span>
+                <el-button
+                  size="small"
+                  text
+                  data-testid="variant-next"
+                  :disabled="!canSwitchVariant(entry, 1)"
+                  @click="switchActiveVariant(entry, 1)"
+                >›</el-button>
+              </div>
+              <el-button
+                size="small"
+                text
+                data-testid="copy-active-variant"
+                :disabled="isActiveVariantInProgress(entry) || !renderAssistantText(entry)"
+                @click="handleCopyEntry(entry)"
+              >
                 <el-icon><DocumentCopy /></el-icon>
               </el-button>
               <el-button size="small" text @click="handleRegenerate(index)">
@@ -1737,6 +1835,21 @@ function formatTimestamp(value) {
 
 .message-actions .el-button + .el-button {
   margin-left: 0;
+}
+
+.variant-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+  color: var(--el-text-color-secondary);
+}
+
+.variant-counter {
+  min-width: 28px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 24px;
 }
 
 .workbench-top-bar,

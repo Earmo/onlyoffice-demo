@@ -72,3 +72,18 @@ export function cancelLlmRequest(requestId, documentId) {
     method: "POST"
   }).then(parseApiResponse);
 }
+
+export function setLlmActiveVariant({ documentId, sessionId, assistantMessageId, variantId = "", variantIndex }) {
+  return apiFetch(`/api/llm/messages/${encodeURIComponent(assistantMessageId)}/active-variant`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      documentId,
+      sessionId,
+      variantId,
+      variantIndex
+    })
+  }).then(parseApiResponse);
+}

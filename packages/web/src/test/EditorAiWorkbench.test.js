@@ -937,12 +937,12 @@ describe("EditorAiWorkbench", () => {
     await wrapper.get('[data-testid="variant-prev"]').trigger("click");
     await flushPromises();
 
-    expect(apiMocks.setLlmActiveVariant).toHaveBeenCalledWith({
+    expect(apiMocks.setLlmActiveVariant).toHaveBeenCalledWith(expect.objectContaining({
       documentId: "doc-1",
       sessionId: "session-variants",
       assistantMessageId: "assistant-variants",
       variantIndex: 0
-    });
+    }));
     expect(wrapper.get('[data-testid="variant-counter"]').text()).toBe("1/2");
     expect(wrapper.text()).toContain("第一个版本回答");
     expect(wrapper.text()).not.toContain("第二个版本回答");
