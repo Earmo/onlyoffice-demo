@@ -476,7 +476,7 @@ function normalizeAssistantVariants(messageOrEntry = {}) {
       createdTime: messageOrEntry.createdTime || ""
     }];
 
-  return rawVariants
+  const normalized = rawVariants
     .map((variant, position) => ({
       variantId: variant?.variantId || "",
       variantIndex: Number.isInteger(variant?.variantIndex) ? variant.variantIndex : position,
@@ -491,6 +491,28 @@ function normalizeAssistantVariants(messageOrEntry = {}) {
       createdTime: variant?.createdTime || ""
     }))
     .sort((left, right) => left.variantIndex - right.variantIndex);
+  const byIndex = new Map();
+  for (const variant of normalized) {
+    const existing = byIndex.get(variant.variantIndex);
+    if (!existing) {
+      byIndex.set(variant.variantIndex, variant);
+      continue;
+    }
+    byIndex.set(variant.variantIndex, {
+      ...existing,
+      ...variant,
+      variantId: variant.variantId || existing.variantId,
+      assistantText: variant.assistantText || existing.assistantText,
+      streamingText: variant.streamingText || existing.streamingText,
+      streamingReasoningText: variant.streamingReasoningText || existing.streamingReasoningText,
+      status: variant.status !== "in_progress" ? variant.status : existing.status,
+      providerResponseMeta: {
+        ...(existing.providerResponseMeta || {}),
+        ...(variant.providerResponseMeta || {})
+      }
+    });
+  }
+  return [...byIndex.values()].sort((left, right) => left.variantIndex - right.variantIndex);
 }
 
 function activeVariant(entry = {}) {
@@ -505,7 +527,9 @@ function setActiveVariantIndex(entry, index) {
   if (!entry) {
     return;
   }
-  const variants = normalizeAssistantVariants(entry);
+  const variants = Array.isArray(entry.variants) && entry.variants.length
+    ? normalizeAssistantVariants({ variants: entry.variants })
+    : [];
   const target = variants.find(variant => variant.variantIndex === index);
   entry.variants = variants;
   entry.activeVariantIndex = target ? target.variantIndex : variants[0]?.variantIndex || 0;
@@ -557,7 +581,10 @@ function upsertVariantFromEvent(entry, event = {}) {
     : Number.isInteger(entry.activeVariantIndex) ? entry.activeVariantIndex : variants.length;
   let variant = event?.variantId
     ? variants.find(item => item.variantId === event.variantId)
-    : variants.find(item => item.variantIndex === eventIndex);
+    : null;
+  if (!variant) {
+    variant = variants.find(item => item.variantIndex === eventIndex);
+  }
   if (!variant) {
     variant = {
       variantId: event?.variantId || "",
@@ -953,7 +980,7 @@ function applyRequestResult(entry, result) {
   variant.errorCode = result.errorCode || "";
   if (result.status === "completed") {
     entry.activeVariantIndex = Number.isInteger(result.activeVariantIndex) ? result.activeVariantIndex : variant.variantIndex;
-  } else if (Number.isInteger(entry.pendingRegeneratePrevActiveIndex)) {
+  } else if (result.status === "cancelled" && Number.isInteger(entry.pendingRegeneratePrevActiveIndex)) {
     entry.activeVariantIndex = entry.pendingRegeneratePrevActiveIndex;
   } else {
     entry.activeVariantIndex = Number.isInteger(result.activeVariantIndex) ? result.activeVariantIndex : variant.variantIndex;
@@ -1598,7 +1625,7 @@ function formatTimestamp(value) {
             ></div>
             <p v-else class="assistant-placeholder" data-testid="assistant-answer">{{ entry.responseMessage }}</p>
 
-            <div class="message-actions" v-if="activeStatus(entry) !== 'failed'">
+            <div class="message-actions" v-if="variantCount(entry) > 1 || activeStatus(entry) !== 'failed'">
               <div v-if="variantCount(entry) > 1" class="variant-switcher" aria-label="切换回复版本">
                 <el-button
                   size="small"
@@ -1625,7 +1652,7 @@ function formatTimestamp(value) {
               >
                 <el-icon><DocumentCopy /></el-icon>
               </el-button>
-              <el-button size="small" text @click="handleRegenerate(index)">
+              <el-button size="small" text data-testid="regenerate-entry" @click="handleRegenerate(index)">
                 <el-icon><Refresh /></el-icon>
               </el-button>
               <el-button size="small" text type="danger" @click="handleDeleteMessage(index)">

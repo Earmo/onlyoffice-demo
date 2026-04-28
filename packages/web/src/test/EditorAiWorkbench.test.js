@@ -234,6 +234,61 @@ describe("EditorAiWorkbench", () => {
     expect(testNodes.indexOf(reasoningPanel.element)).toBeLessThan(testNodes.indexOf(assistantAnswer.element));
   });
 
+  it("首轮带 variantId 的流式回复不应产生本地占位重复版本", async () => {
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          requestId: "request-first-variant",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-first-variant",
+          variantId: "variant-first-0",
+          variantIndex: 0,
+          activeVariantIndex: 0,
+          provider: "stub-provider",
+          model: "fake-gpt"
+        });
+        handlers.onDelta?.({
+          requestId: "request-first-variant",
+          assistantMessageId: "assistant-first-variant",
+          variantId: "variant-first-0",
+          variantIndex: 0,
+          delta: "首轮回答"
+        });
+        handlers.onCompleted?.({
+          requestId: "request-first-variant",
+          sessionId: "session-1",
+          assistantMessageId: "assistant-first-variant",
+          variantId: "variant-first-0",
+          variantIndex: 0,
+          activeVariantIndex: 0,
+          status: "completed",
+          assistantText: "首轮回答",
+          finishReason: "stop",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find("textarea").setValue("首轮问题");
+    await wrapper.find('button[title="发送问题"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.vm.conversationEntries[0].variants).toHaveLength(1);
+    expect(wrapper.find('[data-testid="variant-counter"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("首轮回答");
+    expect(wrapper.text()).not.toContain("in_progress");
+    expect(wrapper.find('button[title="将回复写入文档"]').exists()).toBe(true);
+  });
+
   it("应在首轮 request-started 返回标题后刷新当前会话名", async () => {
     apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
       queueMicrotask(() => {
@@ -784,6 +839,90 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).not.toContain("初始版本回答");
   });
 
+  it("重新生成到第三个版本后应能前后切换并恢复写回操作", async () => {
+    mockSessionWithVariants({
+      activeVariantIndex: 1,
+      variants: [
+        {
+          variantId: "variant-0",
+          variantIndex: 0,
+          status: "completed",
+          assistantText: "第一个版本回答",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        },
+        {
+          variantId: "variant-1",
+          variantIndex: 1,
+          status: "completed",
+          assistantText: "第二个版本回答",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt-2" }
+        }
+      ]
+    });
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-third-variant",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-2",
+          variantIndex: 2,
+          activeVariantIndex: 2
+        });
+        handlers.onDelta?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-third-variant",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-2",
+          variantIndex: 2,
+          delta: "第三个版本回答"
+        });
+        handlers.onCompleted?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-third-variant",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-2",
+          variantIndex: 2,
+          activeVariantIndex: 2,
+          status: "completed",
+          assistantText: "第三个版本回答",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt-3" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+    apiMocks.setLlmActiveVariant
+      .mockResolvedValueOnce({ activeVariantIndex: 1 })
+      .mockResolvedValueOnce({ activeVariantIndex: 2 });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="regenerate-entry"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="variant-counter"]').text()).toBe("3/3");
+    expect(wrapper.text()).toContain("第三个版本回答");
+
+    await wrapper.get('[data-testid="variant-prev"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="variant-counter"]').text()).toBe("2/3");
+    expect(wrapper.text()).toContain("第二个版本回答");
+
+    await wrapper.get('[data-testid="variant-next"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="variant-counter"]').text()).toBe("3/3");
+    expect(wrapper.text()).toContain("第三个版本回答");
+    expect(wrapper.text()).not.toContain("in_progress");
+    expect(wrapper.find('button[title="将回复写入文档"]').exists()).toBe(true);
+  });
+
   it("重新生成取消后应恢复旧 completed active variant 并保留取消状态", async () => {
     mockSessionWithVariants();
     apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
@@ -839,6 +978,64 @@ describe("EditorAiWorkbench", () => {
         variantIndex: 1,
         status: "cancelled",
         errorCode: "LLM_REQUEST_CANCELLED"
+      })
+    ]));
+  });
+
+  it("重新生成失败应保留旧 variant 且允许从失败版本切回旧结果", async () => {
+    mockSessionWithVariants();
+    apiMocks.startLlmMessageStream.mockImplementation((_payload, handlers = {}) => {
+      queueMicrotask(() => {
+        handlers.onStarted?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-failed-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-failed",
+          variantIndex: 1,
+          activeVariantIndex: 1
+        });
+        handlers.onError?.({
+          documentId: "doc-1",
+          sessionId: "session-variants",
+          requestId: "request-failed-regenerate",
+          assistantMessageId: "assistant-variants",
+          variantId: "variant-failed",
+          variantIndex: 1,
+          activeVariantIndex: 1,
+          errorCode: "LLM_PROVIDER_UPSTREAM_ERROR",
+          providerResponseMeta: { provider: "stub-provider", model: "fake-gpt" }
+        });
+      });
+      return {
+        ready: Promise.resolve(),
+        done: Promise.resolve(),
+        abort: vi.fn(() => Promise.resolve())
+      };
+    });
+    apiMocks.setLlmActiveVariant.mockResolvedValueOnce({ activeVariantIndex: 0 });
+
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="regenerate-entry"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="variant-counter"]').text()).toBe("2/2");
+    expect(wrapper.text()).toContain("请求失败");
+    expect(wrapper.text()).toContain("LLM_PROVIDER_UPSTREAM_ERROR");
+    expect(wrapper.text()).not.toContain("初始版本回答");
+
+    await wrapper.get('[data-testid="variant-prev"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="variant-counter"]').text()).toBe("1/2");
+    expect(wrapper.text()).toContain("初始版本回答");
+    expect(wrapper.find('button[title="将回复写入文档"]').exists()).toBe(true);
+    expect(wrapper.vm.conversationEntries[0].variants).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        variantIndex: 1,
+        status: "failed",
+        errorCode: "LLM_PROVIDER_UPSTREAM_ERROR"
       })
     ]));
   });
