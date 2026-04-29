@@ -1,13 +1,19 @@
 package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.context.AccessContextResolver;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
+import com.earmo.onlyoffice.integration.context.SkipAccessContext;
+import com.earmo.onlyoffice.integration.model.DocumentCloseSessionReq;
+import com.earmo.onlyoffice.integration.model.DocumentEditorConfigReq;
+import com.earmo.onlyoffice.integration.model.DocumentSaveReq;
+import com.earmo.onlyoffice.integration.model.DocumentSaveStatusReq;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.model.InsertImageRequest;
 import com.earmo.onlyoffice.integration.model.InsertImageResponse;
 import com.earmo.onlyoffice.integration.model.OnlyofficeCallbackRequest;
 import com.earmo.onlyoffice.integration.model.RemoteImageResource;
+import com.earmo.onlyoffice.integration.model.ResponseDto;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.DocumentRuntimeEventStreamService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
@@ -53,7 +59,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RestController
 @RequestMapping("/api/documents")
 @RequiredArgsConstructor
-public class DocumentController {
+public class DocumentController extends BaseController {
 
   private final OnlyofficeConfigService onlyofficeConfigService;
   private final DocumentStorageService documentStorageService;
@@ -61,11 +67,21 @@ public class DocumentController {
   private final DocumentStatusService documentStatusService;
   private final DocumentRuntimeEventStreamService runtimeEventStreamService;
   private final AccessAuditService accessAuditService;
-  private final AccessContextResolver accessContextResolver;
   private final OnlyofficeJwtService onlyofficeJwtService;
   private final OnlyofficeCommandService onlyofficeCommandService;
 
+  @PostMapping("/get/editor-config")
+  @Operation(summary = "获取编辑器配置", description = "根据内部 documentId 生成 ONLYOFFICE 可直接消费的 editor config。")
+  public ResponseDto<EditorConfigResponse> editorConfig(@Valid @RequestBody DocumentEditorConfigReq body, HttpServletRequest request)
+      throws IOException {
+    boolean readonly = Boolean.TRUE.equals(body.readonly());
+    AccessContext accessContext = CurrentAccessContext.getRequired();
+    EditorConfigResponse response = buildEditorConfig(body.documentId(), readonly, request, accessContext);
+    return successResponseWithData(response);
+  }
+
   @GetMapping("/{documentId}/editor-config")
+  @Deprecated(forRemoval = false)
   @Operation(summary = "获取编辑器配置", description = "根据内部 documentId 生成 ONLYOFFICE 可直接消费的 editor config。")
   public EditorConfigResponse editorConfig(
       @Parameter(description = "文档内部主键。", example = "demo")
@@ -74,20 +90,19 @@ public class DocumentController {
       @RequestParam(defaultValue = "false") boolean readonly,
       HttpServletRequest request
   ) throws IOException {
-    AccessContext accessContext = accessContextResolver.resolve(request);
-    // 预览和编辑从 Phase 9 开始走两条不同语义：
-    // - 只读预览只刷新打开时间，不建立活跃编辑会话；
-    // - 编辑工作台则显式建立当前用户的编辑会话。
-    if (readonly) {
-      documentStatusService.initialize(documentId);
-    } else {
-      documentStatusService.openEditingSession(documentId, accessContext);
-    }
-    accessAuditService.recordEditorConfigRequested(documentId, accessContext);
-    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, accessContext, request);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
+    return buildEditorConfig(documentId, readonly, request, accessContext);
+  }
+
+  @PostMapping("/close/session")
+  @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。")
+  public ResponseDto<DocumentSaveStatusResponse> closeEditingSession(@Valid @RequestBody DocumentCloseSessionReq request) {
+    AccessContext accessContext = CurrentAccessContext.getRequired();
+    return successResponseWithData(documentStatusService.closeEditingSession(request.documentId(), accessContext));
   }
 
   @PostMapping("/{documentId}/editing-sessions/close")
+  @Deprecated(forRemoval = false)
   @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。" +
           "前端应在调用此接口前先触发保存并等待本次显式保存完成；若随后 ONLYOFFICE 继续补发关闭类 callback，后端会按活跃编辑会话重新收口列表状态。")
   public DocumentSaveStatusResponse closeEditingSession(
@@ -95,11 +110,19 @@ public class DocumentController {
       @PathVariable String documentId,
       HttpServletRequest request
   ) {
-    AccessContext accessContext = accessContextResolver.resolve(request);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     return documentStatusService.closeEditingSession(documentId, accessContext);
   }
 
+  @PostMapping("/save")
+  @Operation(summary = "保存当前编辑内容", description = "通过 ONLYOFFICE Command Service 触发 forcesave，并等待本次 callback 回写完成后返回最新保存状态。")
+  public ResponseDto<DocumentSaveStatusResponse> saveDocument(@Valid @RequestBody DocumentSaveReq request) {
+    onlyofficeCommandService.forceSaveAndAwait(request.documentId(), 8000L);
+    return successResponseWithData(documentStatusService.getStatus(request.documentId()));
+  }
+
   @PostMapping("/{documentId}/save")
+  @Deprecated(forRemoval = false)
   @Operation(summary = "保存当前编辑内容", description = "通过 ONLYOFFICE Command Service 触发 forcesave，并等待本次 callback 回写完成后返回最新保存状态。")
   public DocumentSaveStatusResponse saveDocument(
       @Parameter(description = "文档内部主键。", example = "demo")
@@ -109,7 +132,14 @@ public class DocumentController {
     return documentStatusService.getStatus(documentId);
   }
 
+  @PostMapping("/get/save-status")
+  @Operation(summary = "查询保存状态", description = "返回文档最近一次 callback 和保存回写状态。")
+  public ResponseDto<DocumentSaveStatusResponse> saveStatus(@Valid @RequestBody DocumentSaveStatusReq request) {
+    return successResponseWithData(documentStatusService.getStatus(request.documentId()));
+  }
+
   @GetMapping("/{documentId}/save-status")
+  @Deprecated(forRemoval = false)
   @Operation(summary = "查询保存状态", description = "返回文档最近一次 callback 和保存回写状态。该接口主要服务编辑页运行态展示，" +
           "不作为列表页是否仍处于 editing 的唯一判据。")
   public DocumentSaveStatusResponse saveStatus(
@@ -126,7 +156,7 @@ public class DocumentController {
       @PathVariable String documentId,
       HttpServletRequest request
   ) {
-    AccessContext accessContext = accessContextResolver.resolve(request);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     // Phase 14.1 的后端入口流程：
     // 1. 先从请求头里解析 access context，拿到当前 actor/tenant。
     //    这里不能偷懒，因为后面的 editing session 续期依赖 actorUser。
@@ -149,6 +179,7 @@ public class DocumentController {
   }
 
   @GetMapping("/{documentId}/file")
+  @SkipAccessContext
   @Operation(summary = "下载文档文件", description = "给 ONLYOFFICE 或浏览器返回当前文档的文件内容。")
   public ResponseEntity<ByteArrayResource> file(
       @Parameter(description = "文档内部主键。", example = "demo")
@@ -158,6 +189,7 @@ public class DocumentController {
   }
 
   @GetMapping("/{documentId}/file.{extension}")
+  @SkipAccessContext
   @Operation(summary = "下载文档文件", description = "给 ONLYOFFICE 或浏览器返回当前文档的文件内容。")
   public ResponseEntity<ByteArrayResource> fileWithExtension(
       @Parameter(description = "文档内部主键。", example = "demo")
@@ -185,15 +217,16 @@ public class DocumentController {
 
   @PostMapping("/{documentId}/images/insert")
   @Operation(summary = "生成插图参数", description = "把远程图片地址转换成 ONLYOFFICE insertImage 所需参数。")
-  public InsertImageResponse insertImage(
+  public ResponseDto<InsertImageResponse> insertImage(
       @Parameter(description = "文档内部主键。", example = "demo")
       @PathVariable String documentId,
       @Valid @RequestBody InsertImageRequest request
   ) {
-    return onlyofficeImageService.buildInsertImageResponse(documentId, request.sourceUrl());
+    return successResponseWithData(onlyofficeImageService.buildInsertImageResponse(documentId, request.sourceUrl()));
   }
 
   @GetMapping("/{documentId}/images/proxy")
+  @SkipAccessContext
   @Operation(summary = "代理远程图片", description = "下载远程图片并以当前服务地址重新暴露给前端或 ONLYOFFICE。")
   public ResponseEntity<ByteArrayResource> proxyImage(
       @Parameter(description = "文档内部主键。", example = "demo")
@@ -212,6 +245,7 @@ public class DocumentController {
   }
 
   @PostMapping("/{documentId}/callback")
+  @SkipAccessContext
   @Operation(summary = "处理 ONLYOFFICE 回调", description = "接收 ONLYOFFICE callback，并在需要时下载最新文件回写到存储。")
   public Map<String, Integer> callback(
       @Parameter(description = "文档内部主键。", example = "demo")
@@ -245,5 +279,20 @@ public class DocumentController {
       }
     }
     return Map.of("error", 0);
+  }
+
+  private EditorConfigResponse buildEditorConfig(
+      String documentId,
+      boolean readonly,
+      HttpServletRequest request,
+      AccessContext accessContext
+  ) throws IOException {
+    if (readonly) {
+      documentStatusService.initialize(documentId);
+    } else {
+      documentStatusService.openEditingSession(documentId, accessContext);
+    }
+    accessAuditService.recordEditorConfigRequested(documentId, accessContext);
+    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, accessContext, request);
   }
 }

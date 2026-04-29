@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.service.llm;
 
+import com.earmo.onlyoffice.integration.common.exception.BaseException;
 import org.springframework.http.HttpStatus;
 
 /**
@@ -7,7 +8,7 @@ import org.springframework.http.HttpStatus;
  *
  * <p>同时携带稳定错误码和建议返回给客户端的 HTTP 状态码。
  */
-public class LlmApiException extends RuntimeException {
+public class LlmApiException extends BaseException {
 
   private final String errorCode;
   private final HttpStatus httpStatus;
@@ -20,7 +21,7 @@ public class LlmApiException extends RuntimeException {
    * @param message 异常说明
    */
   public LlmApiException(String errorCode, HttpStatus httpStatus, String message) {
-    super(message);
+    super(errorCode, message, httpStatus);
     this.errorCode = errorCode;
     this.httpStatus = httpStatus;
   }

@@ -10,9 +10,11 @@ import com.earmo.onlyoffice.integration.controller.DocumentApiController;
 import com.mybatisflex.core.paginate.Page;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.servlet.HandlerInterceptor;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -51,12 +53,37 @@ class AccessContextErrorHandlingTest {
         documentMetadataService,
         documentStorageService,
         documentStatusService,
-        accessAuditService,
-        accessContextResolver
+        accessAuditService
     );
     mockMvc = MockMvcBuilders.standaloneSetup(controller)
+        .addInterceptors(new HandlerInterceptor() {
+          @Override
+          public boolean preHandle(
+              jakarta.servlet.http.HttpServletRequest request,
+              jakarta.servlet.http.HttpServletResponse response,
+              Object handler
+          ) {
+            CurrentAccessContext.set(accessContextResolver.resolve(request));
+            return true;
+          }
+
+          @Override
+          public void afterCompletion(
+              jakarta.servlet.http.HttpServletRequest request,
+              jakarta.servlet.http.HttpServletResponse response,
+              Object handler,
+              Exception ex
+          ) {
+            CurrentAccessContext.clear();
+          }
+        })
         .setControllerAdvice(new GlobalExceptionHandler())
         .build();
+  }
+
+  @AfterEach
+  void tearDown() {
+    CurrentAccessContext.clear();
   }
 
   @Test

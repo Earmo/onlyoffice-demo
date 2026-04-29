@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.AccessContextAspect;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentEditorSessionMapper;
@@ -26,10 +27,13 @@ import com.earmo.onlyoffice.integration.service.OnlyofficeJwtService;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -56,6 +60,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(DocumentController.class)
+@Import(AccessContextAspect.class)
+@EnableAspectJAutoProxy
 class DocumentControllerTest {
 
   @Autowired
@@ -114,6 +120,13 @@ class DocumentControllerTest {
 
   @MockBean
   private OnlyofficeCommandService onlyofficeCommandService;
+
+  @BeforeEach
+  void setUpAccessContext() {
+    when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
+        new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true, "download", true), "header")
+    );
+  }
 
   @Test
   void shouldPersistCallbackDocumentWhenStatusIs2() throws Exception {

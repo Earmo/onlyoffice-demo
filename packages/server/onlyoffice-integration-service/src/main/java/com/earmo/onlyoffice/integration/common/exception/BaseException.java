@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.io.Serial;
+import org.springframework.http.HttpStatus;
 
 /**
  * 异常基类，各个模块的运行期异常均继承与该类
@@ -30,6 +31,8 @@ public class BaseException extends RuntimeException {
      */
     private transient Object[] values;
 
+    private HttpStatus httpStatus = HttpStatus.BAD_REQUEST;
+
     /**
      * @return the message
      */
@@ -43,9 +46,22 @@ public class BaseException extends RuntimeException {
         this.values = values;
     }
 
-    private BaseException(String code, String message, Throwable cause) {
+    public BaseException(String code, String message) {
+        this(code, message, null, HttpStatus.BAD_REQUEST);
+    }
+
+    public BaseException(String code, String message, Throwable cause) {
+        this(code, message, cause, HttpStatus.BAD_REQUEST);
+    }
+
+    public BaseException(String code, String message, HttpStatus httpStatus) {
+        this(code, message, null, httpStatus);
+    }
+
+    public BaseException(String code, String message, Throwable cause, HttpStatus httpStatus) {
         super(message, cause);
         this.code = code;
+        this.httpStatus = httpStatus == null ? HttpStatus.BAD_REQUEST : httpStatus;
     }
 
 }

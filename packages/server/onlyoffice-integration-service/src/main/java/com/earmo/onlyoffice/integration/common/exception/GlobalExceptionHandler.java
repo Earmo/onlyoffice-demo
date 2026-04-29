@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.common.exception;
 
 import com.earmo.onlyoffice.integration.context.AccessContextException;
 import com.earmo.onlyoffice.integration.common.response.ApiErrorResponse;
+import com.earmo.onlyoffice.integration.model.ResponseDto;
 import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
 import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
 import com.earmo.onlyoffice.integration.service.llm.LlmApiException;
@@ -12,6 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -51,7 +54,7 @@ public class GlobalExceptionHandler {
    */
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<?> handleIllegalArgument(IllegalArgumentException exception, HttpServletResponse response) {
-    return errorResponse(HttpStatus.BAD_REQUEST, exception.getMessage(), null, response);
+    return responseDto(HttpStatus.BAD_REQUEST, "BAD_REQUEST", exception.getMessage(), response);
   }
 
   /**
@@ -63,7 +66,7 @@ public class GlobalExceptionHandler {
    */
   @ExceptionHandler(DocumentNotFoundException.class)
   public ResponseEntity<?> handleDocumentNotFound(DocumentNotFoundException exception, HttpServletResponse response) {
-    return errorResponse(HttpStatus.NOT_FOUND, exception.getMessage(), null, response);
+    return responseDto(HttpStatus.NOT_FOUND, exception.getCode(), exception.getMessage(), response);
   }
 
   /**
@@ -75,7 +78,7 @@ public class GlobalExceptionHandler {
    */
   @ExceptionHandler(DocumentOperationConflictException.class)
   public ResponseEntity<?> handleDocumentOperationConflict(DocumentOperationConflictException exception, HttpServletResponse response) {
-    return errorResponse(HttpStatus.CONFLICT, exception.getMessage(), null, response);
+    return responseDto(HttpStatus.CONFLICT, exception.getCode(), exception.getMessage(), response);
   }
 
   /**
@@ -87,7 +90,26 @@ public class GlobalExceptionHandler {
    */
   @ExceptionHandler(AccessContextException.class)
   public ResponseEntity<?> handleAccessContextException(AccessContextException exception, HttpServletResponse response) {
-    return errorResponse(HttpStatus.BAD_REQUEST, exception.getMessage(), null, response);
+    return responseDto(exception.getHttpStatus(), exception.getCode(), exception.getMessage(), response);
+  }
+
+  @ExceptionHandler(com.earmo.onlyoffice.integration.common.exception.BaseException.class)
+  public ResponseEntity<?> handleBaseException(com.earmo.onlyoffice.integration.common.exception.BaseException exception, HttpServletResponse response) {
+    return responseDto(exception.getHttpStatus(), exception.getCode(), exception.getMessage(), response);
+  }
+
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  public ResponseEntity<?> handleValidation(MethodArgumentNotValidException exception, HttpServletResponse response) {
+    String message = exception.getBindingResult().getFieldErrors().stream()
+        .map(error -> error.getDefaultMessage() == null ? error.getField() + " 参数不合法" : error.getDefaultMessage())
+        .findFirst()
+        .orElse("参数校验异常。");
+    return responseDto(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", message, response);
+  }
+
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<?> handleMessageNotReadable(HttpMessageNotReadableException exception, HttpServletResponse response) {
+    return responseDto(HttpStatus.BAD_REQUEST, "REQUEST_BODY_INVALID", "请求参数格式错误：" + exception.getMostSpecificCause().getMessage(), response);
   }
 
   /**
@@ -112,7 +134,7 @@ public class GlobalExceptionHandler {
    */
   @ExceptionHandler(LlmApiException.class)
   public ResponseEntity<?> handleLlmApiException(LlmApiException exception, HttpServletResponse response) {
-    return errorResponse(exception.httpStatus(), exception.getMessage(), exception.errorCode(), response);
+    return responseDto(exception.httpStatus(), exception.errorCode(), exception.getMessage(), response);
   }
 
   /**
@@ -175,6 +197,18 @@ public class GlobalExceptionHandler {
       return ResponseEntity.status(status).build();
     }
     ApiErrorResponse body = errorCode == null ? new ApiErrorResponse(message) : new ApiErrorResponse(message, errorCode);
+    return ResponseEntity.status(status)
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(body);
+  }
+
+  private ResponseEntity<?> responseDto(HttpStatus status, String code, String message, HttpServletResponse response) {
+    if (response != null && response.isCommitted()) {
+      return ResponseEntity.status(status).build();
+    }
+    ResponseDto<Object> body = new ResponseDto<>();
+    body.setCode(code);
+    body.setMessage(message);
     return ResponseEntity.status(status)
         .contentType(MediaType.APPLICATION_JSON)
         .body(body);

@@ -13,11 +13,11 @@ public class CommonException extends BaseException {
     private static final long serialVersionUID = -4527567935254966321L;
 
     public CommonException(String message) {
-        super(CommonConstant.DEFAULT_SYS_ERROR_CODE, message, null, null);
+        super(CommonConstant.DEFAULT_SYS_ERROR_CODE, message);
     }
 
     public CommonException(String code, String message) {
-        super(code, message, null, null);
+        super(code, message);
     }
 
     public CommonException(String code, String message, Object[] values) {

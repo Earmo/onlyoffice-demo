@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.AccessContextAspect;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.data.mapper.AccessAuditEventMapper;
@@ -23,6 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -42,6 +45,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(DocumentApiController.class)
+@Import(AccessContextAspect.class)
+@EnableAspectJAutoProxy
 class DocumentApiControllerTest {
 
   @Autowired
@@ -278,13 +283,13 @@ class DocumentApiControllerTest {
                 }
                 """))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAV"))
-        .andExpect(jsonPath("$.title").value("alpha.docx"))
-        .andExpect(jsonPath("$.ownerUser").value("user-a"))
-        .andExpect(jsonPath("$.actorUser").value("user-a"))
-        .andExpect(jsonPath("$.actorName").value("Alice"))
-        .andExpect(jsonPath("$.lastEditedTime").value("2026-03-19T08:00:00Z"))
-        .andExpect(jsonPath("$.storageAvailable").value(true));
+        .andExpect(jsonPath("$.data.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAV"))
+        .andExpect(jsonPath("$.data.title").value("alpha.docx"))
+        .andExpect(jsonPath("$.data.ownerUser").value("user-a"))
+        .andExpect(jsonPath("$.data.actorUser").value("user-a"))
+        .andExpect(jsonPath("$.data.actorName").value("Alice"))
+        .andExpect(jsonPath("$.data.lastEditedTime").value("2026-03-19T08:00:00Z"))
+        .andExpect(jsonPath("$.data.storageAvailable").value(true));
 
     verify(documentStorageService).createNativeDocument(
         isNull(),
@@ -312,13 +317,13 @@ class DocumentApiControllerTest {
 
     mockMvc.perform(multipart("/api/documents/upload").file(file))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAA"))
-        .andExpect(jsonPath("$.title").value("roadmap.docx"))
-        .andExpect(jsonPath("$.ownerUser").value("user-a"))
-        .andExpect(jsonPath("$.actorUser").value("user-a"))
-        .andExpect(jsonPath("$.actorName").value("Alice"))
-        .andExpect(jsonPath("$.lastEditedTime").value("2026-03-19T08:00:00Z"))
-        .andExpect(jsonPath("$.storageAvailable").value(true));
+        .andExpect(jsonPath("$.data.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAA"))
+        .andExpect(jsonPath("$.data.title").value("roadmap.docx"))
+        .andExpect(jsonPath("$.data.ownerUser").value("user-a"))
+        .andExpect(jsonPath("$.data.actorUser").value("user-a"))
+        .andExpect(jsonPath("$.data.actorName").value("Alice"))
+        .andExpect(jsonPath("$.data.lastEditedTime").value("2026-03-19T08:00:00Z"))
+        .andExpect(jsonPath("$.data.storageAvailable").value(true));
   }
 
   @Test
@@ -337,13 +342,13 @@ class DocumentApiControllerTest {
                 }
                 """))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAB"))
-        .andExpect(jsonPath("$.title").value("external.docx"))
-        .andExpect(jsonPath("$.ownerUser").value("user-a"))
-        .andExpect(jsonPath("$.actorUser").value("user-a"))
-        .andExpect(jsonPath("$.actorName").value("Alice"))
-        .andExpect(jsonPath("$.lastEditedTime").value("2026-03-19T08:00:00Z"))
-        .andExpect(jsonPath("$.storageAvailable").value(true));
+        .andExpect(jsonPath("$.data.documentId").value("01ARZ3NDEKTSV4RRFFQ69G5FAB"))
+        .andExpect(jsonPath("$.data.title").value("external.docx"))
+        .andExpect(jsonPath("$.data.ownerUser").value("user-a"))
+        .andExpect(jsonPath("$.data.actorUser").value("user-a"))
+        .andExpect(jsonPath("$.data.actorName").value("Alice"))
+        .andExpect(jsonPath("$.data.lastEditedTime").value("2026-03-19T08:00:00Z"))
+        .andExpect(jsonPath("$.data.storageAvailable").value(true));
   }
 
   @Test

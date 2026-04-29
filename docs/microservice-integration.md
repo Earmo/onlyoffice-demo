@@ -20,7 +20,7 @@
    - `POST /api/documents/upload`
    - `POST /api/documents/import-remote`
 2. 获取内部 `documentId`
-3. 调用 `GET /api/documents/{documentId}/editor-config`
+3. 调用 `POST /api/documents/get/editor-config`
 4. 由上游系统决定：
    - 跳转官方前端 `/editor/{documentId}`
    - 或在自己的前端里消费 `editor-config`
@@ -77,6 +77,59 @@ onlyoffice:
 ```
 
 如果你需要接入自定义用户来源，可继续注册新的 `AccessContextProvider`，并把它放到 `resolution-order` 前面；controller 和文档业务服务不需要为了新来源再改解析逻辑。
+
+## Phase 18 API 契约
+
+普通 JSON API 统一返回 `ResponseDto`：
+
+```json
+{
+  "code": "200",
+  "data": {},
+  "message": null
+}
+```
+
+文档主接口使用 POST body：
+
+```http
+POST /api/documents/page
+Content-Type: application/json
+
+{"pageNumber":1,"pageSize":10,"status":"active"}
+```
+
+```http
+POST /api/documents/get
+Content-Type: application/json
+
+{"documentId":"demo"}
+```
+
+```http
+POST /api/documents/delete
+Content-Type: application/json
+
+{"documentId":"demo"}
+```
+
+编辑器运行态接口也使用显式 body：
+
+```http
+POST /api/documents/get/editor-config
+Content-Type: application/json
+
+{"documentId":"demo","readonly":false}
+```
+
+```http
+POST /api/documents/close/session
+Content-Type: application/json
+
+{"documentId":"demo"}
+```
+
+保留的协议端点仍使用原协议返回值：文件下载、图片代理、ONLYOFFICE callback、文档运行态 SSE、LLM SSE 和 multipart upload。旧 `GET /api/documents/{documentId}`、`GET /api/documents/{documentId}/editor-config` 等兼容入口仍可迁移期调用，但已标记 deprecated，新接入不应继续新增依赖。
 
 ## 官方前端入口
 

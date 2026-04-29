@@ -59,12 +59,12 @@ llm:
 
 后端自动化已覆盖：
 
-- `GET /api/llm/capability`
+- `POST /api/llm/get/capability`
 - `POST /api/llm/sessions`
 - `POST /api/llm/messages/stream`
 - `POST /api/llm/messages`
-- `GET /api/llm/requests/{requestId}`
-- `POST /api/llm/requests/{requestId}/cancel`
+- `POST /api/llm/get/request`
+- `POST /api/llm/cancel/request`
 - 不同 `tenantId` / `actorUser` 访问旧会话拒绝
 - `chars_div_4` 历史预算估算
 - `providerResponseMeta` 白名单过滤
@@ -132,9 +132,25 @@ Phase 14 的取消规则固定如下：
 
 这条规则同时适用于：
 
-- `/api/llm/requests/{requestId}/cancel`
+- `/api/llm/cancel/request`
 - 前端流式会话中的终态合并
 - 服务端执行注册表对进行中请求的仲裁
+
+## Phase 18 API 契约
+
+LLM 普通 JSON API 已迁移为 `POST` 请求体 + `ResponseDto.data`：
+
+| 能力 | 主路径 | 请求体 |
+|---|---|---|
+| 能力查询 | `POST /api/llm/get/capability` | `{"documentId":"demo"}` |
+| 会话列表 | `POST /api/llm/list/session` | `{"documentId":"demo"}` |
+| 会话详情 | `POST /api/llm/get/session` | `{"documentId":"demo","sessionId":"..."}` |
+| 删除会话 | `POST /api/llm/delete/session` | `{"documentId":"demo","sessionId":"..."}` |
+| 重命名会话 | `POST /api/llm/rename/session` | `{"documentId":"demo","sessionId":"...","title":"新标题"}` |
+| 请求状态 | `POST /api/llm/get/request` | `{"documentId":"demo","requestId":"..."}` |
+| 取消请求 | `POST /api/llm/cancel/request` | `{"documentId":"demo","requestId":"..."}` |
+
+迁移期仍保留旧 GET/path/query 兼容入口并标记 deprecated。`POST /api/llm/messages/stream` 继续返回 `text/event-stream`，不包裹 `ResponseDto`；stream 建立前的同步错误返回 JSON envelope。`PUT /api/llm/messages/{messageId}/active-variant` 保持 Phase 17 的单资源更新语义，响应已包装为 `ResponseDto<LlmMessageResponse>`。
 
 ## 安全边界
 

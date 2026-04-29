@@ -55,12 +55,16 @@
 
 - `controller` 包下的 controller 类统一继承 `BaseController`
 - 业务异常类统一继承 `BaseException`
-- 异常处理和前端响应包装通过 `BaseController` 定义的切面统一完成，controller 不重复编写分散的异常响应逻辑
+- 普通 JSON API 的业务异常、参数校验异常和 JSON 解析异常统一返回 `ResponseDto`
+- `BaseException` 负责携带稳定 `code`、用户可见 `message` 和 HTTP status
+- `GlobalExceptionHandler` 只保留协议型异常、已提交响应的 I/O/SSE 异常和最后兜底
 
 ### 响应包装
 
 - 普通接口统一返回 `ResponseDto<T>`
 - 分页接口统一返回 `ResponseDto<PageRespVo<T>>`
+- 成功响应通过 `BaseController.successResponseWithData(data)` 或 `successResponse()` 生成
+- 错误响应包含 `code`、`message`，不返回异常堆栈、token、header 原文或 provider 原始报文
 - 分页查询方法签名优先使用请求对象承载筛选条件，例如：
 
 ```java
@@ -69,22 +73,58 @@ ResponseDto<PageRespVo<DocumentResp>> page(@RequestBody DocumentPageReq req);
 
 ### 用户上下文
 
-- 用户上下文由切面从请求中读取并校验，通过 `ThreadLocal` 或等价线程隔离机制保存到当前线程
-- 提供工具类从当前线程读取用户上下文，业务服务通过工具类获取用户信息
+- 用户上下文由 `AccessContextAspect` 从请求中读取并校验，通过 `CurrentAccessContext` 保存到当前同步请求线程
+- 业务入口通过 `CurrentAccessContext.getRequired()` 读取 `AccessContext`
+- 仍消费旧 `RequestContext` 的服务可使用 `CurrentAccessContext.toRequestContext()` 平滑迁移
 - controller 不再显式调用 `AccessContextResolver` 并把上下文逐层传给 service
 - 线程上下文必须在请求结束时清理，避免线程复用导致用户信息串用
+- SSE 或异步边界不能依赖 ThreadLocal 继续传播，必须在 controller 入口捕获 `AccessContext` 并显式传给后续 service
 
 ### 请求参数
 
 - 业务参数应建模为 VO/DTO，并通过 `@RequestBody` 传递
 - 多参数查询使用 `POST` 请求和请求体承载条件
-- 避免在业务代码中直接依赖 `HttpServletRequest`
+- 普通业务参数禁止通过 `@RequestParam`、path/query 混合或 `?documentId=xxx` 表达
+- `HttpServletRequest` 只允许作为 URL 构造、协议验签或传输细节参数出现，不允许用于解析用户上下文
 - 避免用 `@RequestParam` 在 URL 中拼接业务参数，例如 `?documentId=xxx`
 
 ### 接口命名
 
 - 接口路径要显式表达动作或资源语义，例如 `delete/session`、`get/session`
 - 避免多个接口使用同名或语义含混的路径，尤其不要让删除、查询、更新等行为只靠 HTTP 方法或参数差异区分
+
+### Phase 18 主路径示例
+
+- `POST /api/documents/page`
+- `POST /api/documents/list/recent`
+- `POST /api/documents/get`
+- `POST /api/documents/delete`
+- `POST /api/documents/get/editor-config`
+- `POST /api/documents/close/session`
+- `POST /api/documents/save`
+- `POST /api/documents/get/save-status`
+- `POST /api/llm/get/capability`
+- `POST /api/llm/list/session`
+- `POST /api/llm/get/session`
+- `POST /api/llm/delete/session`
+- `POST /api/llm/rename/session`
+- `POST /api/llm/get/request`
+- `POST /api/llm/cancel/request`
+
+旧 GET、DELETE、PUT 或 query-string 入口如需保留，必须标记 `@Deprecated(forRemoval = false)`，并只作为迁移期兼容别名存在。新增测试应优先覆盖新主路径。
+
+### 协议例外
+
+以下端点保持原始协议形态，不包裹成普通 `ResponseDto`：
+
+- ONLYOFFICE callback：`POST /api/documents/{documentId}/callback`
+- 文档二进制下载：`GET /api/documents/{documentId}/file` 和 `GET /api/documents/{documentId}/file.{extension}`
+- 图片二进制代理：`GET /api/documents/{documentId}/images/proxy`
+- 文档运行态 SSE：`GET /api/documents/{documentId}/runtime-events`
+- LLM 流式响应：`POST /api/llm/messages/stream`
+- multipart 文件字段：`POST /api/documents/upload`
+
+协议端点如不需要业务访问上下文，必须使用 `@SkipAccessContext` 或明确测试/文档登记；SSE 建立前的同步错误仍应尽量返回统一 JSON 错误体。
 
 ## Java 注释约定
 

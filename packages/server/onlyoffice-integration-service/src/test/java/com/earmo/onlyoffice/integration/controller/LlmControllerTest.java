@@ -2,7 +2,7 @@ package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.common.exception.GlobalExceptionHandler;
 import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.context.AccessContextResolver;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.model.llm.LlmCapabilityResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmProviderOptionResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmStreamEventResponse;
@@ -10,6 +10,7 @@ import com.earmo.onlyoffice.integration.service.llm.LlmConversationService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,8 +39,7 @@ class LlmControllerTest {
   @BeforeEach
   void setUp() {
     llmConversationService = mock(LlmConversationService.class);
-    AccessContextResolver accessContextResolver = mock(AccessContextResolver.class);
-    when(accessContextResolver.resolve(any())).thenReturn(new AccessContext(
+    CurrentAccessContext.set(new AccessContext(
         "native",
         "native",
         "starter-user",
@@ -47,9 +47,14 @@ class LlmControllerTest {
         java.util.Map.of("edit", true),
         "header"
     ));
-    mockMvc = MockMvcBuilders.standaloneSetup(new LlmController(llmConversationService, accessContextResolver))
+    mockMvc = MockMvcBuilders.standaloneSetup(new LlmController(llmConversationService))
         .setControllerAdvice(new GlobalExceptionHandler())
         .build();
+  }
+
+  @AfterEach
+  void tearDown() {
+    CurrentAccessContext.clear();
   }
 
   @Test
@@ -76,13 +81,15 @@ class LlmControllerTest {
         )
     );
 
-    mockMvc.perform(get("/api/llm/capability").param("documentId", "doc-1"))
+    mockMvc.perform(post("/api/llm/get/capability")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"documentId\":\"doc-1\"}"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.llmAvailable").value(true))
-        .andExpect(jsonPath("$.provider").value("dashscope"))
-        .andExpect(jsonPath("$.streamMode").value(true))
-        .andExpect(jsonPath("$.defaultProvider").value("dashscope"))
-        .andExpect(jsonPath("$.availableProviders[0].availableModels[1]").value("qwen-max"));
+        .andExpect(jsonPath("$.data.llmAvailable").value(true))
+        .andExpect(jsonPath("$.data.provider").value("dashscope"))
+        .andExpect(jsonPath("$.data.streamMode").value(true))
+        .andExpect(jsonPath("$.data.defaultProvider").value("dashscope"))
+        .andExpect(jsonPath("$.data.availableProviders[0].availableModels[1]").value("qwen-max"));
   }
 
   @Test
@@ -116,7 +123,7 @@ class LlmControllerTest {
     MvcResult mvcResult = mockMvc.perform(
             post("/api/llm/messages/stream")
                 .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.TEXT_EVENT_STREAM)
+                .accept(MediaType.TEXT_EVENT_STREAM, MediaType.APPLICATION_JSON)
                 .content("""
                     {
                       "documentId":"doc-1",

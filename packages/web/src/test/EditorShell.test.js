@@ -234,7 +234,7 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/doc-1/editor-config?readonly=false");
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/get/editor-config");
     expect(wrapper.find(".drawer-collapse-btn").exists()).toBe(true);
 
     await wrapper.find(".drawer-collapse-btn").trigger("click");
@@ -249,7 +249,7 @@ describe("EditorShell", () => {
     wrapper.unmount();
     await flushPromises();
 
-    const closeCalls = fetch.mock.calls.filter(call => String(call[0]).includes("/editing-sessions/close"));
+    const closeCalls = fetch.mock.calls.filter(call => String(call[0]).includes("/api/documents/close/session"));
     expect(closeCalls).toHaveLength(1);
   });
 
@@ -352,7 +352,7 @@ describe("EditorShell", () => {
       if (urlStr.includes("/editor-config")) {
         return Promise.resolve(jsonResponse(editorConfigPayload("路线图.docx")));
       }
-      if (urlStr.includes("/save-status")) {
+      if (urlStr.includes("/get/save-status")) {
         return Promise.resolve(jsonResponse(saveStatusPayload()));
       }
       if (urlStr.includes("/save")) {
@@ -363,7 +363,7 @@ describe("EditorShell", () => {
           })));
         });
       }
-      if (urlStr.includes("/editing-sessions/close")) {
+      if (urlStr.includes("/close/session")) {
         return Promise.resolve(jsonResponse(closedStatusPayload({
           lastSavedTime: "2026-03-25T10:00:02Z"
         })));
@@ -405,7 +405,7 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/doc-2/editor-config?readonly=true");
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/get/editor-config");
     expect(wrapper.find(".floating-console").isVisible()).toBe(false);
     expect(wrapper.find(".drawer-collapse-btn").exists()).toBe(false);
   });
@@ -468,7 +468,7 @@ describe("EditorShell", () => {
       await flushTimersAndPromises();
       expectedCalls += 1;
       expect(startStreamSpy).toHaveBeenCalledTimes(expectedCalls);
-      expect(countFetchCalls("/api/documents/doc-1/save-status")).toBeGreaterThan(0);
+      expect(countFetchCalls("/api/documents/get/save-status")).toBeGreaterThan(0);
       expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
       if (controllers[failureIndex + 1]) {
         controllers[failureIndex + 1].emitError(new Error(`retry-${failureIndex}`));
@@ -688,13 +688,13 @@ function installEditorFetchMock() {
       const readonly = urlString.includes("readonly=true");
       return jsonResponse(editorConfigPayload(readonly ? "预览稿.docx" : "路线图.docx", readonly ? "view" : "edit"));
     }
-    if (urlString.includes("/save-status")) {
+    if (urlString.includes("/get/save-status")) {
       return jsonResponse(saveStatusPayload({ documentId }));
     }
     if (urlString.endsWith("/save")) {
       return jsonResponse(saveStatusPayload({ documentId }));
     }
-    if (urlString.includes("/editing-sessions/close")) {
+    if (urlString.includes("/close/session")) {
       return jsonResponse(closedStatusPayload({ documentId }));
     }
 

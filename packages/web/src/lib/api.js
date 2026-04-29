@@ -134,3 +134,18 @@ export function apiFetch(path, options = {}) {
     headers: createAccessContextHeaders(options.headers)
   });
 }
+
+export async function parseJsonEnvelope(response) {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload?.message || `请求失败，HTTP ${response.status}`);
+    error.status = response.status;
+    error.errorCode = payload?.code || payload?.errorCode || "";
+    error.payload = payload;
+    throw error;
+  }
+  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "data")) {
+    return payload.data;
+  }
+  return payload;
+}

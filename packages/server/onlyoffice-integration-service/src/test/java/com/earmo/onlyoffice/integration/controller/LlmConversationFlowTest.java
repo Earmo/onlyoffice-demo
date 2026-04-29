@@ -262,7 +262,7 @@ class LlmConversationFlowTest {
                     """.formatted(documentId, sessionId))
         )
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value("in_progress"))
+        .andExpect(jsonPath("$.data.status").value("in_progress"))
         .andReturn();
     String requestId = jsonValue(sendResult, "requestId");
 
@@ -295,7 +295,7 @@ class LlmConversationFlowTest {
                 .headers(TestAccessHeaders.headers("other-user", "Other User"))
         )
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.errorCode").value("LLM_SESSION_FORBIDDEN"));
+        .andExpect(jsonPath("$.code").value("LLM_SESSION_FORBIDDEN"));
   }
 
   @Test
@@ -792,8 +792,8 @@ class LlmConversationFlowTest {
                     """.formatted(documentId, sessionId))
         )
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.activeVariantIndex").value(0))
-        .andExpect(jsonPath("$.assistantText").value("版本零"));
+        .andExpect(jsonPath("$.data.activeVariantIndex").value(0))
+        .andExpect(jsonPath("$.data.assistantText").value("版本零"));
 
     mockMvc.perform(
             get("/api/llm/sessions/{sessionId}", sessionId)
@@ -828,7 +828,7 @@ class LlmConversationFlowTest {
                     """.formatted(documentId, sessionId))
         )
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.activeVariantIndex").value(0));
+        .andExpect(jsonPath("$.data.activeVariantIndex").value(0));
 
     Thread.sleep(340L);
 

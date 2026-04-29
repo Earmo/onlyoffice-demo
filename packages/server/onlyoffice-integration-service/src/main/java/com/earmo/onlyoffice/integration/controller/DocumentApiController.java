@@ -1,12 +1,18 @@
 package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.context.AccessContextResolver;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.model.CreateDocumentRequest;
+import com.earmo.onlyoffice.integration.model.DocumentDeleteReq;
+import com.earmo.onlyoffice.integration.model.DocumentGetReq;
 import com.earmo.onlyoffice.integration.model.DocumentImportRequest;
 import com.earmo.onlyoffice.integration.model.DocumentListResponse;
+import com.earmo.onlyoffice.integration.model.DocumentPageReq;
+import com.earmo.onlyoffice.integration.model.DocumentRecentReq;
 import com.earmo.onlyoffice.integration.model.DocumentSummaryResponse;
+import com.earmo.onlyoffice.integration.model.PageRespVo;
+import com.earmo.onlyoffice.integration.model.ResponseDto;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
@@ -47,7 +53,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/documents")
 @RequiredArgsConstructor
 @Slf4j
-public class DocumentApiController {
+public class DocumentApiController extends BaseController {
 
   private static final int DEFAULT_PAGE_NUMBER = 1;
   private static final int DEFAULT_PAGE_SIZE = 10;
@@ -59,9 +65,35 @@ public class DocumentApiController {
   private final DocumentStorageService documentStorageService;
   private final DocumentStatusService documentStatusService;
   private final AccessAuditService accessAuditService;
-  private final AccessContextResolver accessContextResolver;
+
+  @PostMapping("/page")
+  @Operation(summary = "分页查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要分页。")
+  public ResponseDto<PageRespVo<DocumentSummaryResponse>> page(@RequestBody(required = false) DocumentPageReq request) {
+    DocumentPageReq safeRequest = request == null ? new DocumentPageReq(null, null, null, null, null, null, null, null) : request;
+    AccessContext accessContext = CurrentAccessContext.getRequired();
+    int safePageNumber = sanitizePageNumber(safeRequest.pageNumber());
+    int safePageSize = sanitizePageSize(safeRequest.pageSize());
+    DocumentListPage listPage = resolveListPage(
+        accessContext,
+        safeRequest.query(),
+        safeRequest.status(),
+        safeRequest.sourceSystem(),
+        safeRequest.documentType(),
+        safeRequest.storage() == null ? "all" : safeRequest.storage(),
+        safeRequest.sortDirection() == null ? "desc" : safeRequest.sortDirection(),
+        safePageNumber,
+        safePageSize
+    );
+    return successResponseWithData(new PageRespVo<>(
+        safePageNumber,
+        safePageSize,
+        Math.toIntExact(listPage.total()),
+        listPage.documents()
+    ));
+  }
 
   @GetMapping
+  @Deprecated(forRemoval = false)
   @Operation(summary = "查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要列表。")
   public DocumentListResponse list(
       @Parameter(description = "标题或文档标识关键词。", example = "sample")
@@ -82,7 +114,7 @@ public class DocumentApiController {
       @RequestParam(defaultValue = "10") Integer pageSize,
       HttpServletRequest request
   ) {
-    AccessContext accessContext = accessContextResolver.resolve(request);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     int safePageNumber = sanitizePageNumber(pageNumber);
     int safePageSize = sanitizePageSize(pageSize);
 
@@ -110,13 +142,14 @@ public class DocumentApiController {
   }
 
   @GetMapping("/recent")
+  @Deprecated(forRemoval = false)
   @Operation(summary = "查询最近编辑文档", description = "返回当前租户最近编辑的活跃文档列表。")
   public List<DocumentSummaryResponse> recent(
       @Parameter(description = "最近文档数量，默认 3，最大 10。", example = "3")
       @RequestParam(defaultValue = "3") Integer limit,
       HttpServletRequest request
   ) {
-    AccessContext accessContext = accessContextResolver.resolve(request);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     int safeLimit = sanitizeRecentLimit(limit);
     List<DocumentMetadataEntity> entities = documentMetadataService.listRecentDocuments(accessContext.tenantId(), safeLimit);
     Map<String, Integer> activeEditingCounts = documentStatusService.countActiveEditingSessions(
@@ -127,16 +160,39 @@ public class DocumentApiController {
         .toList();
   }
 
+  @PostMapping("/list/recent")
+  @Operation(summary = "查询最近编辑文档", description = "返回当前租户最近编辑的活跃文档列表。")
+  public ResponseDto<List<DocumentSummaryResponse>> recent(@RequestBody(required = false) DocumentRecentReq request) {
+    AccessContext accessContext = CurrentAccessContext.getRequired();
+    int safeLimit = sanitizeRecentLimit(request == null ? null : request.limit());
+    List<DocumentMetadataEntity> entities = documentMetadataService.listRecentDocuments(accessContext.tenantId(), safeLimit);
+    Map<String, Integer> activeEditingCounts = documentStatusService.countActiveEditingSessions(
+        entities.stream().map(DocumentMetadataEntity::getDocumentId).toList()
+    );
+    return successResponseWithData(entities.stream()
+        .map(entity -> toSummary(entity, accessContext, activeEditingCounts.getOrDefault(entity.getDocumentId(), 0)))
+        .toList());
+  }
+
   @GetMapping("/{documentId}")
+  @Deprecated(forRemoval = false)
   @Operation(summary = "查询文档详情", description = "根据内部 documentId 查询文档概要信息。")
   public DocumentSummaryResponse detail(
       @Parameter(description = "文档内部主键。", example = "sample")
       @PathVariable String documentId,
       HttpServletRequest request
   ) {
-    AccessContext accessContext = accessContextResolver.resolve(request);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     int activeEditors = documentStatusService.countActiveEditingSessions(List.of(documentId)).getOrDefault(documentId, 0);
     return toSummary(documentMetadataService.requireAccessibleDocument(documentId), accessContext, activeEditors);
+  }
+
+  @PostMapping("/get")
+  @Operation(summary = "查询文档详情", description = "根据内部 documentId 查询文档概要信息。")
+  public ResponseDto<DocumentSummaryResponse> get(@Valid @RequestBody DocumentGetReq request) {
+    AccessContext accessContext = CurrentAccessContext.getRequired();
+    int activeEditors = documentStatusService.countActiveEditingSessions(List.of(request.documentId())).getOrDefault(request.documentId(), 0);
+    return successResponseWithData(toSummary(documentMetadataService.requireAccessibleDocument(request.documentId()), accessContext, activeEditors));
   }
 
   @PostMapping
@@ -152,11 +208,11 @@ public class DocumentApiController {
           )
       }
   )
-  public DocumentSummaryResponse create(
+  public ResponseDto<DocumentSummaryResponse> create(
       @RequestBody(required = false) CreateDocumentRequest request,
       HttpServletRequest httpServletRequest
   ) throws IOException {
-    AccessContext accessContext = accessContextResolver.resolve(httpServletRequest);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     CreateDocumentRequest safeRequest = request == null ? new CreateDocumentRequest(null, null, null) : request;
     StoredDocument storedDocument = documentStorageService.createNativeDocument(
         null,
@@ -165,12 +221,12 @@ public class DocumentApiController {
         safeRequest.externalDocumentId()
     );
     accessAuditService.recordDocumentCreated(storedDocument.documentId(), accessContext);
-    return toSummary(storedDocument, accessContext);
+    return successResponseWithData(toSummary(storedDocument, accessContext));
   }
 
   @PostMapping("/upload")
   @Operation(summary = "上传文档", description = "上传本地文件并建立文档元数据，返回内部 documentId。")
-  public DocumentSummaryResponse upload(
+  public ResponseDto<DocumentSummaryResponse> upload(
       @Parameter(description = "要上传的文档文件。")
       @RequestParam("file") MultipartFile file,
       HttpServletRequest request
@@ -179,23 +235,23 @@ public class DocumentApiController {
       throw new IllegalArgumentException("上传文件不能为空。");
     }
 
-    AccessContext accessContext = accessContextResolver.resolve(request);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     StoredDocument storedDocument = documentStorageService.storeUploadedDocument(
         file.getOriginalFilename(),
         file.getBytes(),
         accessContext.toRequestContext()
     );
     accessAuditService.recordDocumentUploaded(storedDocument.documentId(), accessContext);
-    return toSummary(storedDocument, accessContext);
+    return successResponseWithData(toSummary(storedDocument, accessContext));
   }
 
   @PostMapping("/import-remote")
   @Operation(summary = "导入远程文档", description = "从公网 URL 下载文档并建立内部文档上下文。")
-  public DocumentSummaryResponse importRemote(
+  public ResponseDto<DocumentSummaryResponse> importRemote(
       @Valid @RequestBody DocumentImportRequest request,
       HttpServletRequest httpServletRequest
   ) throws IOException {
-    AccessContext accessContext = accessContextResolver.resolve(httpServletRequest);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     log.info(
         "收到远程文档导入请求：sourceUrl={}, tenantId={}, actorUser={}",
         request.sourceUrl(),
@@ -207,10 +263,11 @@ public class DocumentApiController {
         accessContext.toRequestContext()
     );
     accessAuditService.recordDocumentImported(storedDocument.documentId(), accessContext);
-    return toSummary(storedDocument, accessContext);
+    return successResponseWithData(toSummary(storedDocument, accessContext));
   }
 
   @DeleteMapping("/{documentId}")
+  @Deprecated(forRemoval = false)
   @ResponseStatus(HttpStatus.NO_CONTENT)
   @Operation(summary = "删除文档", description = "逻辑删除文档并将状态归档。")
   public void delete(
@@ -218,13 +275,26 @@ public class DocumentApiController {
       @PathVariable String documentId,
       HttpServletRequest request
   ) {
-    AccessContext accessContext = accessContextResolver.resolve(request);
+    AccessContext accessContext = CurrentAccessContext.getRequired();
     int activeEditors = documentStatusService.countActiveEditingSessions(List.of(documentId)).getOrDefault(documentId, 0);
     if (activeEditors > 0) {
       throw new DocumentOperationConflictException("文档仍有活跃编辑会话，暂时不能删除。");
     }
     documentMetadataService.archiveDocument(documentId);
     accessAuditService.recordDocumentArchived(documentId, accessContext);
+  }
+
+  @PostMapping("/delete")
+  @Operation(summary = "删除文档", description = "逻辑删除文档并将状态归档。")
+  public ResponseDto<Object> delete(@Valid @RequestBody DocumentDeleteReq request) {
+    AccessContext accessContext = CurrentAccessContext.getRequired();
+    int activeEditors = documentStatusService.countActiveEditingSessions(List.of(request.documentId())).getOrDefault(request.documentId(), 0);
+    if (activeEditors > 0) {
+      throw new DocumentOperationConflictException("文档仍有活跃编辑会话，暂时不能删除。");
+    }
+    documentMetadataService.archiveDocument(request.documentId());
+    accessAuditService.recordDocumentArchived(request.documentId(), accessContext);
+    return successResponse();
   }
 
   private DocumentSummaryResponse toSummary(

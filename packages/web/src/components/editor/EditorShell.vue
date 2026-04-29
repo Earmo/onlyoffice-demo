@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
-import { apiFetch, buildApiUrl, createAccessContextHeaders } from "../../lib/api";
+import { apiFetch, buildApiUrl, createAccessContextHeaders, parseJsonEnvelope } from "../../lib/api";
 import EditorAiWorkbench from "./EditorAiWorkbench.vue";
 import { createOnlyofficeBridge } from "./onlyofficeBridge";
 import { startRuntimeEventStream } from "./runtimeEventStream";
@@ -325,15 +325,12 @@ async function loadEditorConfig() {
     // - 同源的 ONLYOFFICE 文档服务地址
     // - 文档 key/token/config
     // - 编辑态下自动挂载的隐藏桥接插件配置
-    const params = new URLSearchParams({
-      readonly: String(props.readonly)
+    const response = await apiFetch("/api/documents/get/editor-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: props.documentId, readonly: props.readonly })
     });
-    const response = await apiFetch(`/api/documents/${props.documentId}/editor-config?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(await readErrorMessage(response, `配置请求失败，HTTP ${response.status}`));
-    }
-
-    editorPayload.value = await response.json();
+    editorPayload.value = await parseJsonEnvelope(response);
     editingSessionOpened.value = !props.readonly;
     editorKey.value += 1;
     ensureBridge();
@@ -353,11 +350,12 @@ async function fetchSaveStatusSnapshot(options = {}) {
 
   try {
     // 保存状态来自我们自己的后端，不依赖 ONLYOFFICE iframe DOM。
-    const response = await apiFetch(`/api/documents/${props.documentId}/save-status`);
-    if (!response.ok) {
-      throw new Error(await readErrorMessage(response, `状态请求失败，HTTP ${response.status}`));
-    }
-    return await response.json();
+    const response = await apiFetch("/api/documents/get/save-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: props.documentId })
+    });
+    return await parseJsonEnvelope(response);
   } catch (error) {
     if (!suppressErrors) {
       throw error;
@@ -754,27 +752,24 @@ async function closeEditingSession(options = {}) {
     if (!keepalive) {
       // 显式离开编辑页时先主动触发一次保存，再关闭 editing session，
       // 这样能把“离开即保存”的体验收口到一个稳定流程里。
-      const saveResponse = await apiFetch(`/api/documents/${props.documentId}/save`, {
-        method: "POST"
+      const saveResponse = await apiFetch("/api/documents/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId: props.documentId })
       });
-      if (!saveResponse.ok) {
-        throw new Error(await readErrorMessage(saveResponse, `保存文档失败，HTTP ${saveResponse.status}`));
-      }
-      saveStatus.value = await saveResponse.json();
+      saveStatus.value = await parseJsonEnvelope(saveResponse);
     }
 
     destroyDocEditor();
 
     // 编辑器销毁后再通知后端关闭会话，避免前端残留实例继续发送 callback。
-    const response = await apiFetch(`/api/documents/${props.documentId}/editing-sessions/close`, {
+    const response = await apiFetch("/api/documents/close/session", {
       method: "POST",
-      keepalive
+      keepalive,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: props.documentId })
     });
-    if (!response.ok) {
-      throw new Error(await readErrorMessage(response, `结束编辑会话失败，HTTP ${response.status}`));
-    }
-
-    const payload = await response.json();
+    const payload = await parseJsonEnvelope(response);
     editingSessionOpened.value = false;
     saveStatus.value = payload;
     return payload;
@@ -805,10 +800,11 @@ function dispatchUnloadCloseRequest() {
   clearRuntimeStreamRetry();
   stopSaveStatusPolling();
 
-  fetch(buildApiUrl(`/api/documents/${props.documentId}/editing-sessions/close`), {
+  fetch(buildApiUrl("/api/documents/close/session"), {
     method: "POST",
     keepalive: true,
-    headers: createAccessContextHeaders()
+    headers: createAccessContextHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ documentId: props.documentId })
   }).catch(() => {});
 }
 
