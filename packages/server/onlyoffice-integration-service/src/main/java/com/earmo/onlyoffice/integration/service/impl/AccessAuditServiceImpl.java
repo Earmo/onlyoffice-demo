@@ -23,31 +23,67 @@ public class AccessAuditServiceImpl implements AccessAuditService {
 
   private final AccessAuditEventRepository accessAuditEventRepository;
 
+  /**
+   * 记录显式创建文档成功事件。
+   *
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   */
   @Override
   public void recordDocumentCreated(String documentId, AccessContext accessContext) {
     saveEvent(documentId, accessContext, "document_created", "success", "显式创建文档成功。");
   }
 
+  /**
+   * 记录上传本地文档成功事件。
+   *
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   */
   @Override
   public void recordDocumentUploaded(String documentId, AccessContext accessContext) {
     saveEvent(documentId, accessContext, "document_uploaded", "success", "上传文档成功。");
   }
 
+  /**
+   * 记录远程导入文档成功事件。
+   *
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   */
   @Override
   public void recordDocumentImported(String documentId, AccessContext accessContext) {
     saveEvent(documentId, accessContext, "document_imported", "success", "远程导入文档成功。");
   }
 
+  /**
+   * 记录文档归档成功事件。
+   *
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   */
   @Override
   public void recordDocumentArchived(String documentId, AccessContext accessContext) {
     saveEvent(documentId, accessContext, "document_archived", "success", "文档已逻辑删除并归档。");
   }
 
+  /**
+   * 记录用户请求 editor-config 的事件。
+   *
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   */
   @Override
   public void recordEditorConfigRequested(String documentId, AccessContext accessContext) {
     saveEvent(documentId, accessContext, "editor_config_requested", "success", "请求 editor-config。");
   }
 
+  /**
+   * 记录 ONLYOFFICE callback 到达事件。
+   *
+   * @param documentId 内部文档 ID。
+   * @param callbackStatus ONLYOFFICE callback status 值。
+   */
   @Override
   public void recordCallbackReceived(String documentId, Integer callbackStatus) {
     AccessAuditEventEntity entity = new AccessAuditEventEntity();
@@ -65,6 +101,12 @@ public class AccessAuditServiceImpl implements AccessAuditService {
     accessAuditEventRepository.save(entity);
   }
 
+  /**
+   * 记录 ONLYOFFICE callback 被拒绝事件。
+   *
+   * @param documentId 内部文档 ID。
+   * @param reason 拒绝原因。
+   */
   @Override
   public void recordCallbackRejected(String documentId, String reason) {
     AccessAuditEventEntity entity = new AccessAuditEventEntity();
@@ -87,14 +129,14 @@ public class AccessAuditServiceImpl implements AccessAuditService {
    *
    * <p>这样业务层只需要告诉审计服务“发生了什么”，
    * 不需要在每个 controller 或 service 里重复拼 tenant / source / actor 字段。
+   *
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   * @param eventType 审计事件类型。
+   * @param eventResult 审计事件结果。
+   * @param message 审计事件说明。
    */
-  private void saveEvent(
-      String documentId,
-      AccessContext accessContext,
-      String eventType,
-      String eventResult,
-      String message
-  ) {
+  private void saveEvent(String documentId, AccessContext accessContext, String eventType, String eventResult, String message) {
     AccessAuditEventEntity entity = new AccessAuditEventEntity();
     entity.setEventId(buildEventId());
     entity.setDocumentId(documentId);
@@ -110,6 +152,11 @@ public class AccessAuditServiceImpl implements AccessAuditService {
     accessAuditEventRepository.save(entity);
   }
 
+  /**
+   * 生成审计事件主键。
+   *
+   * @return UUID 字符串形式的事件 ID。
+   */
   private String buildEventId() {
     return UUID.randomUUID().toString();
   }

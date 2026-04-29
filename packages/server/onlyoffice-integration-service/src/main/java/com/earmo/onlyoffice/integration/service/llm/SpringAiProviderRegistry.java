@@ -19,6 +19,8 @@ public class SpringAiProviderRegistry {
 
   /**
    * 构建 provider 名称到实现的只读映射。
+   *
+   * @param providers 当前 Spring 容器中注册的 provider 实现列表。
    */
   public SpringAiProviderRegistry(List<SpringAiLlmProvider> providers) {
     LinkedHashMap<String, SpringAiLlmProvider> registry = new LinkedHashMap<>();
@@ -30,6 +32,9 @@ public class SpringAiProviderRegistry {
 
   /**
    * 按实现名查找 provider。
+   *
+   * @param providerName 底层 provider 实现名称。
+   * @return 匹配的 provider 实现；名称为空或未注册时为空。
    */
   public Optional<SpringAiLlmProvider> findProvider(String providerName) {
     if (providerName == null || providerName.isBlank()) {

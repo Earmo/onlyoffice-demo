@@ -46,3 +46,34 @@
 - 修复问题时，除了修业务逻辑，也要补足对应链路的观测点
 - 新增异步、流式、重试、补偿逻辑时，必须同步设计日志节点
 - 如果某处故意不打日志，应能说明原因，例如高频热路径或敏感数据约束
+
+## Java 注释约定
+
+Java 代码统一使用标准 Javadoc 格式。字段注释可以使用单行 Javadoc；方法注释必须包含用途说明，并按签名补齐 `@param`、`@return`，会主动抛出业务异常或受检异常时补 `@throws`。
+
+### 字段注释
+
+```java
+/** 用户登录的唯一标识，通常为手机号或邮箱地址，创建后不可修改。 */
+private String username;
+```
+
+### 方法注释
+
+```java
+/**
+ * 自动创建消息（根据业绩和规则）。
+ *
+ * @param performance 业绩信息。
+ * @param ruleId 规则 ID。
+ * @return 消息 DTO。
+ */
+TtsWecomMessageDto createAutoMessage(TtsContractPerformanceDto performance, String ruleId);
+```
+
+### 书写要求
+
+- `@param` 名称必须与方法签名中的参数名一致
+- 有返回值的方法必须写 `@return`，`void` 方法不写 `@return`
+- 描述要说明业务语义，不要只重复类型名
+- 复杂方法可在正文中补“处理步骤”，但标签仍要齐全

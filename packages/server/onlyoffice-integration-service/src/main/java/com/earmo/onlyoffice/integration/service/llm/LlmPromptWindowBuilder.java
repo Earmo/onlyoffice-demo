@@ -25,6 +25,15 @@ public class LlmPromptWindowBuilder {
    * 2. 计算系统提示词和当前问题已经占用的 token 预算；
    * 3. 倒序挑选最近历史消息，直到预算耗尽；
    * 4. 最终按 `system -> history -> current user` 的顺序返回。
+   *
+   * @param properties LLM 配置。
+   * @param history 当前会话历史消息。
+   * @param question 当前用户问题。
+   * @param snapshotText 当前选区快照文本。
+   * @param emptySelection 当前选区是否为空。
+   * @param includeHeading 是否纳入标题上下文。
+   * @param headingText 当前标题文本。
+   * @return 发送给上游 provider 的消息窗口。
    */
   public List<LlmProviderMessage> buildMessages(
       LlmProperties properties,
@@ -38,6 +47,19 @@ public class LlmPromptWindowBuilder {
     return buildMessages(properties, history, Map.of(), question, snapshotText, emptySelection, includeHeading, headingText);
   }
 
+  /**
+   * 构建发送给上游模型的消息窗口，并允许指定 assistant 消息的 active variant 文本。
+   *
+   * @param properties LLM 配置。
+   * @param history 当前会话历史消息。
+   * @param activeAssistantTextByMessageId assistant message ID 到 active variant 文本的映射。
+   * @param question 当前用户问题。
+   * @param snapshotText 当前选区快照文本。
+   * @param emptySelection 当前选区是否为空。
+   * @param includeHeading 是否纳入标题上下文。
+   * @param headingText 当前标题文本。
+   * @return 发送给上游 provider 的消息窗口。
+   */
   public List<LlmProviderMessage> buildMessages(
       LlmProperties properties,
       List<DocumentLlmMessageEntity> history,
@@ -82,6 +104,9 @@ public class LlmPromptWindowBuilder {
    * 用一个稳定且廉价的启发式估算 token 数。
    *
    * <p>当前实现按字符数除以 4 向上取整，用于预算裁剪，不追求和 provider 完全一致。
+   *
+   * @param value 待估算的文本。
+   * @return 估算 token 数。
    */
   public int estimateTokens(String value) {
     if (value == null || value.isBlank()) {
@@ -92,6 +117,13 @@ public class LlmPromptWindowBuilder {
 
   /**
    * 把当前问题、选区和标题上下文拼成一段最终用户提示词。
+   *
+   * @param question 当前用户问题。
+   * @param snapshotText 当前选区快照文本。
+   * @param emptySelection 当前选区是否为空。
+   * @param includeHeading 是否纳入标题上下文。
+   * @param headingText 当前标题文本。
+   * @return 最终发送给模型的用户提示词。
    */
   private String buildCurrentUserPrompt(
       String question,

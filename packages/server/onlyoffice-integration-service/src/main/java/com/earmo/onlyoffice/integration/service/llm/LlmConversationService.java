@@ -91,6 +91,18 @@ public class LlmConversationService {
 
   /**
    * 注入会话流程所需的仓储、provider 适配器和执行器。
+   *
+   * @param llmProperties LLM 功能配置。
+   * @param providerRegistry Spring AI provider 注册表。
+   * @param documentLlmSessionRepository AI 会话仓储。
+   * @param documentLlmMessageRepository AI 消息仓储。
+   * @param documentLlmMessageVariantRepository assistant 多版本回复仓储。
+   * @param documentLlmRequestRepository AI 请求状态仓储。
+   * @param accessGuard AI 会话访问权限守卫。
+   * @param executionRegistry 请求执行态注册表。
+   * @param promptWindowBuilder prompt 历史窗口构造器。
+   * @param objectMapper JSON 序列化组件。
+   * @param llmExecutor LLM 异步执行线程池。
    */
   public LlmConversationService(
       LlmProperties llmProperties,
@@ -123,6 +135,10 @@ public class LlmConversationService {
    *
    * <p>这里给前端的是“逻辑 provider 是否可用”的结论，
    * 结论同时依赖功能开关、provider 配置和 provider 实现是否已注册。
+   *
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   * @return 当前文档的 AI 能力、默认模型和可选 provider 列表。
    */
   public LlmCapabilityResponse getCapability(String documentId, AccessContext accessContext) {
     // capability 面向前端暴露的是“逻辑 provider”能力，但真正可用还要满足两层条件：
@@ -187,6 +203,10 @@ public class LlmConversationService {
 
   /**
    * 列出当前文档下当前用户可见的 AI 会话摘要。
+   *
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   * @return 当前用户可见的 AI 会话摘要列表。
    */
   public List<LlmSessionSummaryResponse> listSessions(String documentId, AccessContext accessContext) {
     return documentLlmSessionRepository.findSessionsByScope(documentId, accessContext.tenantId(), accessContext.actorUser(), 50)
@@ -203,6 +223,10 @@ public class LlmConversationService {
    * 2. 初始化最近快照为空；
    * 3. 写库；
    * 4. 按配置归档超出上限的旧会话。
+   *
+   * @param request 创建会话请求。
+   * @param accessContext 当前访问上下文。
+   * @return 新建会话详情。
    */
   public LlmSessionDetailResponse createSession(CreateLlmSessionRequest request, AccessContext accessContext) {
     Instant now = Instant.now();
@@ -230,6 +254,10 @@ public class LlmConversationService {
 
   /**
    * 删除会话（软删除）。
+   *
+   * @param documentId 内部文档 ID。
+   * @param sessionId AI 会话 ID。
+   * @param accessContext 当前访问上下文。
    */
   public void deleteSession(String documentId, String sessionId, AccessContext accessContext) {
     DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
@@ -238,6 +266,14 @@ public class LlmConversationService {
     documentLlmSessionRepository.update(session);
   }
 
+  /**
+   * 重命名 AI 会话。
+   *
+   * @param documentId 内部文档 ID。
+   * @param sessionId AI 会话 ID。
+   * @param newTitle 新会话标题。
+   * @param accessContext 当前访问上下文。
+   */
   public void renameSession(String documentId, String sessionId, String newTitle, AccessContext accessContext) {
     DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
     session.setTitle(newTitle);
@@ -247,6 +283,11 @@ public class LlmConversationService {
 
   /**
    * 获取单个会话详情及消息列表。
+   *
+   * @param documentId 内部文档 ID。
+   * @param sessionId AI 会话 ID。
+   * @param accessContext 当前访问上下文。
+   * @return 会话详情与消息列表。
    */
   public LlmSessionDetailResponse getSession(String documentId, String sessionId, AccessContext accessContext) {
     DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
@@ -270,6 +311,12 @@ public class LlmConversationService {
 
   /**
    * 显式切换 assistant message 的 active variant。
+   *
+   * @param documentId 内部文档 ID。
+   * @param messageId assistant message ID。
+   * @param request active variant 切换请求。
+   * @param accessContext 当前访问上下文。
+   * @return 切换后的 assistant message 响应。
    */
   public LlmMessageResponse setActiveVariant(String documentId, String messageId, com.earmo.onlyoffice.integration.model.llm.SetLlmActiveVariantRequest request, AccessContext accessContext) {
     DocumentLlmMessageEntity assistantMessage = accessGuard.requireAssistantMessage(documentId, request.sessionId(), messageId, accessContext);
@@ -299,6 +346,14 @@ public class LlmConversationService {
     return toMessageResponse(assistantMessage, variants);
   }
 
+  /**
+   * 加载指定会话的消息并合并 assistant variants。
+   *
+   * @param sessionId AI 会话 ID。
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   * @return 已合并 variants 的消息响应列表。
+   */
   private List<LlmMessageResponse> loadSessionMessages(String sessionId, String documentId, AccessContext accessContext) {
     List<DocumentLlmMessageEntity> messageEntities = documentLlmMessageRepository.findMessagesBySessionScope(
             sessionId,
@@ -318,6 +373,10 @@ public class LlmConversationService {
    *
    * <p>内部仍然使用流式执行链路，只是在当前线程短暂等待一段时间，
    * 若窗口内未完成则直接返回 `in_progress`。
+   *
+   * @param request 发送消息请求。
+   * @param accessContext 当前访问上下文。
+   * @return 本次请求的同步快照状态。
    */
   public LlmRequestStatusResponse sendMessage(SendLlmMessageRequest request, AccessContext accessContext) {
     // 兼容旧同步接口：内部仍走同一套流式执行逻辑，只做一个很短的同步等待窗口。
@@ -340,6 +399,10 @@ public class LlmConversationService {
 
   /**
    * 以 SSE 方式发送消息并流式返回模型输出。
+   *
+   * @param request 发送消息请求。
+   * @param accessContext 当前访问上下文。
+   * @return 已打开的 SSE emitter。
    */
   public SseEmitter streamMessage(SendLlmMessageRequest request, AccessContext accessContext) {
     PreparedRequest preparedRequest = beginRequest(request, accessContext);
@@ -367,6 +430,11 @@ public class LlmConversationService {
 
   /**
    * 查询单个请求的当前状态。
+   *
+   * @param documentId 内部文档 ID。
+   * @param requestId AI 请求 ID。
+   * @param accessContext 当前访问上下文。
+   * @return 请求当前状态快照。
    */
   public LlmRequestStatusResponse getRequest(String documentId, String requestId, AccessContext accessContext) {
     DocumentLlmRequestEntity requestEntity = accessGuard.requireRequest(documentId, requestId, accessContext);
@@ -388,6 +456,11 @@ public class LlmConversationService {
    * 2. 只有 `in_progress` 请求允许取消；
    * 3. 先抢占内存终态，再持久化取消标记；
    * 4. 把 assistant 占位消息改成 cancelled。
+   *
+   * @param documentId 内部文档 ID。
+   * @param requestId AI 请求 ID。
+   * @param accessContext 当前访问上下文。
+   * @return 取消后的请求状态快照。
    */
   public LlmRequestStatusResponse cancelRequest(String documentId, String requestId, AccessContext accessContext) {
     DocumentLlmRequestEntity requestEntity = accessGuard.requireRequest(documentId, requestId, accessContext);
@@ -414,6 +487,10 @@ public class LlmConversationService {
    *
    * <p>这是所有发送路径的共同入口，负责把用户输入折叠成：
    * 会话更新、user message、pending assistant、request 记录和最终运行时 prompt。
+   *
+   * @param request 发送消息请求。
+   * @param accessContext 当前访问上下文。
+   * @return 已落库并准备执行的请求上下文。
    */
   private PreparedRequest beginRequest(SendLlmMessageRequest request, AccessContext accessContext) {
     requireLlmEnabled();
@@ -615,6 +692,9 @@ public class LlmConversationService {
    * 3. 竞争完成终态；
    * 4. 一次性回写 request / assistant / session；
    * 5. 推送最终 SSE 事件并清理运行态。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param sink SSE 事件输出端。
    */
   private void executeProviderStream(PreparedRequest preparedRequest, StreamEventSink sink) {
     String requestId = preparedRequest.requestEntity().getRequestId();
@@ -789,6 +869,11 @@ public class LlmConversationService {
 
   /**
    * 处理单个 provider chunk，并把增量信息并入累加器。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param sink SSE 事件输出端。
+   * @param accumulator 当前流式累计器。
+   * @param chunk provider 返回的单个流式片段。
    */
   private void handleProviderChunk(
       PreparedRequest preparedRequest,
@@ -859,6 +944,12 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 追加 provider 返回的推理文本增量。
+   *
+   * @param accumulator 当前流式累计器。
+   * @param newDelta 新收到的推理文本增量。
+   */
   private void appendReasoningContent(StreamAccumulator accumulator, String newDelta) {
     if (newDelta == null || newDelta.isEmpty()) {
       return;
@@ -871,6 +962,12 @@ public class LlmConversationService {
 
   /**
    * 统一处理 provider 执行失败。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param sink SSE 事件输出端。
+   * @param accumulator 当前流式累计器。
+   * @param errorCode 发送给前端并持久化的稳定错误码。
+   * @param exception provider 执行异常。
    */
   private void handleProviderFailure(
       PreparedRequest preparedRequest,
@@ -899,6 +996,12 @@ public class LlmConversationService {
     sink.complete();
   }
 
+  /**
+   * 取消已准备但仍在执行中的请求。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param cancelSource 取消来源。
+   */
   private void cancelPreparedRequest(PreparedRequest preparedRequest, String cancelSource) {
     DocumentLlmRequestEntity requestEntity = preparedRequest.requestEntity();
     if (!STATUS_IN_PROGRESS.equals(requestEntity.getStatus())) {
@@ -926,6 +1029,14 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 持久化取消状态。
+   *
+   * @param requestEntity AI 请求实体。
+   * @param assistantMessage assistant 消息实体。
+   * @param accessContext 当前访问上下文。
+   * @param cancelSource 取消来源。
+   */
   private void persistCancelledRequest(
       DocumentLlmRequestEntity requestEntity,
       DocumentLlmMessageEntity assistantMessage,
@@ -935,6 +1046,15 @@ public class LlmConversationService {
     persistCancelledRequest(requestEntity, assistantMessage, accessContext, cancelSource, null);
   }
 
+  /**
+   * 持久化取消状态，并可保留已经产生的部分输出。
+   *
+   * @param requestEntity AI 请求实体。
+   * @param assistantMessage assistant 消息实体。
+   * @param accessContext 当前访问上下文。
+   * @param cancelSource 取消来源。
+   * @param accumulator 当前流式累计器，可为空。
+   */
   private void persistCancelledRequest(
       DocumentLlmRequestEntity requestEntity,
       DocumentLlmMessageEntity assistantMessage,
@@ -980,6 +1100,12 @@ public class LlmConversationService {
 
   /**
    * 把请求和 assistant 消息一起标记为失败。
+   *
+   * @param requestEntity AI 请求实体。
+   * @param assistantMessage assistant 消息实体。
+   * @param variant 本次请求生成或更新的 variant。
+   * @param errorCode 失败错误码。
+   * @param accumulator 当前流式累计器。
    */
   private void markRequestFailed(
       DocumentLlmRequestEntity requestEntity,
@@ -1001,6 +1127,12 @@ public class LlmConversationService {
     documentLlmMessageRepository.update(assistantMessage);
   }
 
+  /**
+   * 将取消或失败前已经收到的部分内容写入 variant。
+   *
+   * @param variant 本次请求生成或更新的 variant。
+   * @param accumulator 当前流式累计器，可为空。
+   */
   private void applyPartialVariantContent(
       DocumentLlmMessageVariantEntity variant,
       StreamAccumulator accumulator
@@ -1021,6 +1153,12 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 将成功终态的完整输出写入 variant。
+   *
+   * @param variant 本次请求生成或更新的 variant。
+   * @param accumulator 当前流式累计器。
+   */
   private void applyFinalVariantContent(DocumentLlmMessageVariantEntity variant, StreamAccumulator accumulator) {
     variant.setAssistantText(accumulator.assistantText.toString());
     variant.setStatus(STATUS_COMPLETED);
@@ -1031,6 +1169,12 @@ public class LlmConversationService {
     variant.setUpdatedTime(Instant.now());
   }
 
+  /**
+   * 判断本次完成的 variant 是否应自动成为 active variant。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @return true 表示用户没有在请求期间显式切换版本，可以自动激活本次完成版本。
+   */
   private boolean shouldAutoActivateCompletedVariant(PreparedRequest preparedRequest) {
     DocumentLlmMessageEntity currentAssistantMessage = documentLlmMessageRepository.findMessageByScope(
             preparedRequest.assistantMessage().getMessageId(),
@@ -1049,6 +1193,13 @@ public class LlmConversationService {
     return currentActive == null && previousActive == null || currentActive != null && currentActive.equals(previousActive);
   }
 
+  /**
+   * 获取 assistant message 当前 active variant。
+   *
+   * @param assistantMessage assistant 消息实体。
+   * @param fallbackVariant 找不到 active variant 时使用的兜底版本。
+   * @return 当前 active variant 或兜底版本。
+   */
   private DocumentLlmMessageVariantEntity activeVariantForMessage(
       DocumentLlmMessageEntity assistantMessage,
       DocumentLlmMessageVariantEntity fallbackVariant
@@ -1069,6 +1220,12 @@ public class LlmConversationService {
         .orElse(fallbackVariant);
   }
 
+  /**
+   * 将 active variant 的内容同步回 assistant message 容器字段。
+   *
+   * @param assistantMessage assistant 消息实体。
+   * @param variant 当前 active variant，可为空。
+   */
   private void copyVariantToAssistantMessage(
       DocumentLlmMessageEntity assistantMessage,
       DocumentLlmMessageVariantEntity variant
@@ -1084,6 +1241,13 @@ public class LlmConversationService {
     assistantMessage.setErrorCode(variant.getErrorCode());
   }
 
+  /**
+   * 在会话消息列表中查找指定 assistant message 对应的上一条 user message。
+   *
+   * @param messages 按时间排序的会话消息列表。
+   * @param assistantMessage 目标 assistant 消息。
+   * @return 对应的 user 消息；不存在时为空。
+   */
   private Optional<DocumentLlmMessageEntity> findUserMessageForAssistant(
       List<DocumentLlmMessageEntity> messages,
       DocumentLlmMessageEntity assistantMessage
@@ -1100,6 +1264,13 @@ public class LlmConversationService {
     return Optional.empty();
   }
 
+  /**
+   * 将历史消息中的 assistant 内容替换为各自 active variant 文本。
+   *
+   * @param history 会话历史消息列表。
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   */
   private void applyActiveVariantsToHistory(
       List<DocumentLlmMessageEntity> history,
       String documentId,
@@ -1118,6 +1289,14 @@ public class LlmConversationService {
     }
   }
 
+  /**
+   * 构造 assistant message ID 到 active variant 文本的映射。
+   *
+   * @param history 会话历史消息列表。
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   * @return assistant message ID 到 active variant 文本的映射。
+   */
   private Map<String, String> activeVariantTextsByMessageId(
       List<DocumentLlmMessageEntity> history,
       String documentId,
@@ -1136,6 +1315,14 @@ public class LlmConversationService {
     return activeTexts;
   }
 
+  /**
+   * 批量加载 assistant messages 下的 variants 并按 messageId 分组。
+   *
+   * @param messages 会话历史消息列表。
+   * @param documentId 内部文档 ID。
+   * @param accessContext 当前访问上下文。
+   * @return messageId 到 variants 列表的映射。
+   */
   private Map<String, List<DocumentLlmMessageVariantEntity>> variantsByMessageId(
       List<DocumentLlmMessageEntity> messages,
       String documentId,
@@ -1155,6 +1342,13 @@ public class LlmConversationService {
         .collect(Collectors.groupingBy(DocumentLlmMessageVariantEntity::getMessageId, LinkedHashMap::new, Collectors.toList()));
   }
 
+  /**
+   * 从 variants 中选择当前应展示的 active variant。
+   *
+   * @param message assistant 消息实体。
+   * @param variants 该 assistant 消息下的所有版本。
+   * @return active variant；没有可选版本时为空。
+   */
   private Optional<DocumentLlmMessageVariantEntity> selectActiveVariant(
       DocumentLlmMessageEntity message,
       List<DocumentLlmMessageVariantEntity> variants
@@ -1175,12 +1369,21 @@ public class LlmConversationService {
         .or(() -> variants.stream().findFirst());
   }
 
+  /**
+   * 判断 provider usage 是否包含任意 token 统计字段。
+   *
+   * @param usage provider usage 对象。
+   * @return true 表示至少一个 token 字段不为空。
+   */
   private boolean hasUsage(LlmProviderUsage usage) {
     return usage != null && (usage.promptTokens() != null || usage.completionTokens() != null || usage.totalTokens() != null);
   }
 
   /**
    * 解析本次请求应使用的 provider、模型和底层实现。
+   *
+   * @param request 发送消息请求。
+   * @return 已解析的运行时 provider、模型和超时配置。
    */
   private RuntimeSelection resolveSelection(SendLlmMessageRequest request) {
     // 这里要区分两个名字：
@@ -1220,6 +1423,8 @@ public class LlmConversationService {
 
   /**
    * 在执行发送前校验 AI 功能和 provider 配置是否可用。
+   *
+   * @throws LlmApiException AI 功能关闭或没有可用 provider 时抛出。
    */
   private void requireLlmEnabled() {
     if (!llmProperties.isFeatureEnabled() || !llmProperties.isEnabled()) {
@@ -1232,6 +1437,8 @@ public class LlmConversationService {
 
   /**
    * 判断当前是否存在至少一个可用的逻辑 provider。
+   *
+   * @return true 表示至少有一个 provider 配置完整且存在底层实现。
    */
   private boolean hasAnyConfiguredProvider() {
     return llmProperties.resolvedProviders().entrySet().stream()
@@ -1240,6 +1447,8 @@ public class LlmConversationService {
 
   /**
    * 构造前端能力页所需的 provider 选项列表。
+   *
+   * @return 前端可展示的 provider 选项列表。
    */
   private List<LlmProviderOptionResponse> buildAvailableProviderOptions() {
     List<LlmProviderOptionResponse> providers = new ArrayList<>();
@@ -1262,6 +1471,9 @@ public class LlmConversationService {
 
   /**
    * 从逻辑 provider 名称解析到底层 Spring AI provider 实现。
+   *
+   * @param logicalProviderName 逻辑 provider 名称。
+   * @return 匹配的底层 Spring AI provider；未配置或未注册时为空。
    */
   private Optional<SpringAiLlmProvider> findSpringAiProvider(String logicalProviderName) {
     LlmProperties.ProviderProperties providerProperties = llmProperties.getProvider(logicalProviderName);
@@ -1273,6 +1485,9 @@ public class LlmConversationService {
 
   /**
    * 默认会话在首轮对话后自动改名；显式命名或历史会话不被覆盖。
+   *
+   * @param session 待判断的 AI 会话实体。
+   * @return true 表示本次首轮对话完成后可以自动生成标题。
    */
   private boolean shouldAutoRenameSession(DocumentLlmSessionEntity session) {
     String title = Optional.ofNullable(session.getTitle()).orElse("").trim();
@@ -1281,6 +1496,9 @@ public class LlmConversationService {
 
   /**
    * 从首条问题里提取短标题，避免把完整 prompt 直接塞进会话列表。
+   *
+   * @param question 用户首条问题正文。
+   * @return 适合展示在会话列表中的短标题。
    */
   private String generateSessionTitle(String question) {
     String title = Optional.ofNullable(question).orElse("")
@@ -1305,6 +1523,9 @@ public class LlmConversationService {
 
   /**
    * 构造请求刚开始时的初始 provider 元数据。
+   *
+   * @param runtimeSelection 本次请求的运行时选择。
+   * @return 包含 provider 和 model 的初始元数据。
    */
   private Map<String, Object> initialProviderMeta(RuntimeSelection runtimeSelection) {
     Map<String, Object> meta = new LinkedHashMap<>();
@@ -1315,6 +1536,9 @@ public class LlmConversationService {
 
   /**
    * 构造 `request-started` 事件体。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @return request-started SSE payload。
    */
   private LlmStreamEventResponse startedEvent(PreparedRequest preparedRequest) {
     return new LlmStreamEventResponse(
@@ -1342,6 +1566,10 @@ public class LlmConversationService {
 
   /**
    * 构造 `assistant-delta` 事件体。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param delta 本次 assistant 正文增量。
+   * @return assistant-delta SSE payload。
    */
   private LlmStreamEventResponse deltaEvent(PreparedRequest preparedRequest, String delta) {
     return new LlmStreamEventResponse(
@@ -1369,6 +1597,10 @@ public class LlmConversationService {
 
   /**
    * 构造 `reasoning-delta` 事件体。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param reasoningText 本次推理文本增量。
+   * @return reasoning-delta SSE payload。
    */
   private LlmStreamEventResponse reasoningDeltaEvent(PreparedRequest preparedRequest, String reasoningText) {
     return new LlmStreamEventResponse(
@@ -1396,6 +1628,10 @@ public class LlmConversationService {
 
   /**
    * 构造 `assistant-meta` 事件体。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param accumulator 当前流式累计器。
+   * @return assistant-meta SSE payload。
    */
   private LlmStreamEventResponse metaEvent(PreparedRequest preparedRequest, StreamAccumulator accumulator) {
     return new LlmStreamEventResponse(
@@ -1423,6 +1659,10 @@ public class LlmConversationService {
 
   /**
    * 构造 `assistant-completed` 事件体。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param accumulator 当前流式累计器。
+   * @return assistant-completed SSE payload。
    */
   private LlmStreamEventResponse completedEvent(PreparedRequest preparedRequest, StreamAccumulator accumulator) {
     Instant finishedTime = preparedRequest.requestEntity().getFinishedTime();
@@ -1451,11 +1691,21 @@ public class LlmConversationService {
 
   /**
    * 构造 `assistant-cancelled` 事件体。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @return assistant-cancelled SSE payload。
    */
   private LlmStreamEventResponse cancelledEvent(PreparedRequest preparedRequest) {
     return cancelledEvent(preparedRequest, null);
   }
 
+  /**
+   * 构造带部分输出内容的 `assistant-cancelled` 事件体。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param accumulator 当前流式累计器，可为空。
+   * @return assistant-cancelled SSE payload。
+   */
   private LlmStreamEventResponse cancelledEvent(PreparedRequest preparedRequest, StreamAccumulator accumulator) {
     return new LlmStreamEventResponse(
         preparedRequest.request().documentId(),
@@ -1482,6 +1732,11 @@ public class LlmConversationService {
 
   /**
    * 构造 `assistant-error` 事件体。
+   *
+   * @param preparedRequest 已准备好的请求上下文。
+   * @param errorCode 发送给前端的稳定错误码。
+   * @param accumulator 当前流式累计器，可为空。
+   * @return assistant-error SSE payload。
    */
   private LlmStreamEventResponse errorEvent(PreparedRequest preparedRequest, String errorCode, StreamAccumulator accumulator) {
     return new LlmStreamEventResponse(
@@ -1509,6 +1764,10 @@ public class LlmConversationService {
 
   /**
    * 把数据库中的请求实体和 assistant 消息折叠成请求状态 DTO。
+   *
+   * @param requestEntity AI 请求实体。
+   * @param assistantMessage 本次请求关联的 assistant 消息实体。
+   * @return 请求状态响应 DTO。
    */
   private LlmRequestStatusResponse toRequestStatusResponse(
       DocumentLlmRequestEntity requestEntity,
@@ -1543,6 +1802,10 @@ public class LlmConversationService {
 
   /**
    * 把会话实体和消息列表转换为详情响应。
+   *
+   * @param entity AI 会话实体。
+   * @param messages 会话消息 DTO 列表。
+   * @return 会话详情响应。
    */
   private LlmSessionDetailResponse toSessionDetail(DocumentLlmSessionEntity entity, List<LlmMessageResponse> messages) {
     return new LlmSessionDetailResponse(
@@ -1562,6 +1825,9 @@ public class LlmConversationService {
 
   /**
    * 把会话实体转换为摘要响应。
+   *
+   * @param entity AI 会话实体。
+   * @return 会话摘要响应。
    */
   private LlmSessionSummaryResponse toSessionSummary(DocumentLlmSessionEntity entity) {
     return new LlmSessionSummaryResponse(
@@ -1580,11 +1846,21 @@ public class LlmConversationService {
 
   /**
    * 把消息实体转换为前端消息 DTO。
+   *
+   * @param entity AI 消息实体。
+   * @return 消息响应 DTO。
    */
   private LlmMessageResponse toMessageResponse(DocumentLlmMessageEntity entity) {
     return toMessageResponse(entity, List.of());
   }
 
+  /**
+   * 把消息实体和 assistant variants 合并成前端消息 DTO。
+   *
+   * @param entity AI 消息实体。
+   * @param variants assistant 消息下的所有回复版本。
+   * @return 消息响应 DTO。
+   */
   private LlmMessageResponse toMessageResponse(DocumentLlmMessageEntity entity, List<DocumentLlmMessageVariantEntity> variants) {
     Optional<DocumentLlmMessageVariantEntity> activeVariant = selectActiveVariant(entity, variants);
     List<LlmMessageVariantResponse> variantResponses = variants == null ? List.of() : variants.stream()
@@ -1611,6 +1887,12 @@ public class LlmConversationService {
     );
   }
 
+  /**
+   * 把 assistant variant 实体转换为响应 DTO。
+   *
+   * @param variant assistant 回复版本实体。
+   * @return assistant 回复版本响应 DTO。
+   */
   private LlmMessageVariantResponse toVariantResponse(DocumentLlmMessageVariantEntity variant) {
     return new LlmMessageVariantResponse(
         variant.getVariantId(),
@@ -1629,6 +1911,9 @@ public class LlmConversationService {
    * 按白名单过滤 provider 响应元数据。
    *
    * <p>只允许前端和持久化真正需要的字段透出，避免把上游原始调试信息暴露出去。
+   *
+   * @param providerResponseMeta provider 原始响应元数据。
+   * @return 白名单过滤后的元数据。
    */
   private Map<String, Object> filterProviderResponseMeta(Map<String, Object> providerResponseMeta) {
     if (providerResponseMeta == null || providerResponseMeta.isEmpty()) {
@@ -1662,6 +1947,9 @@ public class LlmConversationService {
 
   /**
    * 安全地把对象序列化成 JSON，失败时返回 `null` 并记录日志。
+   *
+   * @param payload 待序列化对象。
+   * @return JSON 字符串；payload 为空或序列化失败时返回 null。
    */
   private String writeJson(Object payload) {
     if (payload == null) {
@@ -1679,6 +1967,9 @@ public class LlmConversationService {
    * 从 JSON 中读取 usage 信息。
    *
    * <p>优先按当前 record 结构解析，失败后回退到 map 兼容读取。
+   *
+   * @param payload usage JSON 字符串。
+   * @return usage 响应对象；解析失败时返回空 usage。
    */
   private LlmUsageResponse readUsage(String payload) {
     if (payload == null || payload.isBlank()) {
@@ -1704,6 +1995,9 @@ public class LlmConversationService {
 
   /**
    * 从 JSON 中读取 provider 元数据。
+   *
+   * @param payload provider 元数据 JSON 字符串。
+   * @return 元数据映射；解析失败时返回空映射。
    */
   private Map<String, Object> readMeta(String payload) {
     if (payload == null || payload.isBlank()) {
@@ -1719,11 +2013,20 @@ public class LlmConversationService {
 
   /**
    * 把任意数字对象安全转换为整数。
+   *
+   * @param value 待转换对象。
+   * @return 整数值；非数字对象返回 null。
    */
   private Integer readInteger(Object value) {
     return value instanceof Number number ? number.intValue() : null;
   }
 
+  /**
+   * 解析 SSE emitter 的超时时间。
+   *
+   * @param providerTimeoutMillis provider 调用超时时间。
+   * @return 加上缓冲后的 SSE 超时时间。
+   */
   private long resolveStreamTimeoutMillis(long providerTimeoutMillis) {
     if (providerTimeoutMillis <= 0) {
       return MIN_STREAM_TIMEOUT_MILLIS;
@@ -1731,6 +2034,12 @@ public class LlmConversationService {
     return Math.max(providerTimeoutMillis + STREAM_TIMEOUT_BUFFER_MILLIS, MIN_STREAM_TIMEOUT_MILLIS);
   }
 
+  /**
+   * 判断异常链中是否包含 provider 超时异常。
+   *
+   * @param exception provider 执行阶段抛出的运行时异常。
+   * @return true 表示异常链中存在 TimeoutException。
+   */
   private boolean isProviderTimeoutException(RuntimeException exception) {
     Throwable current = exception;
     while (current != null) {
@@ -1788,12 +2097,20 @@ public class LlmConversationService {
 
     /**
      * 用 provider 和 model 初始化元数据骨架。
+     *
+     * @param providerName 逻辑 provider 名称。
+     * @param model 模型名称。
      */
     private StreamAccumulator(String providerName, String model) {
       providerMeta.put("provider", providerName);
       providerMeta.put("model", model);
     }
 
+    /**
+     * 判断当前累计器是否已经收到可保留的部分内容。
+     *
+     * @return true 表示已有正文或推理内容。
+     */
     private boolean hasPartialContent() {
       return !assistantText.isEmpty() || providerMeta.containsKey("reasoningContent");
     }
@@ -1806,6 +2123,9 @@ public class LlmConversationService {
 
     /**
      * 发送一个命名事件。
+     *
+     * @param name SSE 事件名称。
+     * @param event SSE 事件 payload。
      */
     void send(String name, LlmStreamEventResponse event);
 
@@ -1816,11 +2136,15 @@ public class LlmConversationService {
 
     /**
      * 以异常形式结束事件流。
+     *
+     * @param exception 触发流结束的异常。
      */
     void completeWithError(Exception exception);
 
     /**
      * 返回一个什么都不做的 sink，用于同步兼容接口复用同一执行链路。
+     *
+     * @return 空实现的事件输出端。
      */
     static StreamEventSink noop() {
       return new StreamEventSink() {
@@ -1852,6 +2176,9 @@ public class LlmConversationService {
 
     /**
      * 绑定 emitter 并在 completion / timeout / error 时关闭本地状态。
+     *
+     * @param emitter Spring MVC SSE emitter。
+     * @param onClosed 连接关闭时执行的回调。
      */
     private EmitterStreamEventSink(SseEmitter emitter, Runnable onClosed) {
       this.emitter = emitter;
@@ -1864,6 +2191,9 @@ public class LlmConversationService {
 
     /**
      * 发送单个 SSE 事件。
+     *
+     * @param name SSE 事件名称。
+     * @param event SSE 事件 payload。
      */
     @Override
     public void send(String name, LlmStreamEventResponse event) {
@@ -1895,6 +2225,8 @@ public class LlmConversationService {
 
     /**
      * 以异常形式关闭 emitter。
+     *
+     * @param exception 触发流关闭的异常。
      */
     @Override
     public void completeWithError(Exception exception) {
@@ -1909,6 +2241,9 @@ public class LlmConversationService {
       }
     }
 
+    /**
+     * 标记连接已经关闭并执行一次性关闭回调。
+     */
     private void markClosed() {
       closed = true;
       if (closeHandled.compareAndSet(false, true)) {

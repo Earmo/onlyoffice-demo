@@ -77,6 +77,8 @@ public class LlmProperties {
 
   /**
    * 判断默认 provider 是否满足最低可用配置。
+   *
+   * @return true 表示默认 provider 已启用且具备可用模型。
    */
   public boolean isConfigured() {
     return hasUsableProvider(resolveDefaultProvider());
@@ -86,6 +88,8 @@ public class LlmProperties {
    * 解析默认 provider。
    *
    * <p>优先使用 defaultProvider；为空时回退到第一个已声明 provider。
+   *
+   * @return 最终使用的逻辑 provider 名称；没有任何 provider 时返回空字符串。
    */
   public String resolveDefaultProvider() {
     if (hasText(defaultProvider)) {
@@ -98,6 +102,8 @@ public class LlmProperties {
    * 解析默认模型。
    *
    * <p>优先使用默认 provider 的 defaultModel，其次使用全局 defaultModel。
+   *
+   * @return 最终使用的模型名称；无法解析时返回空字符串。
    */
   public String resolveDefaultModel() {
     return resolveModel(resolveDefaultProvider(), defaultModel);
@@ -105,6 +111,9 @@ public class LlmProperties {
 
   /**
    * 判断指定 provider 是否已启用且具备可用模型。
+   *
+   * @param providerName 逻辑 provider 名称。
+   * @return true 表示 provider 存在、已启用且能解析出可用模型。
    */
   public boolean hasUsableProvider(String providerName) {
     ProviderProperties providerProperties = getProvider(providerName);
@@ -116,6 +125,9 @@ public class LlmProperties {
 
   /**
    * 按 provider 名称获取已合并默认值的配置。
+   *
+   * @param providerName 逻辑 provider 名称。
+   * @return provider 配置；名称为空或未配置时返回 null。
    */
   public ProviderProperties getProvider(String providerName) {
     if (!hasText(providerName)) {
@@ -128,6 +140,10 @@ public class LlmProperties {
    * 解析一次请求最终应使用的模型。
    *
    * <p>优先级：请求模型 > provider 默认模型 > 全局默认模型。
+   *
+   * @param providerName 逻辑 provider 名称。
+   * @param requestedModel 请求显式指定的模型，可为空。
+   * @return 最终模型名称；无法解析时返回空字符串。
    */
   public String resolveModel(String providerName, String requestedModel) {
     if (hasText(requestedModel)) {
@@ -147,6 +163,9 @@ public class LlmProperties {
    * 返回 provider 对外可选的模型列表。
    *
    * <p>显式配置 models 时使用配置列表，同时确保解析后的默认模型也包含在结果中。
+   *
+   * @param providerName 逻辑 provider 名称。
+   * @return 可选模型列表；provider 不可用时返回空列表。
    */
   public List<String> availableModels(String providerName) {
     ProviderProperties providerProperties = getProvider(providerName);
@@ -164,6 +183,10 @@ public class LlmProperties {
 
   /**
    * 判断请求模型是否落在 provider 允许范围内。
+   *
+   * @param providerName 逻辑 provider 名称。
+   * @param requestedModel 请求显式指定的模型，可为空。
+   * @return true 表示模型可用于该 provider。
    */
   public boolean isAllowedModel(String providerName, String requestedModel) {
     String resolvedModel = resolveModel(providerName, requestedModel);
@@ -179,6 +202,8 @@ public class LlmProperties {
 
   /**
    * 返回已合并继承默认值的 provider 配置集合。
+   *
+   * @return provider key 到完整配置的映射。
    */
   public Map<String, ProviderProperties> resolvedProviders() {
     LinkedHashMap<String, ProviderProperties> resolved = new LinkedHashMap<>();
@@ -190,12 +215,23 @@ public class LlmProperties {
     return resolved;
   }
 
+  /**
+   * 校验启用 LLM 时是否至少存在一个可用 provider。
+   *
+   * @return true 表示配置合法。
+   */
   @AssertTrue(message = "当 llm.enabled=true 时，必须至少配置一个可用 provider 和 model")
   public boolean isProviderConfigValid() {
     return !enabled || resolvedProviders().entrySet().stream()
         .anyMatch(entry -> entry.getValue().isEnabled() && entry.getValue().isConfigured(resolveModel(entry.getKey(), null)));
   }
 
+  /**
+   * 判断字符串是否包含非空白文本。
+   *
+   * @param value 待检查字符串。
+   * @return true 表示 value 非 null 且去空白后不为空。
+   */
   private boolean hasText(String value) {
     return value != null && !value.isBlank();
   }
@@ -250,6 +286,9 @@ public class LlmProperties {
 
     /**
      * 判断 provider 是否具备最小可用配置。
+     *
+     * @param resolvedModel 已按优先级解析后的模型名称。
+     * @return true 表示已配置 API key 且模型非空。
      */
     public boolean isConfigured(String resolvedModel) {
       return hasText(apiKey) && hasText(resolvedModel);
@@ -257,6 +296,9 @@ public class LlmProperties {
 
     /**
      * 复制 provider 配置并填充继承默认值。
+     *
+     * @param inheritedTimeoutMillis 全局继承的超时时间。
+     * @return 已复制并填充默认值的新配置对象。
      */
     private ProviderProperties copyWithDefaults(long inheritedTimeoutMillis) {
       ProviderProperties copy = new ProviderProperties();
@@ -273,6 +315,12 @@ public class LlmProperties {
       return copy;
     }
 
+    /**
+     * 判断字符串是否包含非空白文本。
+     *
+     * @param value 待检查字符串。
+     * @return true 表示 value 非 null 且去空白后不为空。
+     */
     private boolean hasText(String value) {
       return value != null && !value.isBlank();
     }
