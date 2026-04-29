@@ -195,25 +195,25 @@ llm:
     - usage.totalTokens
   providers:
     dashscope:
-      enabled: ${LLM_PROVIDER_DASHSCOPE_ENABLED:false}
+      enabled: ${LLM_PROVIDER_DASHSCOPE_ENABLED:true}
       label: DashScope
       spring-ai-provider: openai-compatible
       base-url: ${LLM_PROVIDER_DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
       api-key: ${LLM_PROVIDER_DASHSCOPE_API_KEY:}
       default-model: ${LLM_PROVIDER_DASHSCOPE_DEFAULT_MODEL:qwen-plus}
       models:
-        - ${LLM_PROVIDER_DASHSCOPE_DEFAULT_MODEL:qwen-plus}
+        - qwen-plus
       streaming-enabled: ${LLM_PROVIDER_DASHSCOPE_STREAMING_ENABLED:true}
       timeout-millis: ${LLM_PROVIDER_DASHSCOPE_TIMEOUT_MILLIS:60000}
     siliconflow:
-      enabled: false
+      enabled: true
       label: SiliconFlow
       spring-ai-provider: openai-compatible
       base-url: ${LLM_PROVIDER_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
-      api-key: ${LLM_PROVIDER_SILICONFLOW_API_KEY:sk-gzcjuctqqzepbwmpomjacbmyboqwzxnaimjgmopfgydlhvzk}
+      api-key: ${LLM_PROVIDER_SILICONFLOW_API_KEY:sk-ktnfpujzzrypcngxmbpgsuuhuqilbthjnxyijjfqcvukjxwr}
       default-model: ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
       models:
-        - ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
+        - Qwen/Qwen3.5-397B-A17B
         - Pro/moonshotai/Kimi-K2.6
         - Pro/zai-org/GLM-5.1
         - Pro/MiniMaxAI/MiniMax-M2.5
@@ -228,11 +228,11 @@ llm:
       api-key: ${LLM_PROVIDER_OPENAI_API_KEY:agt_codex_2vlDmcKvHqEm8thTK4nxKPTInZ2XEifG}
       default-model: ${LLM_PROVIDER_OPENAI_DEFAULT_MODEL:gpt-5.4}
       models:
-        - ${LLM_PROVIDER_OPENAI_DEFAULT_MODEL:gpt-5.4}
-        - gpt-5.4-mini
+        - gpt-5.4
         - gpt-5.3-codex
         - gpt-5.2-codex
         - gpt-5.2
+        - gpt-5.4-mini
       streaming-enabled: ${LLM_PROVIDER_OPENAI_STREAMING_ENABLED:true}
       timeout-millis: ${LLM_PROVIDER_OPENAI_TIMEOUT_MILLIS:60000}
   session:

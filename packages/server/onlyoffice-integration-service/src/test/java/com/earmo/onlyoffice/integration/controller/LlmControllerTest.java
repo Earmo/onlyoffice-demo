@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.web;
+package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.common.exception.GlobalExceptionHandler;
 import com.earmo.onlyoffice.integration.context.AccessContext;

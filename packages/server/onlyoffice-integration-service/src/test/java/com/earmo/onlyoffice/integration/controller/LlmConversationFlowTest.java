@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.web;
+package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.service.llm.LlmApiException;
 import com.earmo.onlyoffice.integration.service.llm.LlmErrorCodes;

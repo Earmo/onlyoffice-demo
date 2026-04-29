@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.web;
+package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.common.aspect.ApiLoggingAspect;
 import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;

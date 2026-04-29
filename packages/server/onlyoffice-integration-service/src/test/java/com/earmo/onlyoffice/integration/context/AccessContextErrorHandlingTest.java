@@ -6,7 +6,7 @@ import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.common.exception.GlobalExceptionHandler;
-import com.earmo.onlyoffice.integration.web.DocumentApiController;
+import com.earmo.onlyoffice.integration.controller.DocumentApiController;
 import com.mybatisflex.core.paginate.Page;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
