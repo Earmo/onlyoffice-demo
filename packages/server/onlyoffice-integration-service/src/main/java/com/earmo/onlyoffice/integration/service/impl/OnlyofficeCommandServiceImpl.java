@@ -40,11 +40,23 @@ public class OnlyofficeCommandServiceImpl implements OnlyofficeCommandService {
   /** 正在等待 callback 回写完成的 forceSave 请求。 */
   private final ConcurrentHashMap<String, CompletableFuture<Void>> pendingSaves = new ConcurrentHashMap<>();
 
+  /**
+   * 向 ONLYOFFICE 发送 forcesave 命令，不等待 callback。
+   *
+   * @param documentId 内部文档 ID。
+   */
   @Override
   public void forceSave(String documentId) {
     invokeForceSave(documentId);
   }
 
+  /**
+   * 向 ONLYOFFICE 发送 forcesave 命令并等待保存 callback。
+   *
+   * @param documentId 内部文档 ID。
+   * @param timeoutMillis 等待 callback 的超时时间。
+   * @return true 表示命令成功且已确认保存完成，或 Document Server 返回无待保存修改。
+   */
   @Override
   public boolean forceSaveAndAwait(String documentId, long timeoutMillis) {
     CompletableFuture<Void> future = new CompletableFuture<>();
@@ -71,6 +83,11 @@ public class OnlyofficeCommandServiceImpl implements OnlyofficeCommandService {
     }
   }
 
+  /**
+   * 通知正在等待的 forcesave 请求保存已完成。
+   *
+   * @param documentId 内部文档 ID。
+   */
   @Override
   public void notifySaveCompleted(String documentId) {
     CompletableFuture<Void> future = pendingSaves.get(documentId);
@@ -79,6 +96,12 @@ public class OnlyofficeCommandServiceImpl implements OnlyofficeCommandService {
     }
   }
 
+  /**
+   * 组装并调用 ONLYOFFICE forcesave 命令。
+   *
+   * @param documentId 内部文档 ID。
+   * @return ONLYOFFICE Command Service error 码；调用失败时返回 null。
+   */
   private Integer invokeForceSave(String documentId) {
     StoredDocument storedDocument;
     try {
@@ -124,6 +147,11 @@ public class OnlyofficeCommandServiceImpl implements OnlyofficeCommandService {
     }
   }
 
+  /**
+   * 解析 ONLYOFFICE Command Service 端点地址。
+   *
+   * @return 可直接 POST forcesave 命令的 URL。
+   */
   private String resolveCommandServiceUrl() {
     String commandBaseUrl = properties.getDocumentServerCommandUrl();
     if (commandBaseUrl != null && !commandBaseUrl.isBlank()) {

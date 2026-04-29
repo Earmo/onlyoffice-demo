@@ -5,6 +5,11 @@ package com.earmo.onlyoffice.integration.service;
  */
 public class DocumentOperationConflictException extends RuntimeException {
 
+  /**
+   * 创建文档操作冲突异常。
+   *
+   * @param message 冲突说明
+   */
   public DocumentOperationConflictException(String message) {
     super(message);
   }

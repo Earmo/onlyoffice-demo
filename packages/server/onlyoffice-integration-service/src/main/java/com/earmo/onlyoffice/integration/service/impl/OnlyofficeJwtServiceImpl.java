@@ -28,6 +28,12 @@ public class OnlyofficeJwtServiceImpl implements OnlyofficeJwtService {
 
   private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
 
+  /**
+   * 使用 ONLYOFFICE 共享密钥签名 payload。
+   *
+   * @param payload 待签名的 JWT claims。
+   * @return JWT 字符串。
+   */
   @Override
   public String sign(Map<String, Object> payload) {
     return Jwts.builder()
@@ -41,6 +47,9 @@ public class OnlyofficeJwtServiceImpl implements OnlyofficeJwtService {
    *
    * <p>这里显式沿用 starter 当前配置的共享 secret，把 callback 可信性建立在应用层签名上，
    * 而不是依赖容器网络拓扑“恰好只有 ONLYOFFICE 能打到接口”。
+   *
+   * @param request ONLYOFFICE callback HTTP 请求。
+   * @return JWT claims。
    */
   @Override
   public Claims verifyCallbackRequest(HttpServletRequest request) {
@@ -58,6 +67,12 @@ public class OnlyofficeJwtServiceImpl implements OnlyofficeJwtService {
     return verify(extractToken(headerValue));
   }
 
+  /**
+   * 校验 JWT 字符串并返回 claims。
+   *
+   * @param token JWT 字符串。
+   * @return JWT claims。
+   */
   @Override
   public Claims verify(String token) {
     if (!StringUtils.hasText(token)) {
@@ -75,12 +90,23 @@ public class OnlyofficeJwtServiceImpl implements OnlyofficeJwtService {
     }
   }
 
+  /**
+   * 根据配置中的共享密钥创建 HMAC 签名 key。
+   *
+   * @return JWT 签名 key。
+   */
   private SecretKey resolveSigningKey() {
     return Keys.hmacShaKeyFor(
         onlyofficeIntegrationProperties.getJwtSecret().getBytes(StandardCharsets.UTF_8)
     );
   }
 
+  /**
+   * 从请求头值中提取原始 JWT。
+   *
+   * @param headerValue 原始请求头值，支持 Bearer 前缀。
+   * @return JWT 字符串。
+   */
   private String extractToken(String headerValue) {
     String trimmedHeaderValue = headerValue.trim();
     if (!StringUtils.hasText(trimmedHeaderValue)) {

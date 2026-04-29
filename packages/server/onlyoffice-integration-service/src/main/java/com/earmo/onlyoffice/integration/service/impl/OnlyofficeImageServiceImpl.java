@@ -44,6 +44,10 @@ public class OnlyofficeImageServiceImpl implements OnlyofficeImageService {
    *
    * <p>这里不把第三方图片 URL 直接暴露给浏览器或 ONLYOFFICE，
    * 而是统一换成当前服务的代理地址，这样远程资源安全策略和签名语义都由后端掌控。
+   *
+   * @param documentId 内部文档 ID。
+   * @param sourceUrl 原始远程图片地址。
+   * @return ONLYOFFICE 插入图片所需的命令参数。
    */
   @Override
   public InsertImageResponse buildInsertImageResponse(String documentId, String sourceUrl) {
@@ -65,6 +69,10 @@ public class OnlyofficeImageServiceImpl implements OnlyofficeImageService {
    *
    * <p>下载动作本身仍复用 RemoteResourceSecurityService 的 SSRF / 大小 / 媒体类型边界，
    * 这里只负责把下载结果重新包装成前端控制器可以直接返回的资源对象。
+   *
+   * @param sourceUrl 原始远程图片地址。
+   * @return 可直接返回给 ONLYOFFICE Docs 的图片资源。
+   * @throws IOException 远程图片下载失败时抛出。
    */
   @Override
   public RemoteImageResource proxyRemoteImage(String sourceUrl) throws IOException {
@@ -81,10 +89,23 @@ public class OnlyofficeImageServiceImpl implements OnlyofficeImageService {
     return new RemoteImageResource(remoteFetchResult.body(), mediaType, filename);
   }
 
+  /**
+   * 校验并解析远程图片地址。
+   *
+   * @param sourceUrl 原始远程图片地址。
+   * @return 通过安全校验的 URI。
+   */
   private URI parseAndValidateSourceUrl(String sourceUrl) {
     return remoteResourceSecurityService.validateRemoteUri(sourceUrl, "图片地址");
   }
 
+  /**
+   * 构造 ONLYOFFICE Docs 拉取图片时访问的内部代理地址。
+   *
+   * @param documentId 内部文档 ID。
+   * @param sourceUrl 原始远程图片地址。
+   * @return 当前服务的图片代理 URL。
+   */
   private String buildInternalImageProxyUrl(String documentId, String sourceUrl) {
     return UriComponentsBuilder.fromHttpUrl(onlyofficeIntegrationProperties.getInternalBaseUrl())
         .path("/api/documents/{documentId}/images/proxy")
@@ -93,6 +114,12 @@ public class OnlyofficeImageServiceImpl implements OnlyofficeImageService {
         .toUriString();
   }
 
+  /**
+   * 从远程 URI 文件名中解析 ONLYOFFICE 图片类型。
+   *
+   * @param remoteUri 远程图片 URI。
+   * @return ONLYOFFICE add image 命令使用的 fileType。
+   */
   private String resolveFileType(URI remoteUri) {
     String path = remoteUri.getPath();
     if (!StringUtils.hasText(path)) {
@@ -117,6 +144,12 @@ public class OnlyofficeImageServiceImpl implements OnlyofficeImageService {
     };
   }
 
+  /**
+   * 从远程 URI 中提取图片文件名。
+   *
+   * @param remoteUri 远程图片 URI。
+   * @return 文件名；无法提取时返回默认文件名。
+   */
   private String extractFilename(URI remoteUri) {
     String path = remoteUri.getPath();
     if (!StringUtils.hasText(path)) {

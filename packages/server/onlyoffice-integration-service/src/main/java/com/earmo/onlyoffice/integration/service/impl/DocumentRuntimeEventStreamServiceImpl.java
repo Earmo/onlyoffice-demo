@@ -55,6 +55,11 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
   private final long keepaliveIntervalMillis;
   private final LongFunction<SseEmitter> emitterFactory;
 
+  /**
+   * 创建默认文档运行态 SSE 服务。
+   *
+   * @param properties ONLYOFFICE 集成配置
+   */
   @Autowired
   public DocumentRuntimeEventStreamServiceImpl(OnlyofficeIntegrationProperties properties) {
     this(
@@ -66,6 +71,11 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     );
   }
 
+  /**
+   * 创建运行态保活调度器。
+   *
+   * @return 单线程保活调度器
+   */
   private static ScheduledExecutorService newKeepaliveScheduler() {
     return Executors.newSingleThreadScheduledExecutor(runnable -> {
       Thread thread = new Thread(runnable);
@@ -75,6 +85,12 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     });
   }
 
+  /**
+   * 解析运行态 SSE 保活间隔。
+   *
+   * @param properties ONLYOFFICE 集成配置
+   * @return 保活间隔毫秒数
+   */
   private static long resolveKeepaliveIntervalMillis(OnlyofficeIntegrationProperties properties) {
     if (properties == null || properties.getEditingSession() == null) {
       return DEFAULT_KEEPALIVE_INTERVAL_MILLIS;
@@ -82,6 +98,15 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     return Math.max(1L, properties.getEditingSession().getRuntimeKeepaliveSeconds()) * 1000L;
   }
 
+  /**
+   * 创建可注入依赖的文档运行态 SSE 服务，主要供测试使用。
+   *
+   * @param keepaliveScheduler 保活调度器
+   * @param clock 时钟
+   * @param emitterTimeoutMillis SSE 连接超时时间
+   * @param keepaliveIntervalMillis 保活间隔毫秒数
+   * @param emitterFactory SSE emitter 工厂
+   */
   DocumentRuntimeEventStreamServiceImpl(
       ScheduledExecutorService keepaliveScheduler,
       Clock clock,
@@ -96,6 +121,15 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     this.emitterFactory = emitterFactory;
   }
 
+  /**
+   * 打开文档运行态事件流。
+   *
+   * @param documentId 文档唯一标识
+   * @param accessContext 访问上下文
+   * @param initialStatus 首帧保存状态
+   * @param livenessTouch 连接保活时触发的编辑会话续期动作
+   * @return SSE emitter
+   */
   @Override
   public SseEmitter open(
       String documentId,
@@ -143,6 +177,12 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     return subscriber.emitter;
   }
 
+  /**
+   * 向指定文档的所有订阅者广播保存状态。
+   *
+   * @param documentId 文档唯一标识
+   * @param status 保存状态响应
+   */
   @Override
   public void publishSaveStatus(String documentId, DocumentSaveStatusResponse status) {
     CopyOnWriteArrayList<RuntimeSubscriber> subscribers = subscribersByDocumentId.get(documentId);
@@ -152,16 +192,30 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     subscribers.forEach(subscriber -> sendSaveStatus(subscriber, status));
   }
 
+  /**
+   * 服务销毁时关闭保活调度器。
+   */
   @PreDestroy
   void shutdownScheduler() {
     keepaliveScheduler.shutdownNow();
   }
 
+  /**
+   * 判断文档是否存在运行态订阅者。
+   *
+   * @param documentId 文档唯一标识
+   * @return 存在订阅者时返回 true
+   */
   boolean hasSubscribers(String documentId) {
     CopyOnWriteArrayList<RuntimeSubscriber> subscribers = subscribersByDocumentId.get(documentId);
     return subscribers != null && !subscribers.isEmpty();
   }
 
+  /**
+   * 注册运行态订阅者并绑定 emitter 生命周期回调。
+   *
+   * @param subscriber 运行态订阅者
+   */
   private void registerSubscriber(RuntimeSubscriber subscriber) {
     // subscriber 的生命周期全部收口到 cleanupSubscriber，理由是：
     // - completion：浏览器正常断开；
@@ -176,6 +230,12 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     subscriber.emitter.onError(error -> cleanupSubscriber(subscriber));
   }
 
+  /**
+   * 向订阅者发送保存状态事件。
+   *
+   * @param subscriber 运行态订阅者
+   * @param status 保存状态响应
+   */
   private void sendSaveStatus(RuntimeSubscriber subscriber, DocumentSaveStatusResponse status) {
     sendEvent(
         subscriber,
@@ -186,6 +246,11 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     );
   }
 
+  /**
+   * 向订阅者发送会话活跃事件。
+   *
+   * @param subscriber 运行态订阅者
+   */
   private void sendSessionActive(RuntimeSubscriber subscriber) {
     sendEvent(
         subscriber,
@@ -198,6 +263,11 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     );
   }
 
+  /**
+   * 向订阅者发送保活事件并刷新编辑会话活性。
+   *
+   * @param subscriber 运行态订阅者
+   */
   private void sendKeepalive(RuntimeSubscriber subscriber) {
     try {
       subscriber.emitter.send(
@@ -214,6 +284,12 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     }
   }
 
+  /**
+   * 向订阅者发送指定 SSE 事件。
+   *
+   * @param subscriber 运行态订阅者
+   * @param eventBuilder SSE 事件构造器
+   */
   private void sendEvent(RuntimeSubscriber subscriber, SseEmitter.SseEventBuilder eventBuilder) {
     try {
       subscriber.emitter.send(eventBuilder);
@@ -222,6 +298,12 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     }
   }
 
+  /**
+   * 处理 SSE 事件发送失败并触发订阅清理。
+   *
+   * @param subscriber 运行态订阅者
+   * @param exception 发送异常
+   */
   private void handleSendFailure(RuntimeSubscriber subscriber, Exception exception) {
     // 失败路径的处理目标不是“尽量继续发”，而是“尽快收口”：
     // 1. 先 best-effort 发一条 runtime-error，给仍然可读的前端一个明确原因；
@@ -243,6 +325,11 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     cleanupSubscriber(subscriber);
   }
 
+  /**
+   * 清理订阅者并取消保活任务。
+   *
+   * @param subscriber 运行态订阅者
+   */
   private void cleanupSubscriber(RuntimeSubscriber subscriber) {
     // 这里先 cancelKeepalive、再 compareAndSet，是专门为竞态兜底：
     // - 场景 A：sendSaveStatus 刚失败，cleanup 已被别处调用；
@@ -261,6 +348,12 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     });
   }
 
+  /**
+   * 记录订阅者的保活任务，并处理注册与清理之间的竞态。
+   *
+   * @param subscriber 运行态订阅者
+   * @param keepaliveFuture 保活任务 future
+   */
   private void assignKeepaliveFuture(RuntimeSubscriber subscriber, ScheduledFuture<?> keepaliveFuture) {
     // 这里兜的是“future 刚写进去，cleanup 已经先完成”的反向竞态。
     // 如果 cleanupStarted 已经是 true，就说明前面某个 send 过程已经认定连接失效，
@@ -271,6 +364,11 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     }
   }
 
+  /**
+   * 取消订阅者保活任务。
+   *
+   * @param subscriber 运行态订阅者
+   */
   private void cancelKeepalive(RuntimeSubscriber subscriber) {
     ScheduledFuture<?> keepaliveFuture = subscriber.keepaliveFuture;
     if (keepaliveFuture != null) {
@@ -278,10 +376,22 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     }
   }
 
+  /**
+   * 生成 SSE 事件 ID。
+   *
+   * @param documentId 文档唯一标识
+   * @return 事件 ID
+   */
   private String nextEventId(String documentId) {
     return documentId + ":" + Instant.now(clock).toEpochMilli() + ":" + UUID.randomUUID();
   }
 
+  /**
+   * 规范化当前操作者标识。
+   *
+   * @param accessContext 访问上下文
+   * @return 操作者标识，缺失时返回空字符串
+   */
   private String normalizeActorUser(AccessContext accessContext) {
     if (accessContext == null || !StringUtils.hasText(accessContext.actorUser())) {
       return "";
@@ -298,6 +408,14 @@ public class DocumentRuntimeEventStreamServiceImpl implements DocumentRuntimeEve
     private final AtomicBoolean cleanupStarted = new AtomicBoolean(false);
     private volatile ScheduledFuture<?> keepaliveFuture;
 
+    /**
+     * 创建运行态订阅者。
+     *
+     * @param documentId 文档唯一标识
+     * @param actorUser 当前操作者标识
+     * @param emitter SSE emitter
+     * @param livenessTouch 保活续期动作
+     */
     private RuntimeSubscriber(String documentId, String actorUser, SseEmitter emitter, Runnable livenessTouch) {
       this.documentId = documentId;
       this.actorUser = actorUser;

@@ -39,6 +39,12 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
   private final DocumentEditorSessionRepository documentEditorSessionRepository;
   private final DocumentRuntimeEventStreamService runtimeEventStreamService;
 
+  /**
+   * 初始化文档保存状态并记录预览打开事件。
+   *
+   * @param documentId 文档唯一标识
+   * @return 合并最近事件后的保存状态响应
+   */
   @Override
   public DocumentSaveStatusResponse initialize(String documentId) {
     DocumentSaveStatusResponse summary = documentMetadataService.markOpened(documentId);
@@ -46,6 +52,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     return publishAndReturn(mergeRecentEvents(summary));
   }
 
+  /**
+   * 打开文档编辑会话并记录运行态事件。
+   *
+   * @param documentId 文档唯一标识
+   * @param accessContext 访问上下文
+   * @return 合并最近事件后的保存状态响应
+   */
   @Override
   public DocumentSaveStatusResponse openEditingSession(String documentId, AccessContext accessContext) {
     DocumentSaveStatusResponse summary = documentMetadataService.markEditingStarted(documentId);
@@ -54,6 +67,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     return publishAndReturn(mergeRecentEvents(summary));
   }
 
+  /**
+   * 关闭当前用户的文档编辑会话。
+   *
+   * @param documentId 文档唯一标识
+   * @param accessContext 访问上下文
+   * @return 合并最近事件后的保存状态响应
+   */
   @Override
   public DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext) {
     if (!StringUtils.hasText(accessContext.actorUser())) {
@@ -77,6 +97,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     return publishAndReturn(mergeRecentEvents(summary));
   }
 
+  /**
+   * 记录 ONLYOFFICE 保存回调已到达。
+   *
+   * @param documentId 文档唯一标识
+   * @param callbackStatus ONLYOFFICE 回调状态码
+   * @return 合并最近事件后的保存状态响应
+   */
   @Override
   public DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus) {
     DocumentSaveStatusResponse summary = documentMetadataService.recordCallbackReceived(documentId, callbackStatus);
@@ -91,6 +118,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     return publishAndReturn(mergeRecentEvents(summary));
   }
 
+  /**
+   * 记录被拒绝的 ONLYOFFICE 回调。
+   *
+   * @param documentId 文档唯一标识
+   * @param message 拒绝原因
+   * @return 合并最近事件后的保存状态响应
+   */
   @Override
   public DocumentSaveStatusResponse recordCallbackRejected(String documentId, String message) {
     DocumentSaveStatusResponse summary = documentMetadataService.getStatus(documentId);
@@ -98,6 +132,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     return publishAndReturn(mergeRecentEvents(summary));
   }
 
+  /**
+   * 记录文档保存成功。
+   *
+   * @param documentId 文档唯一标识
+   * @param callbackStatus ONLYOFFICE 回调状态码
+   * @return 合并最近事件后的保存状态响应
+   */
   @Override
   public DocumentSaveStatusResponse recordSaveSucceeded(String documentId, Integer callbackStatus) {
     DocumentSaveStatusResponse summary = documentMetadataService.markSaved(documentId, callbackStatus);
@@ -105,6 +146,14 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     return publishAndReturn(mergeRecentEvents(summary));
   }
 
+  /**
+   * 记录文档保存失败。
+   *
+   * @param documentId 文档唯一标识
+   * @param callbackStatus ONLYOFFICE 回调状态码
+   * @param failureReason 失败原因
+   * @return 合并最近事件后的保存状态响应
+   */
   @Override
   public DocumentSaveStatusResponse recordSaveFailed(String documentId, Integer callbackStatus, String failureReason) {
     DocumentSaveStatusResponse summary = documentMetadataService.markFailed(documentId, callbackStatus, failureReason);
@@ -117,11 +166,23 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     return publishAndReturn(mergeRecentEvents(summary));
   }
 
+  /**
+   * 查询文档当前保存状态。
+   *
+   * @param documentId 文档唯一标识
+   * @return 合并最近事件后的保存状态响应
+   */
   @Override
   public DocumentSaveStatusResponse getStatus(String documentId) {
     return mergeRecentEvents(documentMetadataService.getStatus(documentId));
   }
 
+  /**
+   * 刷新当前用户编辑会话的活跃时间。
+   *
+   * @param documentId 文档唯一标识
+   * @param accessContext 访问上下文
+   */
   @Override
   public void touchEditingSession(String documentId, AccessContext accessContext) {
     if (!StringUtils.hasText(accessContext.actorUser())) {
@@ -138,6 +199,12 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
         });
   }
 
+  /**
+   * 统计多个文档的活跃编辑会话数量。
+   *
+   * @param documentIds 文档唯一标识列表
+   * @return 文档 ID 到活跃会话数量的映射
+   */
   @Override
   public Map<String, Integer> countActiveEditingSessions(List<String> documentIds) {
     return documentEditorSessionRepository.countActiveByDocumentIds(documentIds, activeSessionSince());
@@ -148,6 +215,11 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
    *
    * <p>Phase 5 已经约定这里只记录关键节点而不是完整版本中心，
    * 因此 eventType 只覆盖 editor_opened / callback_received / save_succeeded / save_failed / callback_rejected 等核心事件。
+   *
+   * @param documentId 文档唯一标识
+   * @param eventType 运行态事件类型
+   * @param callbackStatus ONLYOFFICE 回调状态码
+   * @param message 事件说明
    */
   private void recordRuntimeEvent(String documentId, String eventType, Integer callbackStatus, String message) {
     DocumentRuntimeEventEntity entity = new DocumentRuntimeEventEntity();
@@ -165,6 +237,9 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
    *
    * <p>这样同一个用户重复刷新编辑页时不会无限新增活跃会话记录，
    * 但不同用户同时打开同一文档时仍能得到正确的活跃编辑人数。
+   *
+   * @param documentId 文档唯一标识
+   * @param accessContext 访问上下文
    */
   private void upsertEditingSession(String documentId, AccessContext accessContext) {
     Instant now = Instant.now();
@@ -194,6 +269,12 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     }
   }
 
+  /**
+   * 关闭当前用户的编辑会话记录。
+   *
+   * @param documentId 文档唯一标识
+   * @param actorUser 当前操作者标识
+   */
   private void closeEditingSessionRecord(String documentId, String actorUser) {
     documentEditorSessionRepository.findActiveByDocumentIdAndActorUser(documentId, actorUser)
         .ifPresent(session -> {
@@ -205,6 +286,11 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
         });
   }
 
+  /**
+   * 计算仍视为活跃编辑会话的最早心跳时间。
+   *
+   * @return 活跃会话时间下界
+   */
   private Instant activeSessionSince() {
     long timeoutSeconds = Math.max(5L, onlyofficeIntegrationProperties.getEditingSession().getActiveTimeoutSeconds());
     return Instant.now().minusSeconds(timeoutSeconds);
@@ -215,6 +301,9 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
    *
    * <p>这样列表页仍然只读主表摘要，而编辑页 `save-status` 可以额外看到最近几条关键事件，
    * 既保持运行态信息完整，也避免列表直接依赖事件流表。
+   *
+   * @param summary 主表保存状态摘要
+   * @return 合并最近事件后的保存状态响应
    */
   private DocumentSaveStatusResponse mergeRecentEvents(DocumentSaveStatusResponse summary) {
     List<DocumentSaveStatusEventResponse> recentEvents = documentRuntimeEventRepository
@@ -239,6 +328,12 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     );
   }
 
+  /**
+   * 广播保存状态并返回同一个状态对象。
+   *
+   * @param status 保存状态响应
+   * @return 原始保存状态响应
+   */
   private DocumentSaveStatusResponse publishAndReturn(DocumentSaveStatusResponse status) {
     // 14.1 这里故意不做任何 DTO 转换：
     // - REST `save-status` 接口返回的就是这个对象；

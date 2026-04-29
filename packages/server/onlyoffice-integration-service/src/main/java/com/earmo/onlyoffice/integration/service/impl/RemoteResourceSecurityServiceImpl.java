@@ -35,6 +35,13 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
   private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
   private final RestClient.Builder restClientBuilder;
 
+  /**
+   * 校验远程资源 URL 是否允许访问。
+   *
+   * @param sourceUrl 原始远程资源 URL。
+   * @param resourceLabel 错误提示中展示的资源名称。
+   * @return 通过校验的 URI。
+   */
   @Override
   public URI validateRemoteUri(String sourceUrl, String resourceLabel) {
     if (!StringUtils.hasText(sourceUrl)) {
@@ -59,6 +66,15 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
     return uri;
   }
 
+  /**
+   * 下载远程资源并限制响应体大小。
+   *
+   * @param remoteUri 已校验的远程资源 URI。
+   * @param maxBytes 最大允许字节数。
+   * @param resourceLabel 错误提示中展示的资源名称。
+   * @return 下载结果。
+   * @throws IOException 响应体读取失败时抛出。
+   */
   @Override
   public RemoteFetchResult fetch(URI remoteUri, long maxBytes, String resourceLabel) throws IOException {
     return restClientBuilder.build()
@@ -83,6 +99,12 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
         });
   }
 
+  /**
+   * 校验远程响应是否为图片媒体类型。
+   *
+   * @param mediaType 远程响应 Content-Type。
+   * @return 原始媒体类型。
+   */
   @Override
   public MediaType requireImageMediaType(MediaType mediaType) {
     if (mediaType == null) {
@@ -99,6 +121,9 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
    *
    * <p>例如调用方即使传入一个看起来正常的域名，只要它最终解析到回环、私网或保留地址，
    * 这里都会拒绝，防止服务被利用去探测内网资源。
+   *
+   * @param host 待解析主机名。
+   * @param resourceLabel 错误提示中展示的资源名称。
    */
   private void validateResolvedAddress(String host, String resourceLabel) {
     try {
@@ -117,6 +142,12 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
     }
   }
 
+  /**
+   * 判断 IP 地址是否属于禁止访问的范围。
+   *
+   * @param address 已解析 IP 地址。
+   * @return true 表示该地址不允许远程访问。
+   */
   private boolean isBlockedAddress(InetAddress address) {
     return address.isAnyLocalAddress()
         || address.isLoopbackAddress()
@@ -126,6 +157,12 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
         || isUniqueLocalIpv6(address);
   }
 
+  /**
+   * 判断 IPv6 地址是否属于 unique local address 范围。
+   *
+   * @param address 已解析 IP 地址。
+   * @return true 表示该地址是 fc00::/7 范围内的 ULA。
+   */
   private boolean isUniqueLocalIpv6(InetAddress address) {
     if (!(address instanceof Inet6Address inet6Address)) {
       return false;
@@ -139,6 +176,12 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
    *
    * <p>这里刻意不用 `readAllBytes()`，因为安全边界要求我们在内容还没完全进内存前就能终止超大响应，
    * 否则“先读完再判断大小”会让限制形同虚设。
+   *
+   * @param bodyStream 远程响应体输入流。
+   * @param maxBytes 最大允许字节数。
+   * @param resourceLabel 错误提示中展示的资源名称。
+   * @return 响应体字节数组。
+   * @throws IOException 响应体为空或读取失败时抛出。
    */
   private byte[] readBodyWithLimit(InputStream bodyStream, long maxBytes, String resourceLabel) throws IOException {
     if (bodyStream == null) {
@@ -166,11 +209,23 @@ public class RemoteResourceSecurityServiceImpl implements RemoteResourceSecurity
     }
   }
 
+  /**
+   * 将字节数格式化成面向用户的限制文案。
+   *
+   * @param maxBytes 最大允许字节数。
+   * @return 格式化后的限制文案。
+   */
   private String formatLimit(long maxBytes) {
     long megaBytes = maxBytes / (1024 * 1024);
     return megaBytes > 0 ? megaBytes + "MB" : maxBytes + " 字节";
   }
 
+  /**
+   * 从 Content-Disposition 中解析建议文件名。
+   *
+   * @param rawContentDisposition 原始 Content-Disposition 头。
+   * @return 建议文件名；无法解析时返回 null。
+   */
   private String resolveSuggestedFilename(String rawContentDisposition) {
     if (!StringUtils.hasText(rawContentDisposition)) {
       return null;

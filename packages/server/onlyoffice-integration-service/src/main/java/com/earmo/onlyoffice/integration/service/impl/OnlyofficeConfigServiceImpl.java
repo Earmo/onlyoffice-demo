@@ -37,6 +37,16 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
   private final DocumentStorageService documentStorageService;
   private final OnlyofficeJwtService onlyofficeJwtService;
 
+  /**
+   * 构建 ONLYOFFICE 编辑器配置。
+   *
+   * @param documentId 文档唯一标识
+   * @param readonly 是否只读打开
+   * @param accessContext 访问上下文
+   * @param request 当前 HTTP 请求
+   * @return 编辑器配置响应
+   * @throws IOException 文档读取失败时抛出
+   */
   @Override
   public EditorConfigResponse buildEditorConfig(
       String documentId,
@@ -65,6 +75,11 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
    * 1. `title/fileType/key` 来自文档主数据和对象版本；
    * 2. `url` 必须指向 ONLYOFFICE 容器能访问的 internal 地址；
    * 3. `permissions` 只消费 Phase 3 定下来的最小权限集合，不把完整权限系统提前塞进 editor-config。
+   *
+   * @param storedDocument 存储文档信息
+   * @param readonly 是否只读打开
+   * @param accessContext 访问上下文
+   * @return ONLYOFFICE document 配置区块
    */
   private Map<String, Object> buildDocumentSection(
       StoredDocument storedDocument,
@@ -100,6 +115,12 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
    * 1. user 信息完全来自 AccessContext，而不是前端自行填充；
    * 2. mode 只由 readonly 和最小权限集合共同决定；
    * 3. callbackUrl 继续由后端按 internal 地址生成，避免浏览器或宿主系统自己推导。
+   *
+   * @param storedDocument 存储文档信息
+   * @param readonly 是否只读打开
+   * @param accessContext 访问上下文
+   * @param request 当前 HTTP 请求
+   * @return ONLYOFFICE editorConfig 配置区块
    */
   private Map<String, Object> buildEditorSection(
       StoredDocument storedDocument,
@@ -197,6 +218,12 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     return editorConfig;
   }
 
+  /**
+   * 构建 AI 桥接插件配置区块。
+   *
+   * @param request 当前 HTTP 请求
+   * @return ONLYOFFICE 插件配置区块
+   */
   private Map<String, Object> buildBridgePluginSection(jakarta.servlet.http.HttpServletRequest request) {
     Map<String, Object> plugins = new LinkedHashMap<>();
     plugins.put("autostart", java.util.List.of(AI_BRIDGE_PLUGIN_GUID));
@@ -209,6 +236,9 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
    *
    * <p>这样浏览器访问域名、网关聚合域名和 ONLYOFFICE 容器回调地址可以明确分层，
    * 不会把 request 中偶然出现的 Host 当成稳定部署真相源。
+   *
+   * @param path 内部接口路径
+   * @return ONLYOFFICE 容器可访问的完整内部地址
    */
   private String buildInternalUrl(String path) {
     return UriComponentsBuilder.fromHttpUrl(
@@ -222,6 +252,11 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
         .toUriString();
   }
 
+  /**
+   * 解析浏览器加载 ONLYOFFICE 静态资源时使用的文档服务器地址。
+   *
+   * @return 带尾部斜杠的文档服务器地址
+   */
   private String resolveDocumentServerUrl() {
     if (StringUtils.hasText(onlyofficeIntegrationProperties.getDocumentServerUrl())) {
       return ensureTrailingSlash(requireConfiguredBaseUrl(
@@ -243,6 +278,12 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     );
   }
 
+  /**
+   * 解析 AI 桥接插件配置文件的公开访问地址。
+   *
+   * @param request 当前 HTTP 请求
+   * @return 插件配置文件地址
+   */
   private String resolveBridgePluginConfigUrl(jakarta.servlet.http.HttpServletRequest request) {
     if (StringUtils.hasText(onlyofficeIntegrationProperties.getPublicBaseUrl())) {
       return appendPath(
@@ -269,10 +310,23 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
     );
   }
 
+  /**
+   * 向基础地址追加路径。
+   *
+   * @param baseUrl 基础地址
+   * @param path 需要追加的路径
+   * @return 拼接后的完整地址
+   */
   private String appendPath(String baseUrl, String path) {
     return UriComponentsBuilder.fromHttpUrl(baseUrl).path(path).build().toUriString();
   }
 
+  /**
+   * 确保地址以斜杠结尾。
+   *
+   * @param url 原始地址
+   * @return 带尾部斜杠的地址
+   */
   private String ensureTrailingSlash(String url) {
     return url.endsWith("/") ? url : url + "/";
   }
@@ -282,6 +336,10 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
    *
    * <p>这样部署为独立服务、网关聚合服务或多实例服务时，生成出来的 URL 才有清晰语义：
    * public 给浏览器看，internal 给 ONLYOFFICE 容器看，documentServer 给浏览器加载 Docs 静态资源。
+   *
+   * @param rawUrl 原始配置地址
+   * @param propertyName 配置项名称
+   * @return 通过校验的配置地址
    */
   private String requireConfiguredBaseUrl(String rawUrl, String propertyName) {
     if (!StringUtils.hasText(rawUrl)) {

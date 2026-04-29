@@ -50,6 +50,13 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 注入构建 Spring AI OpenAI ChatModel 所需的依赖。
+   *
+   * @param restClientBuilderProvider RestClient 构建器 provider
+   * @param webClientBuilderProvider WebClient 构建器 provider
+   * @param observationRegistryProvider 观测注册表 provider
+   * @param toolCallingManagerProvider 工具调用管理器 provider
+   * @param toolExecutionEligibilityPredicateProvider 工具执行资格判断器 provider
+   * @param retryTemplateProvider 重试模板 provider
    */
   public OpenAiCompatibleSpringAiLlmProvider(
       ObjectProvider<RestClient.Builder> restClientBuilderProvider,
@@ -69,6 +76,8 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 返回当前 provider 在注册表中的实现名。
+   *
+   * @return provider 实现名
    */
   @Override
   public String providerName() {
@@ -83,6 +92,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
    * 2. 组装 Spring AI Prompt；
    * 3. 逐帧读取文本、request id、usage 与 finish reason；
    * 4. 把底层客户端异常映射成稳定业务错误码。
+   *
+   * @param request LLM 运行时请求
+   * @return 上游流式响应片段
    */
   @Override
   public Flux<SpringAiProviderChunk> stream(LlmRuntimeRequest request) {
@@ -158,6 +170,8 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 当前实现暂不支持上游取消。
+   *
+   * @return 始终返回 false
    */
   @Override
   public boolean supportsUpstreamCancel() {
@@ -166,6 +180,8 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 当前 provider 不向上游发送取消请求。
+   *
+   * @param providerRequestId 上游 provider 请求标识
    */
   @Override
   public void cancelRequest(String providerRequestId) {
@@ -173,6 +189,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 为当前请求构造 OpenAI ChatModel。
+   *
+   * @param request LLM 运行时请求
+   * @return Spring AI OpenAI ChatModel
    */
   private OpenAiChatModel buildChatModel(LlmRuntimeRequest request) {
     ObservationRegistry observationRegistry = observationRegistryProvider.getIfAvailable(() -> ObservationRegistry.NOOP);
@@ -209,6 +228,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 把领域层消息映射成 Spring AI 消息类型。
+   *
+   * @param messages 领域层 provider 消息列表
+   * @return Spring AI 消息列表
    */
   private List<org.springframework.ai.chat.messages.Message> toSpringAiMessages(List<LlmProviderMessage> messages) {
     return messages.stream()
@@ -223,6 +245,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 把 WebClient / 解析异常映射成统一业务异常。
+   *
+   * @param throwable 原始异常
+   * @return LLM 业务异常
    */
   private RuntimeException mapException(Throwable throwable) {
     // 对外只暴露稳定的业务错误码，不把 WebClient 的细节直接抛到 controller / 前端。
@@ -266,6 +291,10 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 反射调用目标对象上可能存在的方法。
+   *
+   * @param target 目标对象
+   * @param methodName 方法名
+   * @return 调用结果，方法不存在或调用失败时返回 null
    */
   private Object invokeIfPresent(Object target, String methodName) {
     if (target == null) {
@@ -281,6 +310,10 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 从 ChatResponseMetadata 的 key-value 中读取指定值。
+   *
+   * @param metadata 响应元数据对象
+   * @param key 元数据键
+   * @return 元数据值，无法读取时返回 null
    */
   private Object readMetadataValue(Object metadata, String key) {
     if (metadata == null || key == null || key.isBlank()) {
@@ -296,6 +329,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 从响应中提取 assistant 增量文本。
+   *
+   * @param response Spring AI 响应对象
+   * @return assistant 增量文本
    */
   private String readAssistantText(Object response) {
     if (response == null) {
@@ -315,6 +351,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
    *
    * <p>Spring AI 会把 OpenAI-compatible 的 `reasoning_content` 映射成
    * AssistantMessage metadata 上的 `reasoningContent` 字段，这里统一做兼容读取。
+   *
+   * @param output Spring AI assistant 输出对象
+   * @return 推理内容，缺失时返回 null
    */
   private String readReasoningContent(Object output) {
     if (output == null) {
@@ -333,6 +372,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 把 usage 信息转换为内部统一结构。
+   *
+   * @param usageObject Spring AI usage 对象
+   * @return 内部统一 usage 结构
    */
   private LlmProviderUsage usage(Object usageObject) {
     return new LlmProviderUsage(
@@ -344,6 +386,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 把 usage 信息转换为可序列化元数据。
+   *
+   * @param usageObject Spring AI usage 对象
+   * @return 可序列化 usage 元数据
    */
   private Map<String, Object> usageMap(Object usageObject) {
     Map<String, Object> usageMap = new LinkedHashMap<>();
@@ -364,6 +409,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 规范化 baseUrl，转换到 OpenAiApi 期望的根路径。
+   *
+   * @param value 原始 OpenAI-compatible baseUrl
+   * @return 规范化后的 OpenAiApi 根路径
    */
   private String normalizeBaseUrl(String value) {
     if (value == null || value.isBlank()) {
@@ -381,6 +429,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 安全地把任意值转成字符串。
+   *
+   * @param value 原始值
+   * @return 字符串值，原始值为 null 时返回 null
    */
   private String valueAsString(Object value) {
     return value == null ? null : String.valueOf(value);
@@ -388,6 +439,9 @@ public class OpenAiCompatibleSpringAiLlmProvider implements SpringAiLlmProvider 
 
   /**
    * 安全地把任意数字值转成整数。
+   *
+   * @param value 原始值
+   * @return 整数值，非数字时返回 null
    */
   private Integer valueAsInteger(Object value) {
     return value instanceof Number number ? number.intValue() : null;

@@ -31,6 +31,13 @@ public class ApiLoggingAspect {
 
   private final ObjectMapper objectMapper;
 
+  /**
+   * 记录所有 REST Controller 调用的开始、结束和脱敏参数。
+   *
+   * @param joinPoint 当前被拦截的 controller 方法调用点。
+   * @return 原 controller 方法返回值。
+   * @throws Throwable controller 方法执行时抛出的原始异常。
+   */
   @Around("within(@org.springframework.web.bind.annotation.RestController *)")
   public Object logControllerInvocation(ProceedingJoinPoint joinPoint) throws Throwable {
     Instant startedAt = Instant.now();
@@ -58,10 +65,22 @@ public class ApiLoggingAspect {
     }
   }
 
+  /**
+   * 解析 controller 方法的短名称。
+   *
+   * @param joinPoint 当前被拦截的 controller 方法调用点。
+   * @return 类名与方法名组合成的可检索名称。
+   */
   private String resolveMethodName(ProceedingJoinPoint joinPoint) {
     return joinPoint.getSignature().getDeclaringType().getSimpleName() + "." + joinPoint.getSignature().getName();
   }
 
+  /**
+   * 将 controller 参数序列化成日志可写入的 JSON 字符串。
+   *
+   * @param joinPoint 当前被拦截的 controller 方法调用点。
+   * @return 已脱敏的参数 JSON；序列化失败时返回 Map 字符串。
+   */
   private String serializeArguments(ProceedingJoinPoint joinPoint) {
     CodeSignature signature = (CodeSignature) joinPoint.getSignature();
     String[] parameterNames = signature.getParameterNames();
@@ -82,6 +101,12 @@ public class ApiLoggingAspect {
     }
   }
 
+  /**
+   * 对日志参数进行递归脱敏。
+   *
+   * @param value 原始参数值。
+   * @return 可安全写入 info 日志的值。
+   */
   private Object sanitizeValue(Object value) {
     if (value == null || isSimpleValue(value)) {
       return value;
@@ -132,6 +157,12 @@ public class ApiLoggingAspect {
     }
   }
 
+  /**
+   * 脱敏 AI 对话请求体。
+   *
+   * @param request AI 对话请求体。
+   * @return 隐藏 prompt、选区和标题正文后的参数映射。
+   */
   private Map<String, Object> sanitizeLlmMessageRequest(SendLlmMessageRequest request) {
     Map<String, Object> requestInfo = new LinkedHashMap<>();
     requestInfo.put("documentId", request.documentId());
@@ -146,6 +177,12 @@ public class ApiLoggingAspect {
     return requestInfo;
   }
 
+  /**
+   * 脱敏选区快照。
+   *
+   * @param selectionSnapshot 选区快照。
+   * @return 隐藏选区正文后的快照映射。
+   */
   private Map<String, Object> sanitizeSelectionSnapshot(SendLlmMessageRequest.SelectionSnapshot selectionSnapshot) {
     if (selectionSnapshot == null) {
       return Map.of("text", REDACTED);
@@ -156,6 +193,12 @@ public class ApiLoggingAspect {
     return snapshotInfo;
   }
 
+  /**
+   * 脱敏章节标题上下文。
+   *
+   * @param headingContext 章节标题上下文。
+   * @return 隐藏标题正文后的上下文映射。
+   */
   private Map<String, Object> sanitizeHeadingContext(SendLlmMessageRequest.HeadingContext headingContext) {
     if (headingContext == null) {
       return Map.of("headingText", REDACTED);
@@ -167,6 +210,12 @@ public class ApiLoggingAspect {
     return headingInfo;
   }
 
+  /**
+   * 判断对象是否可以直接写入日志。
+   *
+   * @param value 待判断对象。
+   * @return true 表示该对象是简单值，不需要递归脱敏。
+   */
   private boolean isSimpleValue(Object value) {
     return value instanceof CharSequence
         || value instanceof Number

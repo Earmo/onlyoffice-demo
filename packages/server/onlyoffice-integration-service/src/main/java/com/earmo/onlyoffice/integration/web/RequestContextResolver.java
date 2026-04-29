@@ -24,6 +24,12 @@ public class RequestContextResolver {
 
   private final AccessContextResolver accessContextResolver;
 
+  /**
+   * 将当前请求解析为兼容旧服务层的 RequestContext。
+   *
+   * @param request 当前 HTTP 请求。
+   * @return 旧模型使用的请求上下文。
+   */
   public RequestContext resolve(HttpServletRequest request) {
     return accessContextResolver.resolve(request).toRequestContext();
   }

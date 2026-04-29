@@ -253,6 +253,13 @@ public class DocumentApiController {
     );
   }
 
+  /**
+   * 将新建或上传后的存储文档投影成前端摘要。
+   *
+   * @param storedDocument 存储服务返回的文档对象。
+   * @param accessContext 当前访问上下文。
+   * @return 文档摘要响应。
+   */
   private DocumentSummaryResponse toSummary(StoredDocument storedDocument, AccessContext accessContext) {
     return new DocumentSummaryResponse(
         storedDocument.documentId(),
@@ -278,6 +285,9 @@ public class DocumentApiController {
    *
    * <p>如果底层存储探测本身抛错，这里也按不可用处理；真正打开文件或生成 editor-config 时，
    * 仍由业务接口返回明确错误，而不是在摘要接口里尝试自动修复。
+   *
+   * @param entity 文档元数据实体。
+   * @return true 表示底层对象当前可读。
    */
   private boolean isStorageAvailable(DocumentMetadataEntity entity) {
     try {
@@ -287,6 +297,13 @@ public class DocumentApiController {
     }
   }
 
+  /**
+   * 判断文档摘要是否匹配存储可用性筛选条件。
+   *
+   * @param summary 文档摘要。
+   * @param storage 存储筛选值，支持 all、available、unavailable。
+   * @return true 表示当前摘要应保留在列表中。
+   */
   private boolean matchesStorage(DocumentSummaryResponse summary, String storage) {
     return switch (storage == null ? "all" : storage.toLowerCase()) {
       case "available" -> summary.storageAvailable();
@@ -295,6 +312,20 @@ public class DocumentApiController {
     };
   }
 
+  /**
+   * 解析带筛选和分页的文档列表。
+   *
+   * @param accessContext 当前访问上下文。
+   * @param query 标题或文档标识关键词。
+   * @param status 文档状态筛选。
+   * @param sourceSystem 来源系统筛选。
+   * @param documentType 文档类型筛选。
+   * @param storage 存储可用性筛选。
+   * @param sortDirection 排序方向。
+   * @param pageNumber 页码。
+   * @param pageSize 每页条数。
+   * @return 分页后的列表数据。
+   */
   private DocumentListPage resolveListPage(
       AccessContext accessContext,
       String query,
@@ -349,6 +380,12 @@ public class DocumentApiController {
     return new DocumentListPage(filteredDocuments.subList(fromIndex, toIndex), total, totalPages);
   }
 
+  /**
+   * 规整页码参数。
+   *
+   * @param pageNumber 原始页码。
+   * @return 可用于查询的安全页码。
+   */
   private int sanitizePageNumber(Integer pageNumber) {
     if (pageNumber == null || pageNumber < 1) {
       return DEFAULT_PAGE_NUMBER;
@@ -356,6 +393,12 @@ public class DocumentApiController {
     return pageNumber;
   }
 
+  /**
+   * 规整每页条数参数。
+   *
+   * @param pageSize 原始每页条数。
+   * @return 可用于查询的安全每页条数。
+   */
   private int sanitizePageSize(Integer pageSize) {
     if (pageSize == null || pageSize < 1) {
       return DEFAULT_PAGE_SIZE;
@@ -363,6 +406,12 @@ public class DocumentApiController {
     return Math.min(pageSize, MAX_PAGE_SIZE);
   }
 
+  /**
+   * 规整最近文档数量参数。
+   *
+   * @param limit 原始数量限制。
+   * @return 可用于查询的安全数量限制。
+   */
   private int sanitizeRecentLimit(Integer limit) {
     if (limit == null || limit < 1) {
       return DEFAULT_RECENT_LIMIT;

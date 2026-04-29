@@ -2148,14 +2148,28 @@ public class LlmConversationService {
      */
     static StreamEventSink noop() {
       return new StreamEventSink() {
+        /**
+         * 丢弃命名 SSE 事件。
+         *
+         * @param name SSE 事件名称。
+         * @param event SSE 事件 payload。
+         */
         @Override
         public void send(String name, LlmStreamEventResponse event) {
         }
 
+        /**
+         * 空实现的正常结束动作。
+         */
         @Override
         public void complete() {
         }
 
+        /**
+         * 空实现的异常结束动作。
+         *
+         * @param exception 触发流结束的异常。
+         */
         @Override
         public void completeWithError(Exception exception) {
         }

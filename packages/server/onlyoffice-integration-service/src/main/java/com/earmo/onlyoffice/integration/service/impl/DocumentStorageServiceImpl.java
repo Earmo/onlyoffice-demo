@@ -100,6 +100,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
   @Getter(value = AccessLevel.PRIVATE, lazy = true)
   private final RestClient restClient = buildRestClient();
 
+  /**
+   * 确保引导文档存在，不存在时创建默认 docx。
+   *
+   * @param rawDocumentId 原始文档标识
+   * @return 已存在或新建的存储文档
+   * @throws IOException 文档对象读写失败时抛出
+   */
   @Override
   public StoredDocument ensureBootstrapDocument(String rawDocumentId) throws IOException {
     String documentId = sanitizeDocumentId(rawDocumentId);
@@ -133,6 +140,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 获取必须存在且可访问的文档。
+   *
+   * @param rawDocumentId 原始文档标识
+   * @return 存储文档信息
+   * @throws IOException 文档内容不存在或读取失败时抛出
+   */
   @Override
   public StoredDocument getRequiredDocument(String rawDocumentId) throws IOException {
     String documentId = sanitizeDocumentId(rawDocumentId);
@@ -146,6 +160,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return toStoredDocument(normalizedEntity, objectResource);
   }
 
+  /**
+   * 读取文档二进制内容。
+   *
+   * @param rawDocumentId 原始文档标识
+   * @return 文档字节数组
+   * @throws IOException 文档读取失败时抛出
+   */
   @Override
   public byte[] readDocument(String rawDocumentId) throws IOException {
     String documentId = sanitizeDocumentId(rawDocumentId);
@@ -161,6 +182,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    *
    * <p>主表摘要状态、运行事件流和审计事件都在其他服务里更新；
    * 这里保持单一职责，只处理下载最新文件并覆盖对象内容。
+   *
+   * @param rawDocumentId 原始文档标识
+   * @param downloadUrl ONLYOFFICE 回调提供的最新文件下载地址
+   * @param callbackFileType ONLYOFFICE 回调提示的文件类型
+   * @return 规范化后的文档元数据
+   * @throws IOException 下载或回写文档失败时抛出
    */
   @Override
   public NormalizedDocumentMetadata saveCallbackDocument(String rawDocumentId, String downloadUrl, String callbackFileType)
@@ -190,6 +217,14 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return normalizedMetadata;
   }
 
+  /**
+   * 使用默认请求上下文保存上传文档。
+   *
+   * @param originalFilename 原始文件名
+   * @param body 文件内容
+   * @return 存储文档信息
+   * @throws IOException 文件写入失败时抛出
+   */
   @Override
   public StoredDocument storeUploadedDocument(String originalFilename, byte[] body) throws IOException {
     return storeUploadedDocument(originalFilename, body, defaultRequestContext());
@@ -200,6 +235,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    *
    * <p>这样可以避免数据库先成功、对象写入后失败时留下半成品文档。
    * 一旦对象写入成功但元数据插入失败，会尝试 best-effort 删除对象，减少脏数据残留。
+   *
+   * @param originalFilename 原始文件名
+   * @param body 文件内容
+   * @param requestContext 请求上下文
+   * @return 存储文档信息
+   * @throws IOException 文件写入或读取失败时抛出
    */
   @Override
   public StoredDocument storeUploadedDocument(String originalFilename, byte[] body, RequestContext requestContext)
@@ -232,6 +273,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 使用默认请求上下文导入远程文档。
+   *
+   * @param sourceUrl 远程文档地址
+   * @return 存储文档信息
+   * @throws IOException 远程下载或文件写入失败时抛出
+   */
   @Override
   public StoredDocument importRemoteDocument(String sourceUrl) throws IOException {
     return importRemoteDocument(sourceUrl, defaultRequestContext());
@@ -245,6 +293,11 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    * 2. 下载时限制大小；
    * 3. 校验扩展名与响应媒体类型；
    * 4. 最终再交给上传链路完成对象写入和元数据创建。
+   *
+   * @param sourceUrl 远程文档地址
+   * @param requestContext 请求上下文
+   * @return 存储文档信息
+   * @throws IOException 远程下载或文件写入失败时抛出
    */
   @Override
   public StoredDocument importRemoteDocument(String sourceUrl, RequestContext requestContext) throws IOException {
@@ -280,6 +333,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    * 显式创建原生文档时，仍然沿用“对象先写入、主数据后创建”的顺序。
    *
    * <p>这样无论底层用的是 local、minio 还是后续的 cos，行为都保持一致。
+   *
+   * @param rawDocumentId 调用方传入的原始文档标识，当前仅用于兼容接口语义
+   * @param rawTitle 原始文档标题
+   * @param requestContext 请求上下文
+   * @param externalDocumentId 外部系统文档标识
+   * @return 存储文档信息
+   * @throws IOException 文件写入或读取失败时抛出
    */
   @Override
   public StoredDocument createNativeDocument(
@@ -319,11 +379,24 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 判断文档对象是否存在于对应存储中。
+   *
+   * @param entity 文档元数据实体
+   * @return 文档对象存在时返回 true
+   * @throws IOException 存储访问失败时抛出
+   */
   @Override
   public boolean exists(DocumentMetadataEntity entity) throws IOException {
     return resolveStrategy(entity).exists(entity.getStorageKey());
   }
 
+  /**
+   * 解析文档对应的存储 provider。
+   *
+   * @param entity 文档元数据实体
+   * @return 存储 provider
+   */
   @Override
   public StorageProvider resolveProvider(DocumentMetadataEntity entity) {
     return storageProviderResolver.resolve(entity);
@@ -331,6 +404,8 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
 
   /**
    * 通过懒加载方式初始化 RestClient，避免每次请求都重复 build。
+   *
+   * @return 用于下载 ONLYOFFICE 回调文件的 RestClient
    */
   private RestClient buildRestClient() {
     SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -346,6 +421,10 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    *
    * <p>这些地址对 server 容器未必可达，因此这里统一改写到 command service 的内网地址，
    * 避免 callback 下载最新文件时走宿主页反代、宿主机回环或其他不稳定链路。
+   *
+   * @param rawDownloadUrl ONLYOFFICE 回调提供的原始下载地址
+   * @return 服务端可访问的下载地址
+   * @throws IOException 下载地址非法时抛出
    */
   private String resolveAccessibleCallbackDownloadUrl(String rawDownloadUrl) throws IOException {
     String normalizedDownloadUrl = rawDownloadUrl.trim();
@@ -380,6 +459,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return resolvedUrl;
   }
 
+  /**
+   * 移除下载地址中已知的 ONLYOFFICE 公开访问前缀。
+   *
+   * @param rawPath 原始 URL path
+   * @return 可拼接到内网 command 地址上的 path
+   */
   private String stripKnownOnlyofficePublicPrefix(String rawPath) {
     String normalizedPath = normalizePath(rawPath);
     for (String prefix : List.of(
@@ -399,6 +484,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return normalizedPath;
   }
 
+  /**
+   * 在公开基础地址后追加 ONLYOFFICE 代理路径。
+   *
+   * @param publicBaseUrl 应用公开基础地址
+   * @return 追加代理路径后的地址，配置缺失时返回空字符串
+   */
   private String appendOnlyofficePath(String publicBaseUrl) {
     if (!StringUtils.hasText(publicBaseUrl)) {
       return "";
@@ -406,11 +497,23 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return UriComponentsBuilder.fromHttpUrl(publicBaseUrl.trim()).path("/api/office").build().toUriString();
   }
 
+  /**
+   * 提取 ONLYOFFICE 公开地址中的规范化路径。
+   *
+   * @param rawUrl 原始公开地址
+   * @return 规范化 path，地址非法时返回空字符串
+   */
   private String normalizeOnlyofficePublicPath(String rawUrl) {
     URI uri = parseOptionalAbsoluteUri(rawUrl);
     return uri == null ? "" : normalizePath(uri.getPath());
   }
 
+  /**
+   * 尝试解析绝对 URI，配置为空或非法时返回 null。
+   *
+   * @param rawUrl 原始地址
+   * @return 绝对 URI，无法解析时返回 null
+   */
   private URI parseOptionalAbsoluteUri(String rawUrl) {
     if (!StringUtils.hasText(rawUrl)) {
       return null;
@@ -423,6 +526,14 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 解析并校验绝对 URI。
+   *
+   * @param rawUrl 原始地址
+   * @param errorMessage 校验失败时使用的错误文案
+   * @return 绝对 URI
+   * @throws IOException 地址非法时抛出
+   */
   private URI parseAbsoluteUri(String rawUrl, String errorMessage) throws IOException {
     try {
       URI uri = new URI(rawUrl);
@@ -435,6 +546,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 判断两个 URI 是否具有相同协议、主机和端口。
+   *
+   * @param left 左侧 URI
+   * @param right 右侧 URI
+   * @return 同源时返回 true
+   */
   private boolean sameOriginIgnorePath(URI left, URI right) {
     if (left == null || right == null) {
       return false;
@@ -444,6 +562,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         && effectivePort(left) == effectivePort(right);
   }
 
+  /**
+   * 解析 URI 的有效端口。
+   *
+   * @param uri URI
+   * @return 显式端口或协议默认端口
+   */
   private int effectivePort(URI uri) {
     if (uri.getPort() > 0) {
       return uri.getPort();
@@ -451,6 +575,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
   }
 
+  /**
+   * 判断主机名是否指向本机回环。
+   *
+   * @param host 主机名
+   * @return 回环地址时返回 true
+   */
   private boolean isLoopbackHost(String host) {
     if (!StringUtils.hasText(host)) {
       return false;
@@ -461,6 +591,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         || "0:0:0:0:0:0:0:1".equals(host);
   }
 
+  /**
+   * 规范化 URL path。
+   *
+   * @param path 原始 path
+   * @return 以斜杠开头的 path
+   */
   private String normalizePath(String path) {
     if (!StringUtils.hasText(path)) {
       return "/";
@@ -468,6 +604,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return path.startsWith("/") ? path : "/" + path;
   }
 
+  /**
+   * 拼接两个 URL path。
+   *
+   * @param basePath 基础 path
+   * @param relativePath 相对 path
+   * @return 拼接后的 path
+   */
   private String joinPaths(String basePath, String relativePath) {
     String normalizedBase = normalizePath(basePath);
     String normalizedRelative = normalizePath(relativePath);
@@ -480,6 +623,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return normalizedBase + normalizedRelative;
   }
 
+  /**
+   * 将元数据和对象资源投影为存储文档模型。
+   *
+   * @param entity 文档元数据实体
+   * @param objectResource 存储对象资源
+   * @return 存储文档模型
+   */
   private StoredDocument toStoredDocument(DocumentMetadataEntity entity, StoredObjectResource objectResource) {
     return documentMetadataService.toStoredDocument(
         entity,
@@ -488,14 +638,32 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     );
   }
 
+  /**
+   * 根据请求上下文解析存储策略。
+   *
+   * @param requestContext 请求上下文
+   * @return 存储策略
+   */
   private DocumentStorageStrategy resolveStrategy(RequestContext requestContext) {
     return resolveStrategy(storageProviderResolver.resolve(requestContext));
   }
 
+  /**
+   * 根据文档元数据解析存储策略。
+   *
+   * @param entity 文档元数据实体
+   * @return 存储策略
+   */
   private DocumentStorageStrategy resolveStrategy(DocumentMetadataEntity entity) {
     return resolveStrategy(storageProviderResolver.resolve(entity));
   }
 
+  /**
+   * 根据存储 provider 解析具体策略实现。
+   *
+   * @param provider 存储 provider
+   * @return 存储策略
+   */
   private DocumentStorageStrategy resolveStrategy(StorageProvider provider) {
     return documentStorageStrategies.stream()
         .filter(strategy -> strategy.provider() == provider)
@@ -507,6 +675,9 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    * 这里只做 best-effort 补偿，不覆盖原始主异常。
    *
    * <p>如果建档主流程已经失败，补偿删除再失败也不应该吞掉真正导致业务失败的原因。
+   *
+   * @param strategy 存储策略
+   * @param storageKey 存储对象键
    */
   private void deleteQuietly(DocumentStorageStrategy strategy, String storageKey) {
     try {
@@ -516,6 +687,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 获取文件扩展名。
+   *
+   * @param filename 文件名
+   * @return 小写扩展名，无法识别时返回默认扩展名
+   */
   private String getFileExtension(String filename) {
     int index = filename.lastIndexOf('.');
     if (index < 0 || index == filename.length() - 1) {
@@ -524,6 +701,14 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return filename.substring(index + 1).toLowerCase(Locale.ROOT);
   }
 
+  /**
+   * 根据文件内容修正文档元数据，必要时回写主表。
+   *
+   * @param entity 文档元数据实体
+   * @param body 文件内容
+   * @param hintedFileType 外部提示的文件类型
+   * @return 原始或更新后的文档元数据实体
+   */
   private DocumentMetadataEntity normalizeDocumentMetadataIfNeeded(
       DocumentMetadataEntity entity,
       byte[] body,
@@ -552,12 +737,27 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     );
   }
 
+  /**
+   * 判断规范化结果是否改变了文档元数据。
+   *
+   * @param entity 文档元数据实体
+   * @param normalizedMetadata 规范化后的文档元数据
+   * @return 元数据发生变化时返回 true
+   */
   private boolean metadataChanged(DocumentMetadataEntity entity, NormalizedDocumentMetadata normalizedMetadata) {
     return !normalizedMetadata.title().equals(entity.getTitle())
         || !normalizedMetadata.fileType().equals(entity.getFileType())
         || !normalizedMetadata.documentType().equals(entity.getDocumentType());
   }
 
+  /**
+   * 根据文件内容、提示类型和当前元数据生成规范化元数据。
+   *
+   * @param entity 文档元数据实体
+   * @param body 文件内容
+   * @param hintedFileType 外部提示的文件类型
+   * @return 规范化后的文档元数据
+   */
   private NormalizedDocumentMetadata normalizeDocumentMetadata(
       DocumentMetadataEntity entity,
       byte[] body,
@@ -569,6 +769,14 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return new NormalizedDocumentMetadata(normalizedTitle, normalizedFileType, normalizedDocumentType);
   }
 
+  /**
+   * 检测文件真实扩展类型。
+   *
+   * @param body 文件内容
+   * @param hintedFileType 外部提示的文件类型
+   * @param entity 当前文档元数据实体
+   * @return 规范化文件类型
+   */
   private String detectNormalizedFileType(byte[] body, String hintedFileType, DocumentMetadataEntity entity) {
     String normalizedHint = normalizeSupportedExtension(hintedFileType);
     String normalizedCurrent = normalizeSupportedExtension(entity.getFileType());
@@ -599,6 +807,15 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return DEFAULT_EXTENSION;
   }
 
+  /**
+   * 识别 ZIP 容器类文档格式。
+   *
+   * @param body 文件内容
+   * @param hintedFileType 外部提示的文件类型
+   * @param currentFileType 当前文件类型
+   * @param currentDocumentType 当前 ONLYOFFICE 文档类型
+   * @return ZIP 容器内推断出的文件类型
+   */
   private String detectZipBasedFileType(
       byte[] body,
       String hintedFileType,
@@ -650,6 +867,14 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     };
   }
 
+  /**
+   * 识别传统 OLE 复合文档格式。
+   *
+   * @param hintedFileType 外部提示的文件类型
+   * @param currentFileType 当前文件类型
+   * @param currentDocumentType 当前 ONLYOFFICE 文档类型
+   * @return 推断出的传统 Office 文件类型
+   */
   private String detectLegacyCompoundFileType(String hintedFileType, String currentFileType, String currentDocumentType) {
     if (StringUtils.hasText(hintedFileType) && Set.of("doc", "xls", "ppt").contains(hintedFileType)) {
       return hintedFileType;
@@ -664,6 +889,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     };
   }
 
+  /**
+   * 规范化并校验文件扩展类型。
+   *
+   * @param rawFileType 原始文件类型
+   * @return 支持的规范化文件类型，不支持时返回 null
+   */
   private String normalizeSupportedExtension(String rawFileType) {
     if (!StringUtils.hasText(rawFileType)) {
       return null;
@@ -672,6 +903,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return SUPPORTED_EXTENSIONS.contains(normalized) ? normalized : null;
   }
 
+  /**
+   * 判断文件内容是否具有 ZIP 签名。
+   *
+   * @param body 文件内容
+   * @return 具有 ZIP 签名时返回 true
+   */
   private boolean hasZipSignature(byte[] body) {
     return body != null
         && body.length >= 4
@@ -681,6 +918,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         && (body[3] == 4 || body[3] == 6 || body[3] == 8);
   }
 
+  /**
+   * 判断文件内容是否具有 OLE 复合文档签名。
+   *
+   * @param body 文件内容
+   * @return 具有 OLE 签名时返回 true
+   */
   private boolean hasOleSignature(byte[] body) {
     return body != null
         && body.length >= 8
@@ -694,6 +937,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         && (body[7] & 0xFF) == 0xE1;
   }
 
+  /**
+   * 判断文件内容是否具有 PDF 签名。
+   *
+   * @param body 文件内容
+   * @return 具有 PDF 签名时返回 true
+   */
   private boolean hasPdfSignature(byte[] body) {
     return body != null
         && body.length >= 4
@@ -703,6 +952,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         && body[3] == 'F';
   }
 
+  /**
+   * 粗略判断文件内容是否为文本。
+   *
+   * @param body 文件内容
+   * @return 看起来像文本内容时返回 true
+   */
   private boolean isProbablyText(byte[] body) {
     if (body == null || body.length == 0) {
       return false;
@@ -722,6 +977,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return suspiciousControlBytes <= Math.max(1, sampleLength / 20);
   }
 
+  /**
+   * 根据文件类型解析 ONLYOFFICE 文档类型。
+   *
+   * @param fileType 文件扩展类型
+   * @return ONLYOFFICE 文档类型
+   */
   private String resolveDocumentType(String fileType) {
     return switch (fileType) {
       case "csv", "xls", "xlsx", "ods" -> "cell";
@@ -731,6 +992,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     };
   }
 
+  /**
+   * 清洗文档 ID。
+   *
+   * @param rawDocumentId 原始文档标识
+   * @return 可安全用于业务和存储键的文档标识
+   */
   private String sanitizeDocumentId(String rawDocumentId) {
     if (!StringUtils.hasText(rawDocumentId)) {
       return "sample";
@@ -740,6 +1007,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return StringUtils.hasText(sanitized) ? sanitized : "sample";
   }
 
+  /**
+   * 要求文件名包含受支持扩展名。
+   *
+   * @param filename 文件名
+   * @return 支持的文件扩展名
+   */
   private String requireSupportedExtension(String filename) {
     if (!StringUtils.hasText(filename)) {
       throw new IllegalArgumentException("文件名不能为空。");
@@ -752,10 +1025,22 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return extension;
   }
 
+  /**
+   * 生成新的文档 ID。
+   *
+   * @return 单调 ULID 文档标识
+   */
   private String generateDocumentId() {
     return DOCUMENT_ID_GENERATOR.nextMonotonicId();
   }
 
+  /**
+   * 当建档复用了已有实体时删除本次临时生成的对象。
+   *
+   * @param strategy 存储策略
+   * @param generatedStorageKey 本次生成的对象键
+   * @param entity 元数据服务返回的实体
+   */
   private void rollbackGeneratedObjectIfEntityReused(
       DocumentStorageStrategy strategy,
       String generatedStorageKey,
@@ -766,6 +1051,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 去除文件名扩展名。
+   *
+   * @param filename 文件名
+   * @return 不含扩展名的基础文件名
+   */
   private String stripExtension(String filename) {
     int index = filename.lastIndexOf('.');
     if (index <= 0) {
@@ -774,6 +1065,14 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return filename.substring(0, index);
   }
 
+  /**
+   * 根据当前标题、文档 ID 和文件类型生成规范标题。
+   *
+   * @param currentTitle 当前标题
+   * @param documentId 文档唯一标识
+   * @param fileType 文件扩展类型
+   * @return 规范化标题
+   */
   private String normalizeTitle(String currentTitle, String documentId, String fileType) {
     String baseName = StringUtils.hasText(currentTitle) ? stripExtension(currentTitle.trim()) : documentId;
     if (!StringUtils.hasText(baseName)) {
@@ -782,6 +1081,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return baseName + "." + fileType;
   }
 
+  /**
+   * 规范化上传或远程响应中的文件名。
+   *
+   * @param filename 原始文件名
+   * @return 规范化后的文件名
+   */
   private String normalizeFilename(String filename) {
     String normalized = StringUtils.getFilename(filename);
     String sanitized = StringUtils.hasText(normalized) ? normalized : filename;
@@ -796,10 +1101,22 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 解析并校验远程文档 URL。
+   *
+   * @param sourceUrl 远程文档地址
+   * @return 通过安全校验的 URI
+   */
   private URI parseAndValidateRemoteUrl(String sourceUrl) {
     return remoteResourceSecurityService.validateRemoteUri(sourceUrl, "网络文档地址");
   }
 
+  /**
+   * 从远程 URI 路径提取文件名。
+   *
+   * @param remoteUri 远程文档 URI
+   * @return 远程文件名
+   */
   private String extractRemoteFilename(URI remoteUri) {
     String path = remoteUri.getPath();
     if (!StringUtils.hasText(path)) {
@@ -815,6 +1132,13 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return filename;
   }
 
+  /**
+   * 优先使用响应建议文件名，否则从远程 URI 提取文件名。
+   *
+   * @param remoteUri 远程文档 URI
+   * @param suggestedFilename 响应建议文件名
+   * @return 可用于入库的远程文件名
+   */
   private String resolveRemoteFilename(URI remoteUri, String suggestedFilename) {
     String normalizedSuggestedFilename = normalizeFilename(suggestedFilename);
     if (StringUtils.hasText(normalizedSuggestedFilename)) {
@@ -824,6 +1148,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     return extractRemoteFilename(remoteUri);
   }
 
+  /**
+   * 校验远程文档响应媒体类型与文件扩展名是否匹配。
+   *
+   * @param filename 文件名
+   * @param mediaType 响应媒体类型
+   */
   private void validateRemoteDocumentMediaType(String filename, MediaType mediaType) {
     if (mediaType == null) {
       throw new IllegalArgumentException("远程文档响应缺少 Content-Type，无法确认文档类型。");
@@ -839,6 +1169,11 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 构造默认请求上下文。
+   *
+   * @return 默认请求上下文
+   */
   private RequestContext defaultRequestContext() {
     return new RequestContext(
         onlyofficeIntegrationProperties.getDefaultTenantId(),
@@ -848,6 +1183,12 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     );
   }
 
+  /**
+   * 根据文件名推断 Content-Type。
+   *
+   * @param filename 文件名
+   * @return Content-Type 字符串
+   */
   private String contentTypeFor(String filename) {
     return MediaTypeFactory.getMediaType(filename)
         .orElse(MediaType.APPLICATION_OCTET_STREAM)
@@ -863,6 +1204,9 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
    * 3. `word/document.xml` 放入一份可直接打开的初始内容。
    *
    * <p>这样无论部署环境是否预置模板，都能稳定创建 starter 的引导文档。
+   *
+   * @return 最小可编辑 docx 文件内容
+   * @throws IOException 构造 ZIP 包失败时抛出
    */
   private byte[] createBootstrapDocx() throws IOException {
     try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -875,12 +1219,25 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
   }
 
+  /**
+   * 向 ZIP 输出流写入文本条目。
+   *
+   * @param zipOutputStream ZIP 输出流
+   * @param name 条目名称
+   * @param body 条目文本内容
+   * @throws IOException 写入失败时抛出
+   */
   private void addZipEntry(ZipOutputStream zipOutputStream, String name, String body) throws IOException {
     zipOutputStream.putNextEntry(new ZipEntry(name));
     zipOutputStream.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     zipOutputStream.closeEntry();
   }
 
+  /**
+   * 生成最小 docx 的 Content Types XML。
+   *
+   * @return Content Types XML
+   */
   private String contentTypesXml() {
     return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -892,6 +1249,11 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         """;
   }
 
+  /**
+   * 生成最小 docx 的根关系 XML。
+   *
+   * @return 根关系 XML
+   */
   private String rootRelationshipsXml() {
     return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -904,6 +1266,11 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         """;
   }
 
+  /**
+   * 生成最小 docx 的正文 XML。
+   *
+   * @return 正文 XML
+   */
   private String documentXml() {
     return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
