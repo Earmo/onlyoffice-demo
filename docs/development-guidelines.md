@@ -47,6 +47,45 @@
 - 新增异步、流式、重试、补偿逻辑时，必须同步设计日志节点
 - 如果某处故意不打日志，应能说明原因，例如高频热路径或敏感数据约束
 
+## Java 后端接口契约
+
+`packages/server/onlyoffice-integration-service` 的接口层默认遵循统一 controller、异常、响应和用户上下文约定。新增接口和改造既有接口时，优先消除 controller 内的上下文解析、裸响应和 URL 参数拼接。
+
+### Controller 与异常
+
+- `controller` 包下的 controller 类统一继承 `BaseController`
+- 业务异常类统一继承 `BaseException`
+- 异常处理和前端响应包装通过 `BaseController` 定义的切面统一完成，controller 不重复编写分散的异常响应逻辑
+
+### 响应包装
+
+- 普通接口统一返回 `ResponseDto<T>`
+- 分页接口统一返回 `ResponseDto<PageRespVo<T>>`
+- 分页查询方法签名优先使用请求对象承载筛选条件，例如：
+
+```java
+ResponseDto<PageRespVo<DocumentResp>> page(@RequestBody DocumentPageReq req);
+```
+
+### 用户上下文
+
+- 用户上下文由切面从请求中读取并校验，通过 `ThreadLocal` 或等价线程隔离机制保存到当前线程
+- 提供工具类从当前线程读取用户上下文，业务服务通过工具类获取用户信息
+- controller 不再显式调用 `AccessContextResolver` 并把上下文逐层传给 service
+- 线程上下文必须在请求结束时清理，避免线程复用导致用户信息串用
+
+### 请求参数
+
+- 业务参数应建模为 VO/DTO，并通过 `@RequestBody` 传递
+- 多参数查询使用 `POST` 请求和请求体承载条件
+- 避免在业务代码中直接依赖 `HttpServletRequest`
+- 避免用 `@RequestParam` 在 URL 中拼接业务参数，例如 `?documentId=xxx`
+
+### 接口命名
+
+- 接口路径要显式表达动作或资源语义，例如 `delete/session`、`get/session`
+- 避免多个接口使用同名或语义含混的路径，尤其不要让删除、查询、更新等行为只靠 HTTP 方法或参数差异区分
+
 ## Java 注释约定
 
 Java 代码统一使用标准 Javadoc 格式。字段注释可以使用单行 Javadoc；方法注释必须包含用途说明，并按签名补齐 `@param`、`@return`，会主动抛出业务异常或受检异常时补 `@throws`。

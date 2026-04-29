@@ -1,12 +1,14 @@
 package com.earmo.onlyoffice.integration.common.exception;
 
 import lombok.Getter;
+import lombok.Setter;
 
 import java.io.Serial;
 
 /**
  * 异常基类，各个模块的运行期异常均继承与该类
  */
+@Setter
 @Getter
 public class BaseException extends RuntimeException {
 
@@ -29,32 +31,11 @@ public class BaseException extends RuntimeException {
     private transient Object[] values;
 
     /**
-     * @param code the code to set
-     */
-    public void setCode(String code) {
-        this.code = code;
-    }
-
-    /**
      * @return the message
      */
     @Override
     public String getMessage() {
         return super.getMessage();
-    }
-
-    /**
-     * @param throwable the throwable to set
-     */
-    public void setThrowable(Throwable throwable) {
-        this.throwable = throwable;
-    }
-
-    /**
-     * @param values the values to set
-     */
-    public void setValues(Object[] values) {
-        this.values = values;
     }
 
     public BaseException(String code, String message, Object[] values, Throwable cause) {

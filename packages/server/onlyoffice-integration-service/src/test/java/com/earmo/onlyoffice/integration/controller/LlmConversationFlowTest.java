@@ -509,8 +509,7 @@ class LlmConversationFlowTest {
         .andExpect(request().asyncStarted())
         .andReturn();
 
-    Thread.sleep(90L);
-    String startedFrame = streamResult.getResponse().getContentAsString(StandardCharsets.UTF_8);
+    String startedFrame = waitForStreamContent(streamResult, "event:assistant-delta", Duration.ofSeconds(2));
     assertThat(startedFrame).contains("event:assistant-delta");
     String requestId = jsonFieldFromSse(startedFrame, "requestId");
     assertThat(requestId).isNotBlank();
@@ -949,6 +948,19 @@ class LlmConversationFlowTest {
     int valueStart = start + needle.length();
     int valueEnd = body.indexOf('"', valueStart);
     return body.substring(valueStart, valueEnd);
+  }
+
+  private String waitForStreamContent(MvcResult result, String expectedContent, Duration timeout) throws Exception {
+    long deadline = System.nanoTime() + timeout.toNanos();
+    String body;
+    do {
+      body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+      if (body.contains(expectedContent)) {
+        return body;
+      }
+      Thread.sleep(20L);
+    } while (System.nanoTime() < deadline);
+    return body;
   }
 
   private String jsonFieldFromSse(String body, String key) {
