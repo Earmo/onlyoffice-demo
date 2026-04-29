@@ -1,5 +1,6 @@
-package com.earmo.onlyoffice.integration.service.llm;
+package com.earmo.onlyoffice.integration.service.llm.provider;
 
+import com.earmo.onlyoffice.integration.service.llm.SpringAiLlmProvider;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

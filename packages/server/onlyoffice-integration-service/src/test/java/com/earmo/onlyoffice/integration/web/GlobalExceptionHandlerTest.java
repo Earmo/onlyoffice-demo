@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.web;
 
+import com.earmo.onlyoffice.integration.common.exception.GlobalExceptionHandler;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;

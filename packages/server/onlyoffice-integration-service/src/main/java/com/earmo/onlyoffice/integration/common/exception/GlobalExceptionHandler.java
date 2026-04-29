@@ -1,7 +1,7 @@
-package com.earmo.onlyoffice.integration.web;
+package com.earmo.onlyoffice.integration.common.exception;
 
 import com.earmo.onlyoffice.integration.context.AccessContextException;
-import com.earmo.onlyoffice.integration.model.ApiErrorResponse;
+import com.earmo.onlyoffice.integration.common.response.ApiErrorResponse;
 import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
 import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
 import com.earmo.onlyoffice.integration.service.llm.LlmApiException;

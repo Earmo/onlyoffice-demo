@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.web;
+package com.earmo.onlyoffice.integration.common.aspect;
 
 import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;

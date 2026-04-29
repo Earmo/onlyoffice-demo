@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.web;
 
+import com.earmo.onlyoffice.integration.common.exception.GlobalExceptionHandler;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.model.llm.LlmCapabilityResponse;

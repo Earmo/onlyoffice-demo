@@ -21,6 +21,7 @@ import com.earmo.onlyoffice.integration.model.llm.LlmSessionSummaryResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmStreamEventResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmUsageResponse;
 import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;
+import com.earmo.onlyoffice.integration.service.llm.provider.SpringAiProviderRegistry;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -148,7 +148,7 @@ public class DocumentApiController {
           @ApiResponse(
               responseCode = "400",
               description = "参数不合法",
-              content = @Content(schema = @Schema(implementation = com.earmo.onlyoffice.integration.model.ApiErrorResponse.class))
+              content = @Content(schema = @Schema(implementation = com.earmo.onlyoffice.integration.common.response.ApiErrorResponse.class))
           )
       }
   )
