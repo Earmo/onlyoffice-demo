@@ -142,10 +142,6 @@ public class LlmConversationService {
    * @return 当前文档的 AI 能力、默认模型和可选 provider 列表。
    */
   public LlmCapabilityResponse getCapability(String documentId) {
-    return getCapability(documentId, CurrentAccessContext.getRequired());
-  }
-
-  public LlmCapabilityResponse getCapability(String documentId, AccessContext accessContext) {
     // capability 面向前端暴露的是“逻辑 provider”能力，但真正可用还要满足两层条件：
     // 1. llm.providers.<name> 已配置且启用
     // 2. 该逻辑 provider 能映射到一个已注册的 SpringAiLlmProvider 实现

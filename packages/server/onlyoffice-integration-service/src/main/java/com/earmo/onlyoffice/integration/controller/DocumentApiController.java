@@ -465,15 +465,15 @@ public class DocumentApiController extends BaseController {
   }
 
   private String currentTenantId() {
-    return CurrentAccessContext.getRequired().tenantId();
+    return CurrentAccessContext.tenantId();
   }
 
   private String currentActorUser() {
-    return CurrentAccessContext.getRequired().actorUser();
+    return CurrentAccessContext.actorUser();
   }
 
   private String currentActorName() {
-    return CurrentAccessContext.getRequired().actorName();
+    return CurrentAccessContext.actorName();
   }
 
   private record DocumentListPage(

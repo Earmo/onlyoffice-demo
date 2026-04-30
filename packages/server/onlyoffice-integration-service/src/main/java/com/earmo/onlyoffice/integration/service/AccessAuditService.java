@@ -11,37 +11,37 @@ import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
  */
 public interface AccessAuditService {
 
-  default void recordDocumentCreated(String documentId) {
-    recordDocumentCreated(documentId, CurrentAccessContext.getRequired());
-  }
+    default void recordDocumentCreated(String documentId) {
+        recordDocumentCreated(documentId, CurrentAccessContext.getRequired());
+    }
 
-  void recordDocumentCreated(String documentId, AccessContext accessContext);
+    void recordDocumentCreated(String documentId, AccessContext accessContext);
 
-  default void recordDocumentUploaded(String documentId) {
-    recordDocumentUploaded(documentId, CurrentAccessContext.getRequired());
-  }
+    default void recordDocumentUploaded(String documentId) {
+        recordDocumentUploaded(documentId, CurrentAccessContext.getRequired());
+    }
 
-  void recordDocumentUploaded(String documentId, AccessContext accessContext);
+    void recordDocumentUploaded(String documentId, AccessContext accessContext);
 
-  default void recordDocumentImported(String documentId) {
-    recordDocumentImported(documentId, CurrentAccessContext.getRequired());
-  }
+    default void recordDocumentImported(String documentId) {
+        recordDocumentImported(documentId, CurrentAccessContext.getRequired());
+    }
 
-  void recordDocumentImported(String documentId, AccessContext accessContext);
+    void recordDocumentImported(String documentId, AccessContext accessContext);
 
-  default void recordDocumentArchived(String documentId) {
-    recordDocumentArchived(documentId, CurrentAccessContext.getRequired());
-  }
+    default void recordDocumentArchived(String documentId) {
+        recordDocumentArchived(documentId, CurrentAccessContext.getRequired());
+    }
 
-  void recordDocumentArchived(String documentId, AccessContext accessContext);
+    void recordDocumentArchived(String documentId, AccessContext accessContext);
 
-  default void recordEditorConfigRequested(String documentId) {
-    recordEditorConfigRequested(documentId, CurrentAccessContext.getRequired());
-  }
+    default void recordEditorConfigRequested(String documentId) {
+        recordEditorConfigRequested(documentId, CurrentAccessContext.getRequired());
+    }
 
-  void recordEditorConfigRequested(String documentId, AccessContext accessContext);
+    void recordEditorConfigRequested(String documentId, AccessContext accessContext);
 
-  void recordCallbackReceived(String documentId, Integer callbackStatus);
+    void recordCallbackReceived(String documentId, Integer callbackStatus);
 
-  void recordCallbackRejected(String documentId, String reason);
+    void recordCallbackRejected(String documentId, String reason);
 }

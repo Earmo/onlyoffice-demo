@@ -9,15 +9,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "统一的接口错误响应。")
 public record ApiErrorResponse(
-    @Schema(description = "返回给调用方的错误提示信息。", example = "上传文件不能为空。")
-    String message,
-    @Schema(description = "稳定的 machine-readable 错误码。", example = "LLM_PROVIDER_TIMEOUT")
-    String errorCode
+        @Schema(description = "返回给调用方的错误提示信息。", example = "上传文件不能为空。")
+        String message,
+        @Schema(description = "稳定的 machine-readable 错误码。", example = "LLM_PROVIDER_TIMEOUT")
+        String errorCode
 ) {
-
-  public ApiErrorResponse(String message) {
-    this(message, null);
-  }
+    public ApiErrorResponse(String message) {
+        this(message, null);
+    }
 }
 
 

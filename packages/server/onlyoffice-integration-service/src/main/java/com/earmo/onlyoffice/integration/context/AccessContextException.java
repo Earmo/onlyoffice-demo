@@ -7,11 +7,11 @@ import com.earmo.onlyoffice.integration.common.exception.BaseException;
  */
 public class AccessContextException extends BaseException {
 
-  public AccessContextException(String message) {
-    super("ACCESS_CONTEXT_ERROR", message);
-  }
+    public AccessContextException(String message) {
+        super("ACCESS_CONTEXT_ERROR", message);
+    }
 
-  public AccessContextException(String message, Throwable cause) {
-    super("ACCESS_CONTEXT_ERROR", message, cause);
-  }
+    public AccessContextException(String message, Throwable cause) {
+        super("ACCESS_CONTEXT_ERROR", message, cause);
+    }
 }

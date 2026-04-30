@@ -31,9 +31,9 @@ onlyoffice:
       default-provider: minio
       routing:
         # 如需按租户切换存储策略，可在此填写 tenantId -> provider 映射。
-        tenants: {}
+        tenants: { }
         # 如需按来源系统切换存储策略，可在此填写 sourceSystem -> provider 映射。
-        source-systems: {}
+        source-systems: { }
       minio:
         # 本机通过映射端口访问容器内 MinIO。
         endpoint: http://localhost:9000

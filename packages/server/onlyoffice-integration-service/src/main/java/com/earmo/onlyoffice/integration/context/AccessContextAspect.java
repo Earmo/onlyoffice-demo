@@ -20,37 +20,37 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 @Slf4j
 public class AccessContextAspect {
 
-  private final AccessContextResolver accessContextResolver;
+    private final AccessContextResolver accessContextResolver;
 
-  @Around("""
-      within(@org.springframework.web.bind.annotation.RestController *)
-      && within(com.earmo.onlyoffice.integration.controller..*)
-      && !@annotation(com.earmo.onlyoffice.integration.context.SkipAccessContext)
-      && !@within(com.earmo.onlyoffice.integration.context.SkipAccessContext)
-      """)
-  public Object bindAccessContext(ProceedingJoinPoint joinPoint) throws Throwable {
-    HttpServletRequest request = currentRequest();
-    AccessContext accessContext = accessContextResolver.resolve(request);
-    CurrentAccessContext.set(accessContext);
-    log.info(
-        "access context bound: method={}, tenantId={}, actorUser={}",
-        joinPoint.getSignature().toShortString(),
-        accessContext.tenantId(),
-        accessContext.actorUser()
-    );
-    try {
-      return joinPoint.proceed();
-    } finally {
-      CurrentAccessContext.clear();
-      log.info("access context cleared: method={}", joinPoint.getSignature().toShortString());
+    @Around("""
+            within(@org.springframework.web.bind.annotation.RestController *)
+            && within(com.earmo.onlyoffice.integration.controller..*)
+            && !@annotation(com.earmo.onlyoffice.integration.context.SkipAccessContext)
+            && !@within(com.earmo.onlyoffice.integration.context.SkipAccessContext)
+            """)
+    public Object bindAccessContext(ProceedingJoinPoint joinPoint) throws Throwable {
+        HttpServletRequest request = currentRequest();
+        AccessContext accessContext = accessContextResolver.resolve(request);
+        CurrentAccessContext.set(accessContext);
+        log.info(
+                "access context bound: method={}, tenantId={}, actorUser={}",
+                joinPoint.getSignature().toShortString(),
+                accessContext.tenantId(),
+                accessContext.actorUser()
+        );
+        try {
+            return joinPoint.proceed();
+        } finally {
+            CurrentAccessContext.clear();
+            log.info("access context cleared: method={}", joinPoint.getSignature().toShortString());
+        }
     }
-  }
 
-  private HttpServletRequest currentRequest() {
-    RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
-    if (attributes instanceof ServletRequestAttributes servletRequestAttributes) {
-      return servletRequestAttributes.getRequest();
+    private HttpServletRequest currentRequest() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (attributes instanceof ServletRequestAttributes servletRequestAttributes) {
+            return servletRequestAttributes.getRequest();
+        }
+        throw new AccessContextException("当前请求无法解析访问上下文。");
     }
-    throw new AccessContextException("当前请求无法解析访问上下文。");
-  }
 }

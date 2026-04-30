@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.service.impl;
 
 import com.earmo.onlyoffice.integration.model.StoredDocument;
+
 import java.time.Instant;
 
 /**
@@ -13,41 +14,41 @@ import java.time.Instant;
  */
 final class OnlyofficeDocumentKeyResolver {
 
-  /**
-   * 禁止实例化工具类。
-   */
-  private OnlyofficeDocumentKeyResolver() {
-  }
+    /**
+     * 禁止实例化工具类。
+     */
+    private OnlyofficeDocumentKeyResolver() {
+    }
 
-  /**
-   * 生成 ONLYOFFICE 文档 key。
-   *
-   * @param storedDocument 当前文档快照。
-   * @return 文档 ID 和版本时间组合成的 key。
-   */
-  static String resolveDocumentKey(StoredDocument storedDocument) {
-    return storedDocument.documentId() + "-" + resolveVersionInstant(storedDocument).toEpochMilli();
-  }
+    /**
+     * 生成 ONLYOFFICE 文档 key。
+     *
+     * @param storedDocument 当前文档快照。
+     * @return 文档 ID 和版本时间组合成的 key。
+     */
+    static String resolveDocumentKey(StoredDocument storedDocument) {
+        return storedDocument.documentId() + "-" + resolveVersionInstant(storedDocument).toEpochMilli();
+    }
 
-  /**
-   * 解析用于 ONLYOFFICE key 的版本时间。
-   *
-   * @param storedDocument 当前文档快照。
-   * @return key 使用的版本时间。
-   */
-  private static Instant resolveVersionInstant(StoredDocument storedDocument) {
-    if ("editing".equals(storedDocument.status()) && storedDocument.lastOpenedTime() != null) {
-      return storedDocument.lastOpenedTime();
+    /**
+     * 解析用于 ONLYOFFICE key 的版本时间。
+     *
+     * @param storedDocument 当前文档快照。
+     * @return key 使用的版本时间。
+     */
+    private static Instant resolveVersionInstant(StoredDocument storedDocument) {
+        if ("editing".equals(storedDocument.status()) && storedDocument.lastOpenedTime() != null) {
+            return storedDocument.lastOpenedTime();
+        }
+        if (storedDocument.lastSavedTime() != null) {
+            return storedDocument.lastSavedTime();
+        }
+        if (storedDocument.lastModified() != null) {
+            return storedDocument.lastModified();
+        }
+        if (storedDocument.lastOpenedTime() != null) {
+            return storedDocument.lastOpenedTime();
+        }
+        return Instant.EPOCH;
     }
-    if (storedDocument.lastSavedTime() != null) {
-      return storedDocument.lastSavedTime();
-    }
-    if (storedDocument.lastModified() != null) {
-      return storedDocument.lastModified();
-    }
-    if (storedDocument.lastOpenedTime() != null) {
-      return storedDocument.lastOpenedTime();
-    }
-    return Instant.EPOCH;
-  }
 }

@@ -16,34 +16,34 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class MinioClientFactory {
 
-  private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
+    private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
 
-  @Getter(value = AccessLevel.PRIVATE, lazy = true)
-  private final MinioClient client = buildClient();
+    @Getter(value = AccessLevel.PRIVATE, lazy = true)
+    private final MinioClient client = buildClient();
 
-  public MinioClient client() {
-    return getClient();
-  }
-
-  public String bucket() {
-    return onlyofficeIntegrationProperties.getStorage().getMinio().getBucket();
-  }
-
-  public void ensureBucketExists() throws Exception {
-    String bucket = bucket();
-    MinioClient client = client();
-    boolean exists = client.bucketExists(BucketExistsArgs.builder().bucket(bucket).build());
-    if (!exists) {
-      client.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
+    public MinioClient client() {
+        return getClient();
     }
-  }
 
-  private MinioClient buildClient() {
-    OnlyofficeIntegrationProperties.MinioStorageProperties properties =
-        onlyofficeIntegrationProperties.getStorage().getMinio();
-    return MinioClient.builder()
-        .endpoint(properties.getEndpoint())
-        .credentials(properties.getAccessKey(), properties.getSecretKey())
-        .build();
-  }
+    public String bucket() {
+        return onlyofficeIntegrationProperties.getStorage().getMinio().getBucket();
+    }
+
+    public void ensureBucketExists() throws Exception {
+        String bucket = bucket();
+        MinioClient client = client();
+        boolean exists = client.bucketExists(BucketExistsArgs.builder().bucket(bucket).build());
+        if (!exists) {
+            client.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
+        }
+    }
+
+    private MinioClient buildClient() {
+        OnlyofficeIntegrationProperties.MinioStorageProperties properties =
+                onlyofficeIntegrationProperties.getStorage().getMinio();
+        return MinioClient.builder()
+                .endpoint(properties.getEndpoint())
+                .credentials(properties.getAccessKey(), properties.getSecretKey())
+                .build();
+    }
 }

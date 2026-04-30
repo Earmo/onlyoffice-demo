@@ -1,8 +1,9 @@
 package com.earmo.onlyoffice.integration.context;
 
+import org.springframework.util.StringUtils;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.util.StringUtils;
 
 /**
  * 解析最小权限映射。
@@ -13,33 +14,33 @@ import org.springframework.util.StringUtils;
  */
 final class AccessContextPermissionParser {
 
-  private AccessContextPermissionParser() {
-  }
-
-  static Map<String, Boolean> parse(String rawValue) {
-    if (!StringUtils.hasText(rawValue)) {
-      return Map.of();
+    private AccessContextPermissionParser() {
     }
 
-    Map<String, Boolean> permissions = new LinkedHashMap<>();
-    String[] entries = rawValue.split(",");
-    for (String entry : entries) {
-      if (!StringUtils.hasText(entry) || !entry.contains("=")) {
-        throw new InvalidAccessContextException("访问上下文解析失败：权限配置格式不合法。");
-      }
+    static Map<String, Boolean> parse(String rawValue) {
+        if (!StringUtils.hasText(rawValue)) {
+            return Map.of();
+        }
 
-      String[] pair = entry.split("=", 2);
-      String key = pair[0].trim();
-      String value = pair[1].trim();
-      if (!StringUtils.hasText(key) || !StringUtils.hasText(value)) {
-        throw new InvalidAccessContextException("访问上下文解析失败：权限配置格式不合法。");
-      }
+        Map<String, Boolean> permissions = new LinkedHashMap<>();
+        String[] entries = rawValue.split(",");
+        for (String entry : entries) {
+            if (!StringUtils.hasText(entry) || !entry.contains("=")) {
+                throw new InvalidAccessContextException("访问上下文解析失败：权限配置格式不合法。");
+            }
 
-      if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
-        throw new InvalidAccessContextException("访问上下文解析失败：权限值必须是 true 或 false。");
-      }
-      permissions.put(key, Boolean.parseBoolean(value));
+            String[] pair = entry.split("=", 2);
+            String key = pair[0].trim();
+            String value = pair[1].trim();
+            if (!StringUtils.hasText(key) || !StringUtils.hasText(value)) {
+                throw new InvalidAccessContextException("访问上下文解析失败：权限配置格式不合法。");
+            }
+
+            if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
+                throw new InvalidAccessContextException("访问上下文解析失败：权限值必须是 true 或 false。");
+            }
+            permissions.put(key, Boolean.parseBoolean(value));
+        }
+        return permissions;
     }
-    return permissions;
-  }
 }

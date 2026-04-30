@@ -78,6 +78,8 @@ onlyoffice:
 
 如果你需要接入自定义用户来源，可继续注册新的 `AccessContextProvider`，并把它放到 `resolution-order` 前面；controller 和文档业务服务不需要为了新来源再改解析逻辑。
 
+服务内部已经通过 `CurrentAccessContext` 在线程内保存当前访问上下文。上游接入方只需要按 header、JWT 或自定义 provider 提供身份材料，不需要也不能向业务 service 手动传递内部 `AccessContext` 对象。普通同步业务会按需读取当前上下文；LLM 异步执行、文档运行态 SSE、ONLYOFFICE callback 等跨线程或外部协议边界由服务端在入口显式捕获或声明跳过上下文。
+
 ## Phase 18 API 契约
 
 普通 JSON API 统一返回 `ResponseDto`：

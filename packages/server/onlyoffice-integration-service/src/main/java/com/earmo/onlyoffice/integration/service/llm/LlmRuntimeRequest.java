@@ -9,11 +9,11 @@ import java.util.List;
  * 包含目标 provider、鉴权、模型、超时和最终消息窗口。
  */
 public record LlmRuntimeRequest(
-    String providerName,
-    String baseUrl,
-    String apiKey,
-    String model,
-    long timeoutMillis,
-    List<LlmProviderMessage> messages
+        String providerName,
+        String baseUrl,
+        String apiKey,
+        String model,
+        long timeoutMillis,
+        List<LlmProviderMessage> messages
 ) {
 }

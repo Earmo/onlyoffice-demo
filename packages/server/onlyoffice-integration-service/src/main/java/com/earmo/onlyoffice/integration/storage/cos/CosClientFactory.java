@@ -21,31 +21,31 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class CosClientFactory {
 
-  private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
+    private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
 
-  @Getter(value = AccessLevel.PRIVATE, lazy = true)
-  private final COSClient client = buildClient();
+    @Getter(value = AccessLevel.PRIVATE, lazy = true)
+    private final COSClient client = buildClient();
 
-  public COSClient client() {
-    return getClient();
-  }
-
-  public String bucket() {
-    return onlyofficeIntegrationProperties.getStorage().getCos().getBucket();
-  }
-
-  private COSClient buildClient() {
-    OnlyofficeIntegrationProperties.CosStorageProperties properties =
-        onlyofficeIntegrationProperties.getStorage().getCos();
-
-    COSCredentials credentials = new BasicCOSCredentials(
-        properties.getSecretId(),
-        properties.getSecretKey()
-    );
-    ClientConfig clientConfig = new ClientConfig(new Region(properties.getRegion()));
-    if (StringUtils.hasText(properties.getEndpointSuffix())) {
-      clientConfig.setEndPointSuffix(properties.getEndpointSuffix().trim());
+    public COSClient client() {
+        return getClient();
     }
-    return new COSClient(credentials, clientConfig);
-  }
+
+    public String bucket() {
+        return onlyofficeIntegrationProperties.getStorage().getCos().getBucket();
+    }
+
+    private COSClient buildClient() {
+        OnlyofficeIntegrationProperties.CosStorageProperties properties =
+                onlyofficeIntegrationProperties.getStorage().getCos();
+
+        COSCredentials credentials = new BasicCOSCredentials(
+                properties.getSecretId(),
+                properties.getSecretKey()
+        );
+        ClientConfig clientConfig = new ClientConfig(new Region(properties.getRegion()));
+        if (StringUtils.hasText(properties.getEndpointSuffix())) {
+            clientConfig.setEndPointSuffix(properties.getEndpointSuffix().trim());
+        }
+        return new COSClient(credentials, clientConfig);
+    }
 }

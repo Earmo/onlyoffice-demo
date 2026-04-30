@@ -2,9 +2,9 @@ package com.earmo.onlyoffice.integration.common.exception;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.http.HttpStatus;
 
 import java.io.Serial;
-import org.springframework.http.HttpStatus;
 
 /**
  * 异常基类，各个模块的运行期异常均继承与该类

@@ -75,10 +75,43 @@ ResponseDto<PageRespVo<DocumentResp>> page(@RequestBody DocumentPageReq req);
 
 - 用户上下文由 `AccessContextAspect` 从请求中读取并校验，通过 `CurrentAccessContext` 保存到当前同步请求线程
 - 业务入口通过 `CurrentAccessContext.getRequired()` 读取 `AccessContext`
+- 同步业务方法需要租户、用户或权限字段时，优先使用 `CurrentAccessContext.tenantId()`、`actorUser()`、`actorName()`、`permissions()` 等便捷方法
 - 仍消费旧 `RequestContext` 的服务可使用 `CurrentAccessContext.toRequestContext()` 平滑迁移
 - controller 不再显式调用 `AccessContextResolver` 并把上下文逐层传给 service
 - 线程上下文必须在请求结束时清理，避免线程复用导致用户信息串用
 - SSE 或异步边界不能依赖 ThreadLocal 自动传播，应由 service 在同步入口捕获当前 `AccessContext`，并在异步回调中显式恢复再执行需要用户上下文的逻辑
+- 需要在回调中临时恢复当前用户时，使用 `CurrentAccessContext.runWith(accessContext, runnable)` 或 `callWith(accessContext, supplier)`，不得手写无 `finally` 的 `set`
+
+### 访问上下文使用规范
+
+`CurrentAccessContext` 是唯一访问上下文 Holder。不要新增 `AccessContextHolder`、`UserContextHolder` 之类职责重复的工具类；如果需要新的读取方式，应补充到 `CurrentAccessContext` 并同步补测试。
+
+推荐用法：
+
+```java
+String tenantId = CurrentAccessContext.tenantId();
+String actorUser = CurrentAccessContext.actorUser();
+```
+
+兼容旧模型时：
+
+```java
+RequestContext requestContext = CurrentAccessContext.toRequestContext();
+```
+
+跨线程或 SSE 保活场景必须显式捕获上下文：
+
+```java
+AccessContext accessContext = CurrentAccessContext.getRequired();
+executor.execute(() -> CurrentAccessContext.runWith(accessContext, () -> touch(documentId)));
+```
+
+禁止事项：
+
+- 不要在 `CompletableFuture.runAsync`、`ScheduledExecutorService`、SSE provider stream 执行体中直接调用 `CurrentAccessContext.getRequired()`，除非该代码块外层已经显式 `runWith`
+- 不要让线程池任务依赖 controller 线程结束后仍然存在的 ThreadLocal
+- 不要为了普通同步 service 调用继续从 controller 层层传递 `AccessContext`
+- 不要在临时绑定后遗漏 `clear` 或恢复旧上下文
 
 ### 请求参数
 

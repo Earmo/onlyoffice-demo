@@ -2,10 +2,11 @@ package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+
+import java.util.Optional;
 
 /**
  * 从标准请求头解析访问上下文。
@@ -18,41 +19,41 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class HeaderAccessContextProvider implements AccessContextProvider {
 
-  private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
+    private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
 
-  @Override
-  public String name() {
-    return "header";
-  }
-
-  @Override
-  public Optional<AccessContext> resolve(HttpServletRequest request) {
-    if (request == null || !onlyofficeIntegrationProperties.getAccessContext().getHeader().isEnabled()) {
-      return Optional.empty();
+    @Override
+    public String name() {
+        return "header";
     }
 
-    OnlyofficeIntegrationProperties.HeaderAccessContextProperties headerProperties =
-        onlyofficeIntegrationProperties.getAccessContext().getHeader();
+    @Override
+    public Optional<AccessContext> resolve(HttpServletRequest request) {
+        if (request == null || !onlyofficeIntegrationProperties.getAccessContext().getHeader().isEnabled()) {
+            return Optional.empty();
+        }
 
-    String tenantId = readHeader(request, headerProperties.getTenantIdHeader());
-    String sourceSystem = readHeader(request, headerProperties.getSourceSystemHeader());
-    String externalUserId = readHeader(request, headerProperties.getExternalUserIdHeader());
-    String displayName = readHeader(request, headerProperties.getDisplayNameHeader());
-    String permissionsHeader = readHeader(request, headerProperties.getPermissionsHeader());
+        OnlyofficeIntegrationProperties.HeaderAccessContextProperties headerProperties =
+                onlyofficeIntegrationProperties.getAccessContext().getHeader();
 
-    AccessContext accessContext = new AccessContext(
-        tenantId,
-        sourceSystem,
-        externalUserId,
-        displayName,
-        AccessContextPermissionParser.parse(permissionsHeader),
-        name()
-    );
-    return accessContext.hasAnyExplicitValue() ? Optional.of(accessContext) : Optional.empty();
-  }
+        String tenantId = readHeader(request, headerProperties.getTenantIdHeader());
+        String sourceSystem = readHeader(request, headerProperties.getSourceSystemHeader());
+        String externalUserId = readHeader(request, headerProperties.getExternalUserIdHeader());
+        String displayName = readHeader(request, headerProperties.getDisplayNameHeader());
+        String permissionsHeader = readHeader(request, headerProperties.getPermissionsHeader());
 
-  private String readHeader(HttpServletRequest request, String headerName) {
-    String value = request.getHeader(headerName);
-    return StringUtils.hasText(value) ? value.trim() : null;
-  }
+        AccessContext accessContext = new AccessContext(
+                tenantId,
+                sourceSystem,
+                externalUserId,
+                displayName,
+                AccessContextPermissionParser.parse(permissionsHeader),
+                name()
+        );
+        return accessContext.hasAnyExplicitValue() ? Optional.of(accessContext) : Optional.empty();
+    }
+
+    private String readHeader(HttpServletRequest request, String headerName) {
+        String value = request.getHeader(headerName);
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
 }

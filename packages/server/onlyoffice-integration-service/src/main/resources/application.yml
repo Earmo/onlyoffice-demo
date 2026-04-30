@@ -130,9 +130,9 @@ onlyoffice:
       default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:local}
       routing:
         # 按 tenantId 细分存储策略；键为 tenantId，值为 provider 名称。
-        tenants: {}
+        tenants: { }
         # 按 sourceSystem 细分存储策略；键为来源系统，值为 provider 名称。
-        source-systems: {}
+        source-systems: { }
       local:
         # local 存储策略根目录。
         root: ${ONLYOFFICE_INTEGRATION_STORAGE_LOCAL_ROOT:${ONLYOFFICE_INTEGRATION_STORAGE_ROOT:./storage}}

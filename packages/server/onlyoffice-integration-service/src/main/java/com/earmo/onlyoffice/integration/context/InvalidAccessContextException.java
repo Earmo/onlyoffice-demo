@@ -5,11 +5,11 @@ package com.earmo.onlyoffice.integration.context;
  */
 public class InvalidAccessContextException extends AccessContextException {
 
-  public InvalidAccessContextException(String message) {
-    super(message);
-  }
+    public InvalidAccessContextException(String message) {
+        super(message);
+    }
 
-  public InvalidAccessContextException(String message, Throwable cause) {
-    super(message, cause);
-  }
+    public InvalidAccessContextException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

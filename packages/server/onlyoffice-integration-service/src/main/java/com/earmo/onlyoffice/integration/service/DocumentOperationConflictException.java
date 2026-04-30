@@ -8,12 +8,12 @@ import org.springframework.http.HttpStatus;
  */
 public class DocumentOperationConflictException extends BaseException {
 
-  /**
-   * 创建文档操作冲突异常。
-   *
-   * @param message 冲突说明
-   */
-  public DocumentOperationConflictException(String message) {
-    super("DOCUMENT_OPERATION_CONFLICT", message, HttpStatus.CONFLICT);
-  }
+    /**
+     * 创建文档操作冲突异常。
+     *
+     * @param message 冲突说明
+     */
+    public DocumentOperationConflictException(String message) {
+        super("DOCUMENT_OPERATION_CONFLICT", message, HttpStatus.CONFLICT);
+    }
 }

@@ -1,11 +1,12 @@
 package com.earmo.onlyoffice.integration.service.llm.provider;
 
 import com.earmo.onlyoffice.integration.service.llm.SpringAiLlmProvider;
+import org.springframework.stereotype.Component;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.stereotype.Component;
 
 /**
  * Spring AI provider 注册表。
@@ -16,31 +17,31 @@ import org.springframework.stereotype.Component;
 @Component
 public class SpringAiProviderRegistry {
 
-  private final Map<String, SpringAiLlmProvider> providers;
+    private final Map<String, SpringAiLlmProvider> providers;
 
-  /**
-   * 构建 provider 名称到实现的只读映射。
-   *
-   * @param providers 当前 Spring 容器中注册的 provider 实现列表。
-   */
-  public SpringAiProviderRegistry(List<SpringAiLlmProvider> providers) {
-    LinkedHashMap<String, SpringAiLlmProvider> registry = new LinkedHashMap<>();
-    for (SpringAiLlmProvider provider : providers) {
-      registry.put(provider.providerName(), provider);
+    /**
+     * 构建 provider 名称到实现的只读映射。
+     *
+     * @param providers 当前 Spring 容器中注册的 provider 实现列表。
+     */
+    public SpringAiProviderRegistry(List<SpringAiLlmProvider> providers) {
+        LinkedHashMap<String, SpringAiLlmProvider> registry = new LinkedHashMap<>();
+        for (SpringAiLlmProvider provider : providers) {
+            registry.put(provider.providerName(), provider);
+        }
+        this.providers = Map.copyOf(registry);
     }
-    this.providers = Map.copyOf(registry);
-  }
 
-  /**
-   * 按实现名查找 provider。
-   *
-   * @param providerName 底层 provider 实现名称。
-   * @return 匹配的 provider 实现；名称为空或未注册时为空。
-   */
-  public Optional<SpringAiLlmProvider> findProvider(String providerName) {
-    if (providerName == null || providerName.isBlank()) {
-      return Optional.empty();
+    /**
+     * 按实现名查找 provider。
+     *
+     * @param providerName 底层 provider 实现名称。
+     * @return 匹配的 provider 实现；名称为空或未注册时为空。
+     */
+    public Optional<SpringAiLlmProvider> findProvider(String providerName) {
+        if (providerName == null || providerName.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(providers.get(providerName.trim()));
     }
-    return Optional.ofNullable(providers.get(providerName.trim()));
-  }
 }

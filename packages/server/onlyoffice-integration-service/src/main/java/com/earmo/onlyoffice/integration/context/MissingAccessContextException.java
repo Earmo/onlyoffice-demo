@@ -5,7 +5,7 @@ package com.earmo.onlyoffice.integration.context;
  */
 public class MissingAccessContextException extends AccessContextException {
 
-  public MissingAccessContextException(String message) {
-    super(message);
-  }
+    public MissingAccessContextException(String message) {
+        super(message);
+    }
 }

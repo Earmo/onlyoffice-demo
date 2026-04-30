@@ -3,6 +3,7 @@ package com.earmo.onlyoffice.integration.service;
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+
 import java.util.List;
 import java.util.Map;
 
@@ -14,35 +15,35 @@ import java.util.Map;
  */
 public interface DocumentStatusService {
 
-  DocumentSaveStatusResponse initialize(String documentId);
+    DocumentSaveStatusResponse initialize(String documentId);
 
-  default DocumentSaveStatusResponse openEditingSession(String documentId) {
-    return openEditingSession(documentId, CurrentAccessContext.getRequired());
-  }
+    default DocumentSaveStatusResponse openEditingSession(String documentId) {
+        return openEditingSession(documentId, CurrentAccessContext.getRequired());
+    }
 
-  DocumentSaveStatusResponse openEditingSession(String documentId, AccessContext accessContext);
+    DocumentSaveStatusResponse openEditingSession(String documentId, AccessContext accessContext);
 
-  default DocumentSaveStatusResponse closeEditingSession(String documentId) {
-    return closeEditingSession(documentId, CurrentAccessContext.getRequired());
-  }
+    default DocumentSaveStatusResponse closeEditingSession(String documentId) {
+        return closeEditingSession(documentId, CurrentAccessContext.getRequired());
+    }
 
-  DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext);
+    DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext);
 
-  default void touchEditingSession(String documentId) {
-    touchEditingSession(documentId, CurrentAccessContext.getRequired());
-  }
+    default void touchEditingSession(String documentId) {
+        touchEditingSession(documentId, CurrentAccessContext.getRequired());
+    }
 
-  void touchEditingSession(String documentId, AccessContext accessContext);
+    void touchEditingSession(String documentId, AccessContext accessContext);
 
-  DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus);
+    DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus);
 
-  DocumentSaveStatusResponse recordCallbackRejected(String documentId, String message);
+    DocumentSaveStatusResponse recordCallbackRejected(String documentId, String message);
 
-  DocumentSaveStatusResponse recordSaveSucceeded(String documentId, Integer callbackStatus);
+    DocumentSaveStatusResponse recordSaveSucceeded(String documentId, Integer callbackStatus);
 
-  DocumentSaveStatusResponse recordSaveFailed(String documentId, Integer callbackStatus, String failureReason);
+    DocumentSaveStatusResponse recordSaveFailed(String documentId, Integer callbackStatus, String failureReason);
 
-  DocumentSaveStatusResponse getStatus(String documentId);
+    DocumentSaveStatusResponse getStatus(String documentId);
 
-  Map<String, Integer> countActiveEditingSessions(List<String> documentIds);
+    Map<String, Integer> countActiveEditingSessions(List<String> documentIds);
 }

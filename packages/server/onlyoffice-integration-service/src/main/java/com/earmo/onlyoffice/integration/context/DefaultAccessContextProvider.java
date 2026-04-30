@@ -2,10 +2,11 @@ package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.Map;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * 默认访问上下文 provider。
@@ -17,27 +18,27 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DefaultAccessContextProvider implements AccessContextProvider {
 
-  private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
+    private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
 
-  @Override
-  public String name() {
-    return "default";
-  }
+    @Override
+    public String name() {
+        return "default";
+    }
 
-  @Override
-  public boolean isExplicitStrategy() {
-    return false;
-  }
+    @Override
+    public boolean isExplicitStrategy() {
+        return false;
+    }
 
-  @Override
-  public Optional<AccessContext> resolve(HttpServletRequest request) {
-    return Optional.of(new AccessContext(
-        onlyofficeIntegrationProperties.getDefaultTenantId(),
-        onlyofficeIntegrationProperties.getDefaultSourceSystem(),
-        onlyofficeIntegrationProperties.getDefaultUser(),
-        onlyofficeIntegrationProperties.getDefaultUserName(),
-        Map.of(),
-        name()
-    ));
-  }
+    @Override
+    public Optional<AccessContext> resolve(HttpServletRequest request) {
+        return Optional.of(new AccessContext(
+                onlyofficeIntegrationProperties.getDefaultTenantId(),
+                onlyofficeIntegrationProperties.getDefaultSourceSystem(),
+                onlyofficeIntegrationProperties.getDefaultUser(),
+                onlyofficeIntegrationProperties.getDefaultUserName(),
+                Map.of(),
+                name()
+        ));
+    }
 }

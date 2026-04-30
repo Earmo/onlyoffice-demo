@@ -13,23 +13,23 @@ import reactor.core.publisher.Flux;
  */
 public interface SpringAiLlmProvider {
 
-  /**
-   * 返回 provider 实现名。
-   */
-  String providerName();
+    /**
+     * 返回 provider 实现名。
+     */
+    String providerName();
 
-  /**
-   * 以统一 chunk 结构流式返回模型输出。
-   */
-  Flux<SpringAiProviderChunk> stream(LlmRuntimeRequest request);
+    /**
+     * 以统一 chunk 结构流式返回模型输出。
+     */
+    Flux<SpringAiProviderChunk> stream(LlmRuntimeRequest request);
 
-  /**
-   * 当前 provider 是否支持向上游发送取消请求。
-   */
-  boolean supportsUpstreamCancel();
+    /**
+     * 当前 provider 是否支持向上游发送取消请求。
+     */
+    boolean supportsUpstreamCancel();
 
-  /**
-   * 请求上游取消指定 request。
-   */
-  void cancelRequest(String providerRequestId);
+    /**
+     * 请求上游取消指定 request。
+     */
+    void cancelRequest(String providerRequestId);
 }

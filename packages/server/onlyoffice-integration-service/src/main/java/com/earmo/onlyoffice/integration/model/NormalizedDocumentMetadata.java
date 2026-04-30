@@ -7,8 +7,8 @@ package com.earmo.onlyoffice.integration.model;
  * 但数据库里 `title/fileType/documentType` 仍停留在旧值的场景。
  */
 public record NormalizedDocumentMetadata(
-    String title,
-    String fileType,
-    String documentType
+        String title,
+        String fileType,
+        String documentType
 ) {
 }

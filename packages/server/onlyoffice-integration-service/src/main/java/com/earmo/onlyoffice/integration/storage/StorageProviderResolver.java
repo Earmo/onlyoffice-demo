@@ -18,43 +18,43 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class StorageProviderResolver {
 
-  private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
+    private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
 
-  public StorageProvider resolve(RequestContext requestContext) {
-    if (requestContext == null) {
-      return onlyofficeIntegrationProperties.getStorage().getDefaultProvider();
-    }
-    return resolve(requestContext.tenantId(), requestContext.sourceSystem());
-  }
-
-  public StorageProvider resolve(DocumentMetadataEntity entity) {
-    return resolve(entity.getTenantId(), entity.getSourceSystem());
-  }
-
-  public StorageProvider resolve(String tenantId, String sourceSystem) {
-    StorageProvider tenantProvider = lookup(
-        onlyofficeIntegrationProperties.getStorage().getRouting().getTenants(),
-        tenantId
-    );
-    if (tenantProvider != null) {
-      return tenantProvider;
+    public StorageProvider resolve(RequestContext requestContext) {
+        if (requestContext == null) {
+            return onlyofficeIntegrationProperties.getStorage().getDefaultProvider();
+        }
+        return resolve(requestContext.tenantId(), requestContext.sourceSystem());
     }
 
-    StorageProvider sourceSystemProvider = lookup(
-        onlyofficeIntegrationProperties.getStorage().getRouting().getSourceSystems(),
-        sourceSystem
-    );
-    if (sourceSystemProvider != null) {
-      return sourceSystemProvider;
+    public StorageProvider resolve(DocumentMetadataEntity entity) {
+        return resolve(entity.getTenantId(), entity.getSourceSystem());
     }
 
-    return onlyofficeIntegrationProperties.getStorage().getDefaultProvider();
-  }
+    public StorageProvider resolve(String tenantId, String sourceSystem) {
+        StorageProvider tenantProvider = lookup(
+                onlyofficeIntegrationProperties.getStorage().getRouting().getTenants(),
+                tenantId
+        );
+        if (tenantProvider != null) {
+            return tenantProvider;
+        }
 
-  private StorageProvider lookup(java.util.Map<String, StorageProvider> mappings, String key) {
-    if (!StringUtils.hasText(key) || mappings == null || mappings.isEmpty()) {
-      return null;
+        StorageProvider sourceSystemProvider = lookup(
+                onlyofficeIntegrationProperties.getStorage().getRouting().getSourceSystems(),
+                sourceSystem
+        );
+        if (sourceSystemProvider != null) {
+            return sourceSystemProvider;
+        }
+
+        return onlyofficeIntegrationProperties.getStorage().getDefaultProvider();
     }
-    return mappings.get(key.trim());
-  }
+
+    private StorageProvider lookup(java.util.Map<String, StorageProvider> mappings, String key) {
+        if (!StringUtils.hasText(key) || mappings == null || mappings.isEmpty()) {
+            return null;
+        }
+        return mappings.get(key.trim());
+    }
 }

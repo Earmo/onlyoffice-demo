@@ -10,17 +10,17 @@ import io.swagger.v3.oas.annotations.media.Schema;
  */
 @Schema(description = "文档服务消费的标准化请求上下文。")
 public record RequestContext(
-    @Schema(description = "租户 ID。", example = "native")
-    String tenantId,
-    @Schema(description = "来源系统标识。", example = "native")
-    String sourceSystem,
-    @Schema(description = "外部用户标识。", example = "starter-user")
-    String externalUser,
-    @Schema(description = "用户展示名。", example = "默认用户")
-    String displayName
+        @Schema(description = "租户 ID。", example = "native")
+        String tenantId,
+        @Schema(description = "来源系统标识。", example = "native")
+        String sourceSystem,
+        @Schema(description = "外部用户标识。", example = "starter-user")
+        String externalUser,
+        @Schema(description = "用户展示名。", example = "默认用户")
+        String displayName
 ) {
 
-  public String ownerUser() {
-    return externalUser;
-  }
+    public String ownerUser() {
+        return externalUser;
+    }
 }

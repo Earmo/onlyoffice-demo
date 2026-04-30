@@ -10,10 +10,10 @@ import java.util.Map;
  * 用于终态回写，`providerResponseMeta` 用于白名单元数据透传。
  */
 public record SpringAiProviderChunk(
-    String delta,
-    String providerRequestId,
-    LlmProviderUsage usage,
-    String finishReason,
-    Map<String, Object> providerResponseMeta
+        String delta,
+        String providerRequestId,
+        LlmProviderUsage usage,
+        String finishReason,
+        Map<String, Object> providerResponseMeta
 ) {
 }

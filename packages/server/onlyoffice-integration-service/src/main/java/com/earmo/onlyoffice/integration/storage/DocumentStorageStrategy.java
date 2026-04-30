@@ -9,15 +9,15 @@ import java.io.IOException;
  */
 public interface DocumentStorageStrategy {
 
-  StorageProvider provider();
+    StorageProvider provider();
 
-  boolean exists(String storageKey) throws IOException;
+    boolean exists(String storageKey) throws IOException;
 
-  StoredObjectResource read(String storageKey) throws IOException;
+    StoredObjectResource read(String storageKey) throws IOException;
 
-  StoredObjectResource writeNew(StorageWriteRequest request) throws IOException;
+    StoredObjectResource writeNew(StorageWriteRequest request) throws IOException;
 
-  StoredObjectResource overwrite(StorageWriteRequest request) throws IOException;
+    StoredObjectResource overwrite(StorageWriteRequest request) throws IOException;
 
-  void delete(String storageKey) throws IOException;
+    void delete(String storageKey) throws IOException;
 }

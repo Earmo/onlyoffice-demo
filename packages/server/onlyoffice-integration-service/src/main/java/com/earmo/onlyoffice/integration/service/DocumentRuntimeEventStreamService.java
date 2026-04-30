@@ -7,28 +7,21 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 public interface DocumentRuntimeEventStreamService {
 
-  default SseEmitter open(
-      String documentId,
-      DocumentSaveStatusResponse initialStatus,
-      Runnable livenessTouch
-  ) {
-    AccessContext accessContext = CurrentAccessContext.getRequired();
-    return open(documentId, accessContext, initialStatus, () -> {
-      CurrentAccessContext.set(accessContext);
-      try {
-        livenessTouch.run();
-      } finally {
-        CurrentAccessContext.clear();
-      }
-    });
-  }
+    default SseEmitter open(
+            String documentId,
+            DocumentSaveStatusResponse initialStatus,
+            Runnable livenessTouch
+    ) {
+        AccessContext accessContext = CurrentAccessContext.getRequired();
+        return open(documentId, accessContext, initialStatus, () -> CurrentAccessContext.runWith(accessContext, livenessTouch));
+    }
 
-  SseEmitter open(
-      String documentId,
-      AccessContext accessContext,
-      DocumentSaveStatusResponse initialStatus,
-      Runnable livenessTouch
-  );
+    SseEmitter open(
+            String documentId,
+            AccessContext accessContext,
+            DocumentSaveStatusResponse initialStatus,
+            Runnable livenessTouch
+    );
 
-  void publishSaveStatus(String documentId, DocumentSaveStatusResponse status);
+    void publishSaveStatus(String documentId, DocumentSaveStatusResponse status);
 }

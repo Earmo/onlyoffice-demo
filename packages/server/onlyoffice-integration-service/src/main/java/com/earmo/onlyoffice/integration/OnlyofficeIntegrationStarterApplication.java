@@ -20,13 +20,13 @@ import org.springframework.context.annotation.Bean;
 @MapperScan("com.earmo.onlyoffice.integration.data.mapper")
 public class OnlyofficeIntegrationStarterApplication {
 
-  public static void main(String[] args) {
-    SpringApplication.run(OnlyofficeIntegrationStarterApplication.class, args);
-  }
+    public static void main(String[] args) {
+        SpringApplication.run(OnlyofficeIntegrationStarterApplication.class, args);
+    }
 
-  @Bean
-  CommandLineRunner seedBootstrapDocument(DocumentStorageService documentStorageService) {
-    return args -> documentStorageService.ensureBootstrapDocument("sample");
-  }
+    @Bean
+    CommandLineRunner seedBootstrapDocument(DocumentStorageService documentStorageService) {
+        return args -> documentStorageService.ensureBootstrapDocument("sample");
+    }
 }
 
