@@ -2,7 +2,7 @@ package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
 
 import java.util.List;
 import java.util.Map;

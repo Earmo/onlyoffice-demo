@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.exception.InvalidAccessContextException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;

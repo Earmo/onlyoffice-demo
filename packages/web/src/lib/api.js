@@ -121,6 +121,18 @@ export function createAccessContextHeaders(headers = {}) {
 }
 
 /**
+ * 判断 headers 中是否已经显式设置某个 header。
+ *
+ * @param {Record<string, string>} headers - 已合并后的请求头。
+ * @param {string} headerName - 待查找的 header 名称。
+ * @returns {boolean} true 表示已存在同名 header。
+ */
+function hasHeader(headers, headerName) {
+  const normalizedHeaderName = headerName.toLowerCase();
+  return Object.keys(headers).some((name) => name.toLowerCase() === normalizedHeaderName);
+}
+
+/**
  * 项目统一 fetch 入口。
  *
  * @param {string} path - API 路径，支持相对路径并自动拼接 VITE_API_BASE_URL。
@@ -129,9 +141,14 @@ export function createAccessContextHeaders(headers = {}) {
  */
 export function apiFetch(path, options = {}) {
   // 项目内统一通过 apiFetch 发请求，避免有人漏带访问上下文头。
+  const headers = createAccessContextHeaders(options.headers);
+  if (typeof options.body === "string" && !hasHeader(headers, "Content-Type")) {
+    headers["Content-Type"] = "application/json";
+  }
+
   return fetch(buildApiUrl(path), {
     ...options,
-    headers: createAccessContextHeaders(options.headers)
+    headers
   });
 }
 

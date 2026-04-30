@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.service;
+package com.earmo.onlyoffice.integration.exception;
 
 import com.earmo.onlyoffice.integration.common.exception.BaseException;
 import org.springframework.http.HttpStatus;

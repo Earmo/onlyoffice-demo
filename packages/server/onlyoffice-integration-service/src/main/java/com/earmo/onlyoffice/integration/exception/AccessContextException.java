@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.context;
+package com.earmo.onlyoffice.integration.exception;
 
 import com.earmo.onlyoffice.integration.common.exception.BaseException;
 

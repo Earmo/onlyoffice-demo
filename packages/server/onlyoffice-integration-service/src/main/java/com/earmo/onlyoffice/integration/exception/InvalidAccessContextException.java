@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.context;
+package com.earmo.onlyoffice.integration.exception;
 
 /**
  * 用于表达“访问上下文格式错误或解析失败”的 4xx 语义。

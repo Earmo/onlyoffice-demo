@@ -2,7 +2,7 @@ package com.earmo.onlyoffice.integration.service.impl;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.service.DocumentRuntimeEventStreamService;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;

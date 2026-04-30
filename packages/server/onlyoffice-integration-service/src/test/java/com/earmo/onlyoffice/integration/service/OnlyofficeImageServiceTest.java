@@ -1,7 +1,7 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
-import com.earmo.onlyoffice.integration.model.InsertImageResponse;
+import com.earmo.onlyoffice.integration.model.response.InsertImageResponse;
 import com.earmo.onlyoffice.integration.service.impl.OnlyofficeImageServiceImpl;
 import com.earmo.onlyoffice.integration.service.impl.OnlyofficeJwtServiceImpl;
 import com.earmo.onlyoffice.integration.service.impl.RemoteResourceSecurityServiceImpl;

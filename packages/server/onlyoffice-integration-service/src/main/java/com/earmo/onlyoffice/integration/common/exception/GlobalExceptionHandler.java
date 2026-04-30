@@ -1,11 +1,11 @@
 package com.earmo.onlyoffice.integration.common.exception;
 
 import com.earmo.onlyoffice.integration.common.response.ApiErrorResponse;
-import com.earmo.onlyoffice.integration.context.AccessContextException;
+import com.earmo.onlyoffice.integration.exception.AccessContextException;
 import com.earmo.onlyoffice.integration.model.ResponseDto;
-import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
-import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
-import com.earmo.onlyoffice.integration.service.llm.LlmApiException;
+import com.earmo.onlyoffice.integration.exception.DocumentNotFoundException;
+import com.earmo.onlyoffice.integration.exception.DocumentOperationConflictException;
+import com.earmo.onlyoffice.integration.exception.LlmApiException;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;

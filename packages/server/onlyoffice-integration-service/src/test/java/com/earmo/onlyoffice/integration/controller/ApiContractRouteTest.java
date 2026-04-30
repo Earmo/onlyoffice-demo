@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.context.SkipAccessContext;
+import com.earmo.onlyoffice.integration.model.request.OnlyofficeCallbackRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -58,7 +59,7 @@ class ApiContractRouteTest {
         assertThat(DocumentController.class.getMethod(
                         "callback",
                         String.class,
-                        com.earmo.onlyoffice.integration.model.OnlyofficeCallbackRequest.class,
+                        OnlyofficeCallbackRequest.class,
                         jakarta.servlet.http.HttpServletRequest.class
                 )
                 .isAnnotationPresent(SkipAccessContext.class)).isTrue();

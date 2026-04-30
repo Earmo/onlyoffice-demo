@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.service.llm.provider;
 
+import com.earmo.onlyoffice.integration.exception.LlmApiException;
 import com.earmo.onlyoffice.integration.service.llm.*;
 import io.micrometer.observation.ObservationRegistry;
 import lombok.extern.slf4j.Slf4j;

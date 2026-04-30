@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.context;
 
+import com.earmo.onlyoffice.integration.exception.AccessContextException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

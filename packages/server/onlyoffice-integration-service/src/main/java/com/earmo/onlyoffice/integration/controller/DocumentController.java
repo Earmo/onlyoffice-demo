@@ -2,7 +2,12 @@ package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.context.SkipAccessContext;
 import com.earmo.onlyoffice.integration.model.*;
+import com.earmo.onlyoffice.integration.model.request.*;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.model.response.InsertImageResponse;
 import com.earmo.onlyoffice.integration.service.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -40,6 +45,7 @@ public class DocumentController extends BaseController {
     private final AccessAuditService accessAuditService;
     private final OnlyofficeJwtService onlyofficeJwtService;
     private final OnlyofficeCommandService onlyofficeCommandService;
+    private final ObjectMapper objectMapper;
 
     @PostMapping("/editor-config")
     @Operation(summary = "获取编辑器配置", description = "根据内部 documentId 生成 ONLYOFFICE 可直接消费的 editor config。")
@@ -67,6 +73,13 @@ public class DocumentController extends BaseController {
     @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。")
     public ResponseDto<DocumentSaveStatusResponse> closeEditingSession(@Valid @RequestBody DocumentCloseSessionReq request) {
         return successResponseWithData(documentStatusService.closeEditingSession(request.documentId()));
+    }
+
+    @PostMapping(value = "/close/session", consumes = MediaType.TEXT_PLAIN_VALUE)
+    @Operation(summary = "结束编辑会话", description = "兼容浏览器卸载期 keepalive/sendBeacon 可能发送 text/plain 的关闭会话请求。")
+    public ResponseDto<DocumentSaveStatusResponse> closeEditingSessionText(@RequestBody(required = false) String body) {
+        String documentId = resolveCloseSessionDocumentId(body);
+        return successResponseWithData(documentStatusService.closeEditingSession(documentId));
     }
 
     @PostMapping("/{documentId}/editing-sessions/close")
@@ -256,5 +269,24 @@ public class DocumentController extends BaseController {
         }
         accessAuditService.recordEditorConfigRequested(documentId);
         return onlyofficeConfigService.buildEditorConfig(documentId, readonly, request);
+    }
+
+    private String resolveCloseSessionDocumentId(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("documentId 不能为空。");
+        }
+        String trimmed = body.trim();
+        if (!trimmed.startsWith("{")) {
+            return trimmed;
+        }
+        try {
+            String documentId = objectMapper.readTree(trimmed).path("documentId").asText(null);
+            if (documentId == null || documentId.isBlank()) {
+                throw new IllegalArgumentException("documentId 不能为空。");
+            }
+            return documentId;
+        } catch (JsonProcessingException ex) {
+            throw new IllegalArgumentException("请求参数格式错误：documentId 不能为空。");
+        }
     }
 }

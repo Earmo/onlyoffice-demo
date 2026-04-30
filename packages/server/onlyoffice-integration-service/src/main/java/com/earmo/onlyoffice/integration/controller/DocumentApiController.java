@@ -2,22 +2,24 @@ package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
-import com.earmo.onlyoffice.integration.model.CreateDocumentRequest;
-import com.earmo.onlyoffice.integration.model.DocumentDeleteReq;
-import com.earmo.onlyoffice.integration.model.DocumentGetReq;
-import com.earmo.onlyoffice.integration.model.DocumentImportRequest;
-import com.earmo.onlyoffice.integration.model.DocumentListResponse;
-import com.earmo.onlyoffice.integration.model.DocumentPageReq;
-import com.earmo.onlyoffice.integration.model.DocumentRecentReq;
-import com.earmo.onlyoffice.integration.model.DocumentSummaryResponse;
+import com.earmo.onlyoffice.integration.model.request.CreateDocumentRequest;
+import com.earmo.onlyoffice.integration.model.request.DocumentDeleteReq;
+import com.earmo.onlyoffice.integration.model.request.DocumentGetReq;
+import com.earmo.onlyoffice.integration.model.request.DocumentImportRequest;
+import com.earmo.onlyoffice.integration.model.response.DocumentListResponse;
+import com.earmo.onlyoffice.integration.model.request.DocumentPageReq;
+import com.earmo.onlyoffice.integration.model.request.DocumentRecentReq;
+import com.earmo.onlyoffice.integration.model.response.DocumentSummaryResponse;
 import com.earmo.onlyoffice.integration.model.PageRespVo;
 import com.earmo.onlyoffice.integration.model.ResponseDto;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
-import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
+import com.earmo.onlyoffice.integration.exception.DocumentOperationConflictException;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mybatisflex.core.paginate.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -32,6 +34,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -63,6 +66,7 @@ public class DocumentApiController extends BaseController {
   private final DocumentStorageService documentStorageService;
   private final DocumentStatusService documentStatusService;
   private final AccessAuditService accessAuditService;
+  private final ObjectMapper objectMapper;
 
   @PostMapping("/page")
   @Operation(summary = "分页查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要分页。")
@@ -86,6 +90,12 @@ public class DocumentApiController extends BaseController {
         Math.toIntExact(listPage.total()),
         listPage.documents()
     ));
+  }
+
+  @PostMapping(value = "/page", consumes = MediaType.TEXT_PLAIN_VALUE)
+  @Operation(summary = "分页查询文档列表", description = "兼容 text/plain 形式提交的 JSON 查询参数。")
+  public ResponseDto<PageRespVo<DocumentSummaryResponse>> pageText(@RequestBody(required = false) String body) {
+    return page(readTextJsonBody(body, DocumentPageReq.class));
   }
 
   @GetMapping
@@ -166,6 +176,12 @@ public class DocumentApiController extends BaseController {
     return successResponseWithData(entities.stream()
         .map(entity -> toSummary(entity, activeEditingCounts.getOrDefault(entity.getDocumentId(), 0)))
         .toList());
+  }
+
+  @PostMapping(value = "/list/recent", consumes = MediaType.TEXT_PLAIN_VALUE)
+  @Operation(summary = "查询最近编辑文档", description = "兼容 text/plain 形式提交的 JSON 查询参数。")
+  public ResponseDto<List<DocumentSummaryResponse>> recentText(@RequestBody(required = false) String body) {
+    return recent(readTextJsonBody(body, DocumentRecentReq.class));
   }
 
   @GetMapping("/{documentId}")
@@ -462,6 +478,17 @@ public class DocumentApiController extends BaseController {
       return DEFAULT_RECENT_LIMIT;
     }
     return Math.min(limit, MAX_RECENT_LIMIT);
+  }
+
+  private <T> T readTextJsonBody(String body, Class<T> type) {
+    if (body == null || body.isBlank()) {
+      return null;
+    }
+    try {
+      return objectMapper.readValue(body, type);
+    } catch (JsonProcessingException ex) {
+      throw new IllegalArgumentException("请求参数格式错误：" + ex.getOriginalMessage());
+    }
   }
 
   private String currentTenantId() {

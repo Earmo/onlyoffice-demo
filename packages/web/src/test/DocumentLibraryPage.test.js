@@ -92,8 +92,10 @@ describe("DocumentLibraryPage", () => {
     expect(requestBody(0).pageNumber).toBe(1);
     expect(requestBody(0).pageSize).toBe(10);
     expect(requestBody(0).sortDirection).toBeUndefined();
+    expect(fetch.mock.calls[0][1]?.headers?.["Content-Type"]).toBe("application/json");
     expect(requestUrl(1).pathname).toBe("/api/documents/list/recent");
     expect(requestBody(1).limit).toBe(3);
+    expect(fetch.mock.calls[1][1]?.headers?.["Content-Type"]).toBe("application/json");
     expect(fetch.mock.calls[0][1]?.headers?.["X-External-User-Id"]).toBe("starter-user");
     expect(wrapper.text()).toContain("tenant-a");
     expect(wrapper.text()).toContain("Alice");

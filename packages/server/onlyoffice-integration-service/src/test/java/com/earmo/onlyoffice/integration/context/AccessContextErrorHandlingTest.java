@@ -7,6 +7,7 @@ import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentStatusService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mybatisflex.core.paginate.Page;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +55,8 @@ class AccessContextErrorHandlingTest {
                 documentMetadataService,
                 documentStorageService,
                 documentStatusService,
-                accessAuditService
+                accessAuditService,
+                new ObjectMapper()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .addInterceptors(new HandlerInterceptor() {

@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.exception.MissingAccessContextException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

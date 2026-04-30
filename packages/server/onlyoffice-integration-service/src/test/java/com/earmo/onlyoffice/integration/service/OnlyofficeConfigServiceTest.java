@@ -2,7 +2,7 @@ package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
+import com.earmo.onlyoffice.integration.model.request.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.earmo.onlyoffice.integration.service.impl.OnlyofficeConfigServiceImpl;
 import com.earmo.onlyoffice.integration.service.impl.OnlyofficeJwtServiceImpl;

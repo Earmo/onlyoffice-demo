@@ -1,7 +1,7 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.mybatisflex.core.paginate.Page;

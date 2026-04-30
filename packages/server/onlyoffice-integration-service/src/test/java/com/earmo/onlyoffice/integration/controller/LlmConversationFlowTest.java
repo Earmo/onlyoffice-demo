@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.controller;
 
+import com.earmo.onlyoffice.integration.exception.LlmApiException;
 import com.earmo.onlyoffice.integration.service.llm.*;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;

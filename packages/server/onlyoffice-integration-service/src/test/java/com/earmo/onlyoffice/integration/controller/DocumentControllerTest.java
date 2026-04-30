@@ -4,9 +4,10 @@ import com.earmo.onlyoffice.integration.context.AccessContext;
 import com.earmo.onlyoffice.integration.context.AccessContextAspect;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.mapper.*;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
-import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
+import com.earmo.onlyoffice.integration.exception.DocumentNotFoundException;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusEventResponse;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.model.request.EditorConfigResponse;
 import com.earmo.onlyoffice.integration.model.NormalizedDocumentMetadata;
 import com.earmo.onlyoffice.integration.service.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -333,6 +334,56 @@ class DocumentControllerTest {
                 .andExpect(jsonPath("$.message").value("当前用户已离开编辑器，文档已退出活跃编辑状态。"));
 
         verify(documentStatusService).closeEditingSession(anyString());
+    }
+
+    @Test
+    void shouldCloseEditingSessionWhenKeepaliveRequestIsTextPlainJson() throws Exception {
+        when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
+                new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
+        );
+        when(documentStatusService.closeEditingSession("sample"))
+                .thenReturn(new DocumentSaveStatusResponse(
+                        "sample",
+                        "saved",
+                        "当前用户已离开编辑器，文档已退出活跃编辑状态。",
+                        2,
+                        Instant.parse("2026-03-25T10:00:00Z"),
+                        Instant.parse("2026-03-25T10:00:01Z"),
+                        List.of()
+                ));
+
+        mockMvc.perform(post("/api/documents/close/session")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("{\"documentId\":\"sample\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.state").value("saved"));
+
+        verify(documentStatusService).closeEditingSession("sample");
+    }
+
+    @Test
+    void shouldCloseEditingSessionWhenKeepaliveRequestIsTextPlainDocumentId() throws Exception {
+        when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
+                new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
+        );
+        when(documentStatusService.closeEditingSession("sample"))
+                .thenReturn(new DocumentSaveStatusResponse(
+                        "sample",
+                        "saved",
+                        "当前用户已离开编辑器，文档已退出活跃编辑状态。",
+                        2,
+                        Instant.parse("2026-03-25T10:00:00Z"),
+                        Instant.parse("2026-03-25T10:00:01Z"),
+                        List.of()
+                ));
+
+        mockMvc.perform(post("/api/documents/close/session")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("sample"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.state").value("saved"));
+
+        verify(documentStatusService).closeEditingSession("sample");
     }
 
     @Test

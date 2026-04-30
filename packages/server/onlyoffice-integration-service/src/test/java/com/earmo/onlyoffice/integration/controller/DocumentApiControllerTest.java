@@ -136,6 +136,32 @@ class DocumentApiControllerTest {
     }
 
     @Test
+    void shouldAcceptTextPlainJsonForDocumentPage() throws Exception {
+        when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+        when(documentMetadataService.listDocumentPage("tenant-a", "roadmap", null, null, null, "desc", 2, 20))
+                .thenReturn(page(List.of(entity("sample")), 2, 20, 21));
+        when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+        when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
+
+        mockMvc.perform(post("/api/documents/page")
+                        .contentType(MediaType.parseMediaType("text/plain;charset=UTF-8"))
+                        .content("""
+                                {
+                                  "query": "roadmap",
+                                  "pageNumber": 2,
+                                  "pageSize": 20
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentPage").value(2))
+                .andExpect(jsonPath("$.data.pageSize").value(20))
+                .andExpect(jsonPath("$.data.totalCount").value(21))
+                .andExpect(jsonPath("$.data.result[0].documentId").value("sample"));
+
+        verify(documentMetadataService).listDocumentPage("tenant-a", "roadmap", null, null, null, "desc", 2, 20);
+    }
+
+    @Test
     void shouldListRecentDocumentsIndependentFromPagination() throws Exception {
         when(accessContextResolver.resolve(any())).thenReturn(accessContext());
         when(documentMetadataService.listRecentDocuments("tenant-a", 2))
@@ -149,6 +175,30 @@ class DocumentApiControllerTest {
                 .andExpect(jsonPath("$[0].documentId").value("recent-2"))
                 .andExpect(jsonPath("$[0].lastEditedTime").value("2026-03-19T09:00:00Z"))
                 .andExpect(jsonPath("$[1].documentId").value("recent-1"));
+
+        verify(documentMetadataService).listRecentDocuments("tenant-a", 2);
+    }
+
+    @Test
+    void shouldAcceptTextPlainJsonForRecentDocuments() throws Exception {
+        when(accessContextResolver.resolve(any())).thenReturn(accessContext());
+        when(documentMetadataService.listRecentDocuments("tenant-a", 2))
+                .thenReturn(List.of(entity("recent-2", Instant.parse("2026-03-19T09:00:00Z")), entity("recent-1")));
+        when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
+        when(documentStatusService.countActiveEditingSessions(List.of("recent-2", "recent-1")))
+                .thenReturn(java.util.Map.of("recent-2", 0, "recent-1", 0));
+
+        mockMvc.perform(post("/api/documents/list/recent")
+                        .contentType(MediaType.parseMediaType("text/plain;charset=UTF-8"))
+                        .content("""
+                                {
+                                  "limit": 2
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].documentId").value("recent-2"))
+                .andExpect(jsonPath("$.data[0].lastEditedTime").value("2026-03-19T09:00:00Z"))
+                .andExpect(jsonPath("$.data[1].documentId").value("recent-1"));
 
         verify(documentMetadataService).listRecentDocuments("tenant-a", 2);
     }

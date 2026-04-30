@@ -1,9 +1,9 @@
 package com.earmo.onlyoffice.integration.controller;
 
-import com.earmo.onlyoffice.integration.context.AccessContextException;
-import com.earmo.onlyoffice.integration.service.DocumentNotFoundException;
-import com.earmo.onlyoffice.integration.service.DocumentOperationConflictException;
-import com.earmo.onlyoffice.integration.service.llm.LlmApiException;
+import com.earmo.onlyoffice.integration.exception.AccessContextException;
+import com.earmo.onlyoffice.integration.exception.DocumentNotFoundException;
+import com.earmo.onlyoffice.integration.exception.DocumentOperationConflictException;
+import com.earmo.onlyoffice.integration.exception.LlmApiException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.junit.jupiter.api.BeforeEach;

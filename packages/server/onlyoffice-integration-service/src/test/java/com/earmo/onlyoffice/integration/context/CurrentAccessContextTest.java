@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Map;
+
+import com.earmo.onlyoffice.integration.exception.AccessContextException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 

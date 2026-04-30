@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.context;
 
+import com.earmo.onlyoffice.integration.exception.InvalidAccessContextException;
 import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;

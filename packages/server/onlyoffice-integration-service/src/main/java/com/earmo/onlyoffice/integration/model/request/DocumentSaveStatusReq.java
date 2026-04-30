@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.model;
+package com.earmo.onlyoffice.integration.model.request;
 
 import jakarta.validation.constraints.NotBlank;
 

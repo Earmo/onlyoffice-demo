@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.context;
 
+import com.earmo.onlyoffice.integration.exception.AccessContextException;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import java.util.Map;
 import java.util.function.Supplier;

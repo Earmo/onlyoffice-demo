@@ -7,6 +7,7 @@ import com.earmo.onlyoffice.integration.data.entity.DocumentLlmSessionEntity;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmMessageRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmRequestRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmSessionRepository;
+import com.earmo.onlyoffice.integration.exception.LlmApiException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;

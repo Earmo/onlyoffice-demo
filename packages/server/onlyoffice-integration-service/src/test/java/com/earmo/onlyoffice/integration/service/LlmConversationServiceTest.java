@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.LlmProperties;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmMessageEntity;
+import com.earmo.onlyoffice.integration.exception.LlmApiException;
 import com.earmo.onlyoffice.integration.service.llm.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;

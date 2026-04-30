@@ -6,8 +6,8 @@ import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentRuntimeEventEntity;
 import com.earmo.onlyoffice.integration.data.repository.DocumentEditorSessionRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentRuntimeEventRepository;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusEventResponse;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusEventResponse;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.service.impl.DocumentStatusServiceImpl;
 import org.junit.jupiter.api.Test;
 

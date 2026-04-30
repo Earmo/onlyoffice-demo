@@ -11,6 +11,7 @@ import com.earmo.onlyoffice.integration.data.repository.DocumentLlmMessageReposi
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmMessageVariantRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmRequestRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmSessionRepository;
+import com.earmo.onlyoffice.integration.exception.LlmApiException;
 import com.earmo.onlyoffice.integration.model.llm.CreateLlmSessionRequest;
 import com.earmo.onlyoffice.integration.model.llm.LlmCapabilityResponse;
 import com.earmo.onlyoffice.integration.model.llm.LlmMessageResponse;

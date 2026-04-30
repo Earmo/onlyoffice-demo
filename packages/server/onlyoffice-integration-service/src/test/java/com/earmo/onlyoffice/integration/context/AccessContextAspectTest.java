@@ -1,5 +1,6 @@
 package com.earmo.onlyoffice.integration.context;
 
+import com.earmo.onlyoffice.integration.exception.AccessContextException;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.Signature;
 import org.junit.jupiter.api.AfterEach;
