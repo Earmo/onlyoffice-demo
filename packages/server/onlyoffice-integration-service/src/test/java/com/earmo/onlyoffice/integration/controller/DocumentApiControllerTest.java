@@ -273,7 +273,7 @@ class DocumentApiControllerTest {
     ))
         .thenReturn(storedDocument("01ARZ3NDEKTSV4RRFFQ69G5FAV", "alpha.docx", "external-1"));
 
-    mockMvc.perform(post("/api/documents")
+    mockMvc.perform(post("/api/documents/create")
             .contentType(MediaType.APPLICATION_JSON)
             .content("""
                 {
@@ -360,7 +360,7 @@ class DocumentApiControllerTest {
         .andExpect(status().isNoContent());
 
     verify(documentMetadataService).archiveDocument("sample");
-    verify(accessAuditService).recordDocumentArchived("sample", accessContext());
+    verify(accessAuditService).recordDocumentArchived("sample");
   }
 
   @Test

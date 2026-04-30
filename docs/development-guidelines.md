@@ -78,7 +78,7 @@ ResponseDto<PageRespVo<DocumentResp>> page(@RequestBody DocumentPageReq req);
 - 仍消费旧 `RequestContext` 的服务可使用 `CurrentAccessContext.toRequestContext()` 平滑迁移
 - controller 不再显式调用 `AccessContextResolver` 并把上下文逐层传给 service
 - 线程上下文必须在请求结束时清理，避免线程复用导致用户信息串用
-- SSE 或异步边界不能依赖 ThreadLocal 继续传播，必须在 controller 入口捕获 `AccessContext` 并显式传给后续 service
+- SSE 或异步边界不能依赖 ThreadLocal 自动传播，应由 service 在同步入口捕获当前 `AccessContext`，并在异步回调中显式恢复再执行需要用户上下文的逻辑
 
 ### 请求参数
 
@@ -90,26 +90,28 @@ ResponseDto<PageRespVo<DocumentResp>> page(@RequestBody DocumentPageReq req);
 
 ### 接口命名
 
-- 接口路径要显式表达动作或资源语义，例如 `delete/session`、`get/session`
+- 接口路径要显式表达动作或资源语义，例如分页查询用 `page`，列表查询用 `list`，详情查询用 `detail`
 - 避免多个接口使用同名或语义含混的路径，尤其不要让删除、查询、更新等行为只靠 HTTP 方法或参数差异区分
 
 ### Phase 18 主路径示例
 
 - `POST /api/documents/page`
 - `POST /api/documents/list/recent`
-- `POST /api/documents/get`
+- `POST /api/documents/detail`
+- `POST /api/documents/create`
 - `POST /api/documents/delete`
-- `POST /api/documents/get/editor-config`
+- `POST /api/documents/editor-config`
 - `POST /api/documents/close/session`
 - `POST /api/documents/save`
-- `POST /api/documents/get/save-status`
-- `POST /api/llm/get/capability`
-- `POST /api/llm/list/session`
-- `POST /api/llm/get/session`
-- `POST /api/llm/delete/session`
-- `POST /api/llm/rename/session`
-- `POST /api/llm/get/request`
-- `POST /api/llm/cancel/request`
+- `POST /api/documents/save-status`
+- `POST /api/llm/capability/query`
+- `POST /api/llm/sessions/list`
+- `POST /api/llm/sessions/create`
+- `POST /api/llm/sessions/detail`
+- `POST /api/llm/sessions/delete`
+- `POST /api/llm/sessions/rename`
+- `POST /api/llm/requests/detail`
+- `POST /api/llm/requests/cancel`
 
 旧 GET、DELETE、PUT 或 query-string 入口如需保留，必须标记 `@Deprecated(forRemoval = false)`，并只作为迁移期兼容别名存在。新增测试应优先覆盖新主路径。
 

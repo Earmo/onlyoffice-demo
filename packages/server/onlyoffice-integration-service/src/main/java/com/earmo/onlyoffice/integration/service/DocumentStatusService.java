@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import java.util.List;
 import java.util.Map;
@@ -15,9 +16,21 @@ public interface DocumentStatusService {
 
   DocumentSaveStatusResponse initialize(String documentId);
 
+  default DocumentSaveStatusResponse openEditingSession(String documentId) {
+    return openEditingSession(documentId, CurrentAccessContext.getRequired());
+  }
+
   DocumentSaveStatusResponse openEditingSession(String documentId, AccessContext accessContext);
 
+  default DocumentSaveStatusResponse closeEditingSession(String documentId) {
+    return closeEditingSession(documentId, CurrentAccessContext.getRequired());
+  }
+
   DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext);
+
+  default void touchEditingSession(String documentId) {
+    touchEditingSession(documentId, CurrentAccessContext.getRequired());
+  }
 
   void touchEditingSession(String documentId, AccessContext accessContext);
 

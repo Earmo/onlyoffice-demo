@@ -1,7 +1,5 @@
 package com.earmo.onlyoffice.integration.controller;
 
-import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.context.SkipAccessContext;
 import com.earmo.onlyoffice.integration.model.DocumentCloseSessionReq;
 import com.earmo.onlyoffice.integration.model.DocumentEditorConfigReq;
@@ -70,13 +68,12 @@ public class DocumentController extends BaseController {
   private final OnlyofficeJwtService onlyofficeJwtService;
   private final OnlyofficeCommandService onlyofficeCommandService;
 
-  @PostMapping("/get/editor-config")
+  @PostMapping("/editor-config")
   @Operation(summary = "获取编辑器配置", description = "根据内部 documentId 生成 ONLYOFFICE 可直接消费的 editor config。")
   public ResponseDto<EditorConfigResponse> editorConfig(@Valid @RequestBody DocumentEditorConfigReq body, HttpServletRequest request)
       throws IOException {
     boolean readonly = Boolean.TRUE.equals(body.readonly());
-    AccessContext accessContext = CurrentAccessContext.getRequired();
-    EditorConfigResponse response = buildEditorConfig(body.documentId(), readonly, request, accessContext);
+    EditorConfigResponse response = buildEditorConfig(body.documentId(), readonly, request);
     return successResponseWithData(response);
   }
 
@@ -90,15 +87,13 @@ public class DocumentController extends BaseController {
       @RequestParam(defaultValue = "false") boolean readonly,
       HttpServletRequest request
   ) throws IOException {
-    AccessContext accessContext = CurrentAccessContext.getRequired();
-    return buildEditorConfig(documentId, readonly, request, accessContext);
+    return buildEditorConfig(documentId, readonly, request);
   }
 
   @PostMapping("/close/session")
   @Operation(summary = "结束编辑会话", description = "在返回列表、切换文档或离开编辑页时显式结束当前用户的编辑会话。")
   public ResponseDto<DocumentSaveStatusResponse> closeEditingSession(@Valid @RequestBody DocumentCloseSessionReq request) {
-    AccessContext accessContext = CurrentAccessContext.getRequired();
-    return successResponseWithData(documentStatusService.closeEditingSession(request.documentId(), accessContext));
+    return successResponseWithData(documentStatusService.closeEditingSession(request.documentId()));
   }
 
   @PostMapping("/{documentId}/editing-sessions/close")
@@ -107,11 +102,9 @@ public class DocumentController extends BaseController {
           "前端应在调用此接口前先触发保存并等待本次显式保存完成；若随后 ONLYOFFICE 继续补发关闭类 callback，后端会按活跃编辑会话重新收口列表状态。")
   public DocumentSaveStatusResponse closeEditingSession(
       @Parameter(description = "文档内部主键。", example = "demo")
-      @PathVariable String documentId,
-      HttpServletRequest request
+      @PathVariable String documentId
   ) {
-    AccessContext accessContext = CurrentAccessContext.getRequired();
-    return documentStatusService.closeEditingSession(documentId, accessContext);
+    return documentStatusService.closeEditingSession(documentId);
   }
 
   @PostMapping("/save")
@@ -132,7 +125,7 @@ public class DocumentController extends BaseController {
     return documentStatusService.getStatus(documentId);
   }
 
-  @PostMapping("/get/save-status")
+  @PostMapping("/save-status")
   @Operation(summary = "查询保存状态", description = "返回文档最近一次 callback 和保存回写状态。")
   public ResponseDto<DocumentSaveStatusResponse> saveStatus(@Valid @RequestBody DocumentSaveStatusReq request) {
     return successResponseWithData(documentStatusService.getStatus(request.documentId()));
@@ -153,10 +146,8 @@ public class DocumentController extends BaseController {
   @Operation(summary = "订阅文档运行态事件流", description = "返回文档级 SSE 事件流，首帧包含当前 save-status 快照。")
   public SseEmitter runtimeEvents(
       @Parameter(description = "文档内部主键。", example = "demo")
-      @PathVariable String documentId,
-      HttpServletRequest request
+      @PathVariable String documentId
   ) {
-    AccessContext accessContext = CurrentAccessContext.getRequired();
     // Phase 14.1 的后端入口流程：
     // 1. 先从请求头里解析 access context，拿到当前 actor/tenant。
     //    这里不能偷懒，因为后面的 editing session 续期依赖 actorUser。
@@ -168,13 +159,12 @@ public class DocumentController extends BaseController {
     // 4. 最后把 livenessTouch 交给 SSE service。
     //    后续每次 keepalive 发送成功才 touch editing session，
     //    让“流还活着”和“当前用户仍在编辑”这两个事实保持一致。
-    documentStatusService.touchEditingSession(documentId, accessContext);
+    documentStatusService.touchEditingSession(documentId);
     DocumentSaveStatusResponse initialStatus = documentStatusService.getStatus(documentId);
     return runtimeEventStreamService.open(
         documentId,
-        accessContext,
         initialStatus,
-        () -> documentStatusService.touchEditingSession(documentId, accessContext)
+        () -> documentStatusService.touchEditingSession(documentId)
     );
   }
 
@@ -284,15 +274,14 @@ public class DocumentController extends BaseController {
   private EditorConfigResponse buildEditorConfig(
       String documentId,
       boolean readonly,
-      HttpServletRequest request,
-      AccessContext accessContext
+      HttpServletRequest request
   ) throws IOException {
     if (readonly) {
       documentStatusService.initialize(documentId);
     } else {
-      documentStatusService.openEditingSession(documentId, accessContext);
+      documentStatusService.openEditingSession(documentId);
     }
-    accessAuditService.recordEditorConfigRequested(documentId, accessContext);
-    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, accessContext, request);
+    accessAuditService.recordEditorConfigRequested(documentId);
+    return onlyofficeConfigService.buildEditorConfig(documentId, readonly, request);
   }
 }

@@ -88,12 +88,12 @@ describe("DocumentLibraryPage", () => {
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(requestUrl(0).pathname).toBe("/api/documents");
-    expect(requestUrl(0).searchParams.get("pageNumber")).toBe("1");
-    expect(requestUrl(0).searchParams.get("pageSize")).toBe("10");
-    expect(requestUrl(0).searchParams.get("sortDirection")).toBeNull();
-    expect(requestUrl(1).pathname).toBe("/api/documents/recent");
-    expect(requestUrl(1).searchParams.get("limit")).toBe("3");
+    expect(requestUrl(0).pathname).toBe("/api/documents/page");
+    expect(requestBody(0).pageNumber).toBe(1);
+    expect(requestBody(0).pageSize).toBe(10);
+    expect(requestBody(0).sortDirection).toBeUndefined();
+    expect(requestUrl(1).pathname).toBe("/api/documents/list/recent");
+    expect(requestBody(1).limit).toBe(3);
     expect(fetch.mock.calls[0][1]?.headers?.["X-External-User-Id"]).toBe("starter-user");
     expect(wrapper.text()).toContain("tenant-a");
     expect(wrapper.text()).toContain("Alice");
@@ -170,13 +170,13 @@ describe("DocumentLibraryPage", () => {
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledTimes(5);
-    expect(requestUrl(2).pathname).toBe("/api/documents");
+    expect(requestUrl(2).pathname).toBe("/api/documents/create");
     expect(fetch.mock.calls[2][1]?.method).toBe("POST");
     expect(fetch.mock.calls[2][1]?.body).toContain("\"title\":\"新计划.docx\"");
     expect(routerReplace).toHaveBeenCalledWith({ path: "/", query: { highlight: "doc-2" } });
-    expect(requestUrl(3).searchParams.get("pageNumber")).toBe("1");
-    expect(requestUrl(3).searchParams.get("pageSize")).toBe("10");
-    expect(requestUrl(4).pathname).toBe("/api/documents/recent");
+    expect(requestBody(3).pageNumber).toBe(1);
+    expect(requestBody(3).pageSize).toBe(10);
+    expect(requestUrl(4).pathname).toBe("/api/documents/list/recent");
     expect(wrapper.text()).toContain("已创建 新计划.docx，结果已回到工作台列表。");
     expect(wrapper.text()).toContain("新计划.docx|draft");
   });
@@ -212,16 +212,16 @@ describe("DocumentLibraryPage", () => {
     pagination.vm.$emit("current-change", 2);
     await flushPromises();
 
-    expect(requestUrl(2).searchParams.get("pageNumber")).toBe("2");
-    expect(requestUrl(2).searchParams.get("pageSize")).toBe("10");
+    expect(requestBody(2).pageNumber).toBe(2);
+    expect(requestBody(2).pageSize).toBe(10);
     expect(wrapper.text()).toContain("第二页文档.docx|saved");
 
     pagination.vm.$emit("update:page-size", 50);
     pagination.vm.$emit("size-change", 50);
     await flushPromises();
 
-    expect(requestUrl(3).searchParams.get("pageNumber")).toBe("1");
-    expect(requestUrl(3).searchParams.get("pageSize")).toBe("50");
+    expect(requestBody(3).pageNumber).toBe(1);
+    expect(requestBody(3).pageSize).toBe(50);
     expect(wrapper.findComponent({ name: "ElPagination" }).props("total")).toBe(42);
     expect(wrapper.text()).toContain("大页文档.docx|saved");
   });
@@ -254,8 +254,8 @@ describe("DocumentLibraryPage", () => {
     expect(requestUrl(2).pathname).toBe("/api/documents/doc-1");
     expect(fetch.mock.calls[2][1]?.method).toBe("DELETE");
     expect(routerReplace).toHaveBeenCalledWith({ path: "/", query: {} });
-    expect(requestUrl(3).pathname).toBe("/api/documents");
-    expect(requestUrl(4).pathname).toBe("/api/documents/recent");
+    expect(requestUrl(3).pathname).toBe("/api/documents/page");
+    expect(requestUrl(4).pathname).toBe("/api/documents/list/recent");
     expect(wrapper.text()).toContain("已删除 待删除文档.docx。");
     expect(wrapper.text()).toContain("保留文档.docx|saved");
   });
@@ -287,7 +287,7 @@ describe("DocumentLibraryPage", () => {
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledTimes(4);
-    expect(requestUrl(2).pathname).toBe("/api/documents");
+    expect(requestUrl(2).pathname).toBe("/api/documents/page");
     expect(fetch.mock.calls[2][1]?.headers?.["X-Tenant-Id"]).toBe("my-tenant");
     expect(fetch.mock.calls[2][1]?.headers?.["X-External-User-Id"]).toBe("custom-user");
     expect(fetch.mock.calls[2][1]?.headers?.["X-User-Display-Name"]).toBe("John Doe");
@@ -301,6 +301,10 @@ describe("DocumentLibraryPage", () => {
 function requestUrl(callIndex) {
   // 统一把 fetch 调用还原成 URL 对象，便于断言 query 参数。
   return new URL(fetch.mock.calls[callIndex][0], "http://example.test");
+}
+
+function requestBody(callIndex) {
+  return JSON.parse(fetch.mock.calls[callIndex][1]?.body || "{}");
 }
 
 function listPayload({

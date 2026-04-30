@@ -18,22 +18,23 @@ class ApiContractRouteTest {
   @Test
   void shouldExposePrimaryDocumentPostBodyRoutes() {
     assertThat(postRoutes(DocumentApiController.class))
-        .contains("/page", "/list/recent", "/get", "/delete", "/upload", "/import-remote");
+        .contains("/page", "/list/recent", "/detail", "/create", "/delete", "/upload", "/import-remote");
     assertThat(postRoutes(DocumentController.class))
-        .contains("/get/editor-config", "/close/session", "/save", "/get/save-status");
+        .contains("/editor-config", "/close/session", "/save", "/save-status");
   }
 
   @Test
   void shouldExposePrimaryLlmPostBodyRoutes() {
     assertThat(postRoutes(LlmController.class))
         .contains(
-            "/get/capability",
-            "/list/session",
-            "/get/session",
-            "/delete/session",
-            "/rename/session",
-            "/get/request",
-            "/cancel/request"
+            "/capability/query",
+            "/sessions/list",
+            "/sessions/create",
+            "/sessions/detail",
+            "/sessions/delete",
+            "/sessions/rename",
+            "/requests/detail",
+            "/requests/cancel"
         );
   }
 

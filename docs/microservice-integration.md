@@ -16,11 +16,11 @@
 ## 推荐接入流程
 
 1. 上游系统调用以下任一入口创建文档上下文
-   - `POST /api/documents`
+   - `POST /api/documents/create`
    - `POST /api/documents/upload`
    - `POST /api/documents/import-remote`
 2. 获取内部 `documentId`
-3. 调用 `POST /api/documents/get/editor-config`
+3. 调用 `POST /api/documents/editor-config`
 4. 由上游系统决定：
    - 跳转官方前端 `/editor/{documentId}`
    - 或在自己的前端里消费 `editor-config`
@@ -100,7 +100,7 @@ Content-Type: application/json
 ```
 
 ```http
-POST /api/documents/get
+POST /api/documents/detail
 Content-Type: application/json
 
 {"documentId":"demo"}
@@ -116,7 +116,7 @@ Content-Type: application/json
 编辑器运行态接口也使用显式 body：
 
 ```http
-POST /api/documents/get/editor-config
+POST /api/documents/editor-config
 Content-Type: application/json
 
 {"documentId":"demo","readonly":false}

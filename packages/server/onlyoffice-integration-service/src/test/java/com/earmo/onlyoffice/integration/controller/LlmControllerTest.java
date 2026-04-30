@@ -59,7 +59,7 @@ class LlmControllerTest {
 
   @Test
   void shouldExposeCapabilityWithRuntimeProviders() throws Exception {
-    when(llmConversationService.getCapability(eq("doc-1"), any())).thenReturn(
+    when(llmConversationService.getCapability(eq("doc-1"))).thenReturn(
         new LlmCapabilityResponse(
             "doc-1",
             true,
@@ -81,7 +81,7 @@ class LlmControllerTest {
         )
     );
 
-    mockMvc.perform(post("/api/llm/get/capability")
+    mockMvc.perform(post("/api/llm/capability/query")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"documentId\":\"doc-1\"}"))
         .andExpect(status().isOk())
@@ -94,7 +94,7 @@ class LlmControllerTest {
 
   @Test
   void shouldExposeStreamEndpointAsTextEventStream() throws Exception {
-    when(llmConversationService.streamMessage(any(), any())).thenAnswer(invocation -> {
+    when(llmConversationService.streamMessage(any())).thenAnswer(invocation -> {
       SseEmitter emitter = new SseEmitter(1000L);
       emitter.send(SseEmitter.event()
           .name("request-started")
@@ -149,7 +149,7 @@ class LlmControllerTest {
 
   @Test
   void shouldReturnJsonWhenStreamRequestFailsBeforeSseStarts() throws Exception {
-    when(llmConversationService.streamMessage(any(), any())).thenThrow(new IllegalArgumentException("请求参数不合法"));
+    when(llmConversationService.streamMessage(any())).thenThrow(new IllegalArgumentException("请求参数不合法"));
 
     mockMvc.perform(
             post("/api/llm/messages/stream")

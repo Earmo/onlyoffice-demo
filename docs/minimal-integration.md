@@ -85,7 +85,7 @@ corepack pnpm dev
 
 推荐顺序：
 
-1. 调用 `POST /api/documents`
+1. 调用 `POST /api/documents/create`
 2. 或调用 `POST /api/documents/upload`
 3. 或调用 `POST /api/documents/import-remote`
 4. 调用 `GET /api/documents/{documentId}/editor-config`
@@ -127,7 +127,7 @@ corepack pnpm dev
 - `GET /v3/api-docs`
 - `GET /api/documents`
 - `GET /api/documents/{documentId}`
-- `POST /api/documents`
+- `POST /api/documents/create`
 - `POST /api/documents/upload`
 - `POST /api/documents/import-remote`
 - `GET /api/documents/{documentId}/editor-config`

@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.service.llm;
 
 import com.earmo.onlyoffice.integration.config.LlmProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmMessageEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmMessageVariantEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentLlmRequestEntity;
@@ -138,9 +139,12 @@ public class LlmConversationService {
    * 结论同时依赖功能开关、provider 配置和 provider 实现是否已注册。
    *
    * @param documentId 内部文档 ID。
-   * @param accessContext 当前访问上下文。
    * @return 当前文档的 AI 能力、默认模型和可选 provider 列表。
    */
+  public LlmCapabilityResponse getCapability(String documentId) {
+    return getCapability(documentId, CurrentAccessContext.getRequired());
+  }
+
   public LlmCapabilityResponse getCapability(String documentId, AccessContext accessContext) {
     // capability 面向前端暴露的是“逻辑 provider”能力，但真正可用还要满足两层条件：
     // 1. llm.providers.<name> 已配置且启用
@@ -206,9 +210,12 @@ public class LlmConversationService {
    * 列出当前文档下当前用户可见的 AI 会话摘要。
    *
    * @param documentId 内部文档 ID。
-   * @param accessContext 当前访问上下文。
    * @return 当前用户可见的 AI 会话摘要列表。
    */
+  public List<LlmSessionSummaryResponse> listSessions(String documentId) {
+    return listSessions(documentId, CurrentAccessContext.getRequired());
+  }
+
   public List<LlmSessionSummaryResponse> listSessions(String documentId, AccessContext accessContext) {
     return documentLlmSessionRepository.findSessionsByScope(documentId, accessContext.tenantId(), accessContext.actorUser(), 50)
         .stream()
@@ -226,9 +233,12 @@ public class LlmConversationService {
    * 4. 按配置归档超出上限的旧会话。
    *
    * @param request 创建会话请求。
-   * @param accessContext 当前访问上下文。
    * @return 新建会话详情。
    */
+  public LlmSessionDetailResponse createSession(CreateLlmSessionRequest request) {
+    return createSession(request, CurrentAccessContext.getRequired());
+  }
+
   public LlmSessionDetailResponse createSession(CreateLlmSessionRequest request, AccessContext accessContext) {
     Instant now = Instant.now();
     DocumentLlmSessionEntity entity = new DocumentLlmSessionEntity();
@@ -258,8 +268,11 @@ public class LlmConversationService {
    *
    * @param documentId 内部文档 ID。
    * @param sessionId AI 会话 ID。
-   * @param accessContext 当前访问上下文。
    */
+  public void deleteSession(String documentId, String sessionId) {
+    deleteSession(documentId, sessionId, CurrentAccessContext.getRequired());
+  }
+
   public void deleteSession(String documentId, String sessionId, AccessContext accessContext) {
     DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
     session.setArchivedTime(Instant.now());
@@ -273,8 +286,11 @@ public class LlmConversationService {
    * @param documentId 内部文档 ID。
    * @param sessionId AI 会话 ID。
    * @param newTitle 新会话标题。
-   * @param accessContext 当前访问上下文。
    */
+  public void renameSession(String documentId, String sessionId, String newTitle) {
+    renameSession(documentId, sessionId, newTitle, CurrentAccessContext.getRequired());
+  }
+
   public void renameSession(String documentId, String sessionId, String newTitle, AccessContext accessContext) {
     DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
     session.setTitle(newTitle);
@@ -287,9 +303,12 @@ public class LlmConversationService {
    *
    * @param documentId 内部文档 ID。
    * @param sessionId AI 会话 ID。
-   * @param accessContext 当前访问上下文。
    * @return 会话详情与消息列表。
    */
+  public LlmSessionDetailResponse getSession(String documentId, String sessionId) {
+    return getSession(documentId, sessionId, CurrentAccessContext.getRequired());
+  }
+
   public LlmSessionDetailResponse getSession(String documentId, String sessionId, AccessContext accessContext) {
     DocumentLlmSessionEntity session = accessGuard.requireSession(documentId, sessionId, accessContext);
     List<DocumentLlmMessageEntity> messageEntities = documentLlmMessageRepository.findMessagesBySessionScope(
@@ -316,9 +335,12 @@ public class LlmConversationService {
    * @param documentId 内部文档 ID。
    * @param messageId assistant message ID。
    * @param request active variant 切换请求。
-   * @param accessContext 当前访问上下文。
    * @return 切换后的 assistant message 响应。
    */
+  public LlmMessageResponse setActiveVariant(String documentId, String messageId, com.earmo.onlyoffice.integration.model.llm.SetLlmActiveVariantRequest request) {
+    return setActiveVariant(documentId, messageId, request, CurrentAccessContext.getRequired());
+  }
+
   public LlmMessageResponse setActiveVariant(String documentId, String messageId, com.earmo.onlyoffice.integration.model.llm.SetLlmActiveVariantRequest request, AccessContext accessContext) {
     DocumentLlmMessageEntity assistantMessage = accessGuard.requireAssistantMessage(documentId, request.sessionId(), messageId, accessContext);
     List<DocumentLlmMessageVariantEntity> variants = documentLlmMessageVariantRepository.findByMessageScope(
@@ -376,9 +398,12 @@ public class LlmConversationService {
    * 若窗口内未完成则直接返回 `in_progress`。
    *
    * @param request 发送消息请求。
-   * @param accessContext 当前访问上下文。
    * @return 本次请求的同步快照状态。
    */
+  public LlmRequestStatusResponse sendMessage(SendLlmMessageRequest request) {
+    return sendMessage(request, CurrentAccessContext.getRequired());
+  }
+
   public LlmRequestStatusResponse sendMessage(SendLlmMessageRequest request, AccessContext accessContext) {
     // 兼容旧同步接口：内部仍走同一套流式执行逻辑，只做一个很短的同步等待窗口。
     // 若窗口内未完成，就返回 in_progress，由客户端继续通过 request 查询最终态。
@@ -402,9 +427,12 @@ public class LlmConversationService {
    * 以 SSE 方式发送消息并流式返回模型输出。
    *
    * @param request 发送消息请求。
-   * @param accessContext 当前访问上下文。
    * @return 已打开的 SSE emitter。
    */
+  public SseEmitter streamMessage(SendLlmMessageRequest request) {
+    return streamMessage(request, CurrentAccessContext.getRequired());
+  }
+
   public SseEmitter streamMessage(SendLlmMessageRequest request, AccessContext accessContext) {
     PreparedRequest preparedRequest = beginRequest(request, accessContext);
     executionRegistry.register(preparedRequest.requestEntity().getRequestId(), preparedRequest.runtimeSelection().provider());
@@ -434,9 +462,12 @@ public class LlmConversationService {
    *
    * @param documentId 内部文档 ID。
    * @param requestId AI 请求 ID。
-   * @param accessContext 当前访问上下文。
    * @return 请求当前状态快照。
    */
+  public LlmRequestStatusResponse getRequest(String documentId, String requestId) {
+    return getRequest(documentId, requestId, CurrentAccessContext.getRequired());
+  }
+
   public LlmRequestStatusResponse getRequest(String documentId, String requestId, AccessContext accessContext) {
     DocumentLlmRequestEntity requestEntity = accessGuard.requireRequest(documentId, requestId, accessContext);
     DocumentLlmMessageEntity assistantMessage = documentLlmMessageRepository.findMessageByScope(
@@ -460,9 +491,12 @@ public class LlmConversationService {
    *
    * @param documentId 内部文档 ID。
    * @param requestId AI 请求 ID。
-   * @param accessContext 当前访问上下文。
    * @return 取消后的请求状态快照。
    */
+  public LlmRequestStatusResponse cancelRequest(String documentId, String requestId) {
+    return cancelRequest(documentId, requestId, CurrentAccessContext.getRequired());
+  }
+
   public LlmRequestStatusResponse cancelRequest(String documentId, String requestId, AccessContext accessContext) {
     DocumentLlmRequestEntity requestEntity = accessGuard.requireRequest(documentId, requestId, accessContext);
     if (!STATUS_IN_PROGRESS.equals(requestEntity.getStatus())) {

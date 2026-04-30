@@ -1,10 +1,27 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 public interface DocumentRuntimeEventStreamService {
+
+  default SseEmitter open(
+      String documentId,
+      DocumentSaveStatusResponse initialStatus,
+      Runnable livenessTouch
+  ) {
+    AccessContext accessContext = CurrentAccessContext.getRequired();
+    return open(documentId, accessContext, initialStatus, () -> {
+      CurrentAccessContext.set(accessContext);
+      try {
+        livenessTouch.run();
+      } finally {
+        CurrentAccessContext.clear();
+      }
+    });
+  }
 
   SseEmitter open(
       String documentId,

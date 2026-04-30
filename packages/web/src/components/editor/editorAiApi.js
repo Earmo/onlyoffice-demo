@@ -12,27 +12,27 @@ function postJson(path, body) {
 }
 
 export function getLlmCapability(documentId) {
-  return postJson("/api/llm/get/capability", { documentId });
+  return postJson("/api/llm/capability/query", { documentId });
 }
 
 export function listLlmSessions(documentId) {
-  return postJson("/api/llm/list/session", { documentId });
+  return postJson("/api/llm/sessions/list", { documentId });
 }
 
 export function createLlmSession(documentId, title = "") {
-  return postJson("/api/llm/sessions", { documentId, title });
+  return postJson("/api/llm/sessions/create", { documentId, title });
 }
 
 export function getLlmSession(sessionId, documentId) {
-  return postJson("/api/llm/get/session", { documentId, sessionId });
+  return postJson("/api/llm/sessions/detail", { documentId, sessionId });
 }
 
 export function deleteLlmSession(sessionId, documentId) {
-  return postJson("/api/llm/delete/session", { documentId, sessionId });
+  return postJson("/api/llm/sessions/delete", { documentId, sessionId });
 }
 
 export function renameLlmSession(sessionId, documentId, title) {
-  return postJson("/api/llm/rename/session", { documentId, sessionId, title });
+  return postJson("/api/llm/sessions/rename", { documentId, sessionId, title });
 }
 
 export function startLlmMessageStream(payload, handlers) {
@@ -44,11 +44,11 @@ export function sendLlmMessage(payload) {
 }
 
 export function getLlmRequest(requestId, documentId) {
-  return postJson("/api/llm/get/request", { documentId, requestId });
+  return postJson("/api/llm/requests/detail", { documentId, requestId });
 }
 
 export function cancelLlmRequest(requestId, documentId) {
-  return postJson("/api/llm/cancel/request", { documentId, requestId });
+  return postJson("/api/llm/requests/cancel", { documentId, requestId });
 }
 
 export function setLlmActiveVariant({ documentId, sessionId, assistantMessageId, variantId = "", variantIndex }) {

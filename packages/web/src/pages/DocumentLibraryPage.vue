@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DocumentCreateActions from "../components/library/DocumentCreateActions.vue";
 import DocumentList from "../components/library/DocumentList.vue";
-import { apiFetch, getCustomAccessContext, saveCustomAccessContext } from "../lib/api";
+import { apiFetch, getCustomAccessContext, parseJsonEnvelope, saveCustomAccessContext } from "../lib/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -80,56 +80,53 @@ async function readErrorMessage(response, fallbackMessage) {
   }
 }
 
-function buildListParams() {
+function buildPageRequest() {
   // 列表查询参数集中在这里组装，保证“搜索 / 翻页 / 重置 / 回流高亮”用的是同一套规则。
-  const params = new URLSearchParams();
-  params.set("pageNumber", String(pageNumber.value));
-  params.set("pageSize", String(pageSize.value));
+  const body = {
+    pageNumber: pageNumber.value,
+    pageSize: pageSize.value
+  };
   if (searchQuery.value) {
-    params.set("query", searchQuery.value);
+    body.query = searchQuery.value;
   }
   if (statusFilter.value !== "all") {
-    params.set("status", statusFilter.value);
+    body.status = statusFilter.value;
   }
   if (documentTypeFilter.value !== "all") {
-    params.set("documentType", documentTypeFilter.value);
+    body.documentType = documentTypeFilter.value;
   }
   if (sourceSystemFilter.value) {
-    params.set("sourceSystem", sourceSystemFilter.value);
+    body.sourceSystem = sourceSystemFilter.value;
   }
   if (storageFilter.value !== "all") {
-    params.set("storage", storageFilter.value);
+    body.storage = storageFilter.value;
   }
-  return params;
+  return body;
 }
 
 async function loadDocuments() {
-  const params = buildListParams();
-  const suffix = params.toString() ? `?${params.toString()}` : "";
-  const response = await apiFetch(`/api/documents${suffix}`);
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `文档列表加载失败，HTTP ${response.status}`));
-  }
-
-  const payload = await response.json();
-  documents.value = payload.documents ?? [];
+  const response = await apiFetch("/api/documents/page", {
+    method: "POST",
+    body: JSON.stringify(buildPageRequest())
+  });
+  const payload = await parseJsonEnvelope(response);
+  documents.value = payload.documents ?? payload.result ?? [];
   tenantId.value = payload.tenantId ?? "";
   actorUser.value = payload.actorUser ?? "";
   actorName.value = payload.actorName ?? "";
-  pageNumber.value = payload.pageNumber ?? pageNumber.value;
+  pageNumber.value = payload.pageNumber ?? payload.currentPage ?? pageNumber.value;
   pageSize.value = payload.pageSize ?? pageSize.value;
-  total.value = payload.total ?? documents.value.length;
-  totalPages.value = payload.totalPages ?? 0;
+  total.value = payload.total ?? payload.totalCount ?? documents.value.length;
+  totalPages.value = payload.totalPages ?? Math.ceil((payload.totalCount ?? 0) / (payload.pageSize || pageSize.value)) ?? 0;
 }
 
 async function loadRecentDocuments() {
   // 最近文档是首页左栏的“继续上次工作”数据源，与主列表拆开请求，互不阻塞。
-  const response = await apiFetch("/api/documents/recent?limit=3");
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `最近文档加载失败，HTTP ${response.status}`));
-  }
-
-  const payload = await response.json();
+  const response = await apiFetch("/api/documents/list/recent", {
+    method: "POST",
+    body: JSON.stringify({ limit: 3 })
+  });
+  const payload = await parseJsonEnvelope(response);
   recentDocuments.value = Array.isArray(payload) ? payload : [];
 }
 
@@ -203,7 +200,7 @@ async function createDocument() {
   errorMessage.value = "";
 
   try {
-    const response = await apiFetch("/api/documents", {
+    const response = await apiFetch("/api/documents/create", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"

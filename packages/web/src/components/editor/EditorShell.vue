@@ -325,7 +325,7 @@ async function loadEditorConfig() {
     // - 同源的 ONLYOFFICE 文档服务地址
     // - 文档 key/token/config
     // - 编辑态下自动挂载的隐藏桥接插件配置
-    const response = await apiFetch("/api/documents/get/editor-config", {
+    const response = await apiFetch("/api/documents/editor-config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ documentId: props.documentId, readonly: props.readonly })
@@ -350,7 +350,7 @@ async function fetchSaveStatusSnapshot(options = {}) {
 
   try {
     // 保存状态来自我们自己的后端，不依赖 ONLYOFFICE iframe DOM。
-    const response = await apiFetch("/api/documents/get/save-status", {
+    const response = await apiFetch("/api/documents/save-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ documentId: props.documentId })

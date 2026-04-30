@@ -234,7 +234,7 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/get/editor-config");
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/editor-config");
     expect(wrapper.find(".drawer-collapse-btn").exists()).toBe(true);
 
     await wrapper.find(".drawer-collapse-btn").trigger("click");
@@ -352,7 +352,7 @@ describe("EditorShell", () => {
       if (urlStr.includes("/editor-config")) {
         return Promise.resolve(jsonResponse(editorConfigPayload("路线图.docx")));
       }
-      if (urlStr.includes("/get/save-status")) {
+      if (urlStr.includes("/save-status")) {
         return Promise.resolve(jsonResponse(saveStatusPayload()));
       }
       if (urlStr.includes("/save")) {
@@ -405,7 +405,7 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/get/editor-config");
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/editor-config");
     expect(wrapper.find(".floating-console").isVisible()).toBe(false);
     expect(wrapper.find(".drawer-collapse-btn").exists()).toBe(false);
   });
@@ -468,7 +468,7 @@ describe("EditorShell", () => {
       await flushTimersAndPromises();
       expectedCalls += 1;
       expect(startStreamSpy).toHaveBeenCalledTimes(expectedCalls);
-      expect(countFetchCalls("/api/documents/get/save-status")).toBeGreaterThan(0);
+      expect(countFetchCalls("/api/documents/save-status")).toBeGreaterThan(0);
       expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
       if (controllers[failureIndex + 1]) {
         controllers[failureIndex + 1].emitError(new Error(`retry-${failureIndex}`));
@@ -688,7 +688,7 @@ function installEditorFetchMock() {
       const readonly = urlString.includes("readonly=true");
       return jsonResponse(editorConfigPayload(readonly ? "预览稿.docx" : "路线图.docx", readonly ? "view" : "edit"));
     }
-    if (urlString.includes("/get/save-status")) {
+    if (urlString.includes("/save-status")) {
       return jsonResponse(saveStatusPayload({ documentId }));
     }
     if (urlString.endsWith("/save")) {

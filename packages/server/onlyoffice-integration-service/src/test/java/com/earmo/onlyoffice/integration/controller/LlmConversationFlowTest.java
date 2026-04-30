@@ -86,7 +86,7 @@ class LlmConversationFlowTest {
         .andExpect(jsonPath("$.availableProviders[0].provider").value("stub-provider"));
 
     MvcResult createSessionResult = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers("llm-user", "LLM User"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -160,7 +160,7 @@ class LlmConversationFlowTest {
     String documentId = createDocument("sort-user", "Sort User");
 
     MvcResult firstSessionResult = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -174,7 +174,7 @@ class LlmConversationFlowTest {
     Thread.sleep(20L);
 
     MvcResult secondSessionResult = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -233,7 +233,7 @@ class LlmConversationFlowTest {
     String documentId = createDocument("cancel-user", "Cancel User");
 
     MvcResult createSessionResult = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers("cancel-user", "Cancel User"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -304,7 +304,7 @@ class LlmConversationFlowTest {
     String documentId = createDocument("disconnect-user", "Disconnect User");
 
     MvcResult createSessionResult = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers("disconnect-user", "Disconnect User"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -361,7 +361,7 @@ class LlmConversationFlowTest {
     String documentId = createDocument("failed-user", "Failed User");
 
     MvcResult createSessionResult = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers("failed-user", "Failed User"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -418,7 +418,7 @@ class LlmConversationFlowTest {
     String documentId = createDocument("partial-failed-user", "Partial Failed User");
 
     MvcResult createSessionResult = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers("partial-failed-user", "Partial Failed User"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -477,7 +477,7 @@ class LlmConversationFlowTest {
     String documentId = createDocument("partial-cancel-user", "Partial Cancel User");
 
     MvcResult createSessionResult = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers("partial-cancel-user", "Partial Cancel User"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -878,7 +878,7 @@ class LlmConversationFlowTest {
 
   private String createDocument(String actorUser, String actorName) throws Exception {
     MvcResult result = mockMvc.perform(
-            post("/api/documents")
+            post("/api/documents/create")
                 .headers(TestAccessHeaders.headers(actorUser, actorName))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -892,7 +892,7 @@ class LlmConversationFlowTest {
 
   private String createSession(String documentId, String actorUser, String actorName) throws Exception {
     MvcResult result = mockMvc.perform(
-            post("/api/llm/sessions")
+            post("/api/llm/sessions/create")
                 .headers(TestAccessHeaders.headers(actorUser, actorName))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""

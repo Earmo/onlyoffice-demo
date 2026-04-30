@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 
 /**
  * 访问审计服务契约。
@@ -10,13 +11,33 @@ import com.earmo.onlyoffice.integration.context.AccessContext;
  */
 public interface AccessAuditService {
 
+  default void recordDocumentCreated(String documentId) {
+    recordDocumentCreated(documentId, CurrentAccessContext.getRequired());
+  }
+
   void recordDocumentCreated(String documentId, AccessContext accessContext);
+
+  default void recordDocumentUploaded(String documentId) {
+    recordDocumentUploaded(documentId, CurrentAccessContext.getRequired());
+  }
 
   void recordDocumentUploaded(String documentId, AccessContext accessContext);
 
+  default void recordDocumentImported(String documentId) {
+    recordDocumentImported(documentId, CurrentAccessContext.getRequired());
+  }
+
   void recordDocumentImported(String documentId, AccessContext accessContext);
 
+  default void recordDocumentArchived(String documentId) {
+    recordDocumentArchived(documentId, CurrentAccessContext.getRequired());
+  }
+
   void recordDocumentArchived(String documentId, AccessContext accessContext);
+
+  default void recordEditorConfigRequested(String documentId) {
+    recordEditorConfigRequested(documentId, CurrentAccessContext.getRequired());
+  }
 
   void recordEditorConfigRequested(String documentId, AccessContext accessContext);
 

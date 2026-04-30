@@ -207,7 +207,7 @@ class DocumentEditingSessionFlowTest {
 
   private String createDocument(String actorUser, String actorName) throws Exception {
     MvcResult result = mockMvc.perform(withAccessHeaders(
-            post("/api/documents")
+            post("/api/documents/create")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {

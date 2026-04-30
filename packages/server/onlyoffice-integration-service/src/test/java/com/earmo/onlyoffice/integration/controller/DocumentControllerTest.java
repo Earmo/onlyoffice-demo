@@ -168,7 +168,6 @@ class DocumentControllerTest {
     when(onlyofficeConfigService.buildEditorConfig(
         anyString(),
         org.mockito.ArgumentMatchers.anyBoolean(),
-        org.mockito.ArgumentMatchers.any(AccessContext.class),
         org.mockito.ArgumentMatchers.any()
     )).thenReturn(new EditorConfigResponse(
         "https://docs.example.test/",
@@ -191,7 +190,7 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.config.document.permissions.download").value(true))
         .andExpect(jsonPath("$.config.document.permissions.comment").value(true));
 
-    verify(documentStatusService).openEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class));
+    verify(documentStatusService).openEditingSession(anyString());
   }
 
   @Test
@@ -209,7 +208,6 @@ class DocumentControllerTest {
     when(onlyofficeConfigService.buildEditorConfig(
         anyString(),
         org.mockito.ArgumentMatchers.anyBoolean(),
-        org.mockito.ArgumentMatchers.any(AccessContext.class),
         org.mockito.ArgumentMatchers.any()
     )).thenReturn(new EditorConfigResponse(
         "https://docs.example.test/",
@@ -311,7 +309,6 @@ class DocumentControllerTest {
     when(documentStatusService.getStatus("sample")).thenReturn(initialStatus);
     when(documentRuntimeEventStreamService.open(
         org.mockito.ArgumentMatchers.eq("sample"),
-        org.mockito.ArgumentMatchers.eq(accessContext),
         org.mockito.ArgumentMatchers.eq(initialStatus),
         org.mockito.ArgumentMatchers.any(Runnable.class)
     )).thenAnswer(invocation -> {
@@ -331,11 +328,10 @@ class DocumentControllerTest {
         .andExpect(content().string(org.hamcrest.Matchers.containsString("event:save-status")));
 
     verify(accessContextResolver).resolve(org.mockito.ArgumentMatchers.any());
-    verify(documentStatusService).touchEditingSession("sample", accessContext);
+    verify(documentStatusService).touchEditingSession("sample");
     verify(documentStatusService).getStatus("sample");
     verify(documentRuntimeEventStreamService).open(
         org.mockito.ArgumentMatchers.eq("sample"),
-        org.mockito.ArgumentMatchers.eq(accessContext),
         argThat(statusResponse -> statusResponse != null && "sample".equals(statusResponse.documentId())),
         org.mockito.ArgumentMatchers.any(Runnable.class)
     );
@@ -346,7 +342,7 @@ class DocumentControllerTest {
     when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
         new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
     );
-    when(documentStatusService.closeEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class)))
+    when(documentStatusService.closeEditingSession(anyString()))
         .thenReturn(new DocumentSaveStatusResponse(
             "sample",
             "saved",
@@ -362,7 +358,7 @@ class DocumentControllerTest {
         .andExpect(jsonPath("$.state").value("saved"))
         .andExpect(jsonPath("$.message").value("当前用户已离开编辑器，文档已退出活跃编辑状态。"));
 
-    verify(documentStatusService).closeEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class));
+    verify(documentStatusService).closeEditingSession(anyString());
   }
 
   @Test
@@ -402,7 +398,6 @@ class DocumentControllerTest {
     when(onlyofficeConfigService.buildEditorConfig(
         anyString(),
         org.mockito.ArgumentMatchers.anyBoolean(),
-        org.mockito.ArgumentMatchers.any(AccessContext.class),
         org.mockito.ArgumentMatchers.any()
     )).thenThrow(new IllegalStateException("ONLYOFFICE 运行配置缺失：onlyoffice.integration.document-server-url 不能为空。"));
 
@@ -416,7 +411,7 @@ class DocumentControllerTest {
     when(accessContextResolver.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(
         new AccessContext("tenant-a", "native", "user-a", "Alice", java.util.Map.of("edit", true), "header")
     );
-    when(documentStatusService.openEditingSession(anyString(), org.mockito.ArgumentMatchers.any(AccessContext.class)))
+    when(documentStatusService.openEditingSession(anyString()))
         .thenThrow(new DocumentNotFoundException("archived"));
 
     mockMvc.perform(get("/api/documents/archived/editor-config"))
