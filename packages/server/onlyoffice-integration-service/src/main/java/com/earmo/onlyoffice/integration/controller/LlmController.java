@@ -2,7 +2,8 @@ package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.common.exception.BaseException;
 import com.earmo.onlyoffice.integration.model.ResponseDto;
-import com.earmo.onlyoffice.integration.model.llm.*;
+import com.earmo.onlyoffice.integration.model.llm.request.*;
+import com.earmo.onlyoffice.integration.model.llm.response.*;
 import com.earmo.onlyoffice.integration.service.llm.LlmConversationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

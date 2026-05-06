@@ -9,7 +9,7 @@ import com.earmo.onlyoffice.integration.service.impl.DocumentStorageServiceImpl;
 import com.earmo.onlyoffice.integration.service.impl.RemoteResourceSecurityServiceImpl;
 import com.earmo.onlyoffice.integration.storage.StorageKeyFactory;
 import com.earmo.onlyoffice.integration.storage.StorageProviderResolver;
-import com.earmo.onlyoffice.integration.storage.local.LocalDocumentStorageStrategy;
+import com.earmo.onlyoffice.integration.storage.impl.local.LocalDocumentStorageStrategy;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

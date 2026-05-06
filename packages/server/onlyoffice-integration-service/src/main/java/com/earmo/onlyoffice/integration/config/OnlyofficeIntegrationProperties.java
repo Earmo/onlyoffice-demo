@@ -1,6 +1,6 @@
 package com.earmo.onlyoffice.integration.config;
 
-import com.earmo.onlyoffice.integration.storage.StorageProvider;
+import com.earmo.onlyoffice.integration.storage.enums.StorageProvider;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;

@@ -1,6 +1,6 @@
 package com.earmo.onlyoffice.integration.common.aspect;
 
-import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;
+import com.earmo.onlyoffice.integration.model.llm.request.SendLlmMessageRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletResponse;

@@ -1,8 +1,10 @@
 package com.earmo.onlyoffice.integration.storage.minio;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
-import com.earmo.onlyoffice.integration.storage.StorageWriteRequest;
-import com.earmo.onlyoffice.integration.storage.StoredObjectResource;
+import com.earmo.onlyoffice.integration.storage.model.StorageWriteRequest;
+import com.earmo.onlyoffice.integration.storage.model.StoredObjectResource;
+import com.earmo.onlyoffice.integration.storage.impl.minio.MinioClientFactory;
+import com.earmo.onlyoffice.integration.storage.impl.minio.MinioDocumentStorageStrategy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;

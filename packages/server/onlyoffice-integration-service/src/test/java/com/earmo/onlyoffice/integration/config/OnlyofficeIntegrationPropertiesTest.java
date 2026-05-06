@@ -1,6 +1,6 @@
 package com.earmo.onlyoffice.integration.config;
 
-import com.earmo.onlyoffice.integration.storage.StorageProvider;
+import com.earmo.onlyoffice.integration.storage.enums.StorageProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;

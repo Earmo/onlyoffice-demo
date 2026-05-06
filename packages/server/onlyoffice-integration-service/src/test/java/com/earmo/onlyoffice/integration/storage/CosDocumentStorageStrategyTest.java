@@ -1,7 +1,10 @@
 package com.earmo.onlyoffice.integration.storage;
 
-import com.earmo.onlyoffice.integration.storage.cos.CosClientFactory;
-import com.earmo.onlyoffice.integration.storage.cos.CosDocumentStorageStrategy;
+import com.earmo.onlyoffice.integration.storage.model.StorageWriteRequest;
+import com.earmo.onlyoffice.integration.storage.model.StoredObjectResource;
+import com.earmo.onlyoffice.integration.storage.impl.cos.CosClientFactory;
+import com.earmo.onlyoffice.integration.storage.impl.cos.CosDocumentStorageStrategy;
+import com.earmo.onlyoffice.integration.storage.enums.StorageProvider;
 import com.qcloud.cos.COSClient;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.model.COSObject;

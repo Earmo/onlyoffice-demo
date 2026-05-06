@@ -4,7 +4,6 @@ import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.model.NormalizedDocumentMetadata;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
-import com.earmo.onlyoffice.integration.storage.StorageProvider;
 
 import java.io.IOException;
 
@@ -25,12 +24,10 @@ public interface DocumentStorageService {
     NormalizedDocumentMetadata saveCallbackDocument(String rawDocumentId, String downloadUrl, String callbackFileType)
             throws IOException;
 
-    StoredDocument storeUploadedDocument(String originalFilename, byte[] body) throws IOException;
 
     StoredDocument storeUploadedDocument(String originalFilename, byte[] body, RequestContext requestContext)
             throws IOException;
 
-    StoredDocument importRemoteDocument(String sourceUrl) throws IOException;
 
     StoredDocument importRemoteDocument(String sourceUrl, RequestContext requestContext) throws IOException;
 
@@ -43,5 +40,4 @@ public interface DocumentStorageService {
 
     boolean exists(DocumentMetadataEntity entity) throws IOException;
 
-    StorageProvider resolveProvider(DocumentMetadataEntity entity);
 }

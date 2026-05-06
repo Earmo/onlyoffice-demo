@@ -1,8 +1,9 @@
 package com.earmo.onlyoffice.integration.storage.local;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
-import com.earmo.onlyoffice.integration.storage.StorageWriteRequest;
-import com.earmo.onlyoffice.integration.storage.StoredObjectResource;
+import com.earmo.onlyoffice.integration.storage.model.StorageWriteRequest;
+import com.earmo.onlyoffice.integration.storage.model.StoredObjectResource;
+import com.earmo.onlyoffice.integration.storage.impl.local.LocalDocumentStorageStrategy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

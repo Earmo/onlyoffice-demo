@@ -9,6 +9,9 @@ import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
 import com.earmo.onlyoffice.integration.service.DocumentStorageService;
 import com.earmo.onlyoffice.integration.service.RemoteResourceSecurityService;
 import com.earmo.onlyoffice.integration.storage.*;
+import com.earmo.onlyoffice.integration.storage.model.StorageWriteRequest;
+import com.earmo.onlyoffice.integration.storage.model.StoredObjectResource;
+import com.earmo.onlyoffice.integration.storage.enums.StorageProvider;
 import com.mybatisflex.core.keygen.impl.ULIDKeyGenerator;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -213,19 +216,6 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
     }
 
     /**
-     * 使用默认请求上下文保存上传文档。
-     *
-     * @param originalFilename 原始文件名
-     * @param body             文件内容
-     * @return 存储文档信息
-     * @throws IOException 文件写入失败时抛出
-     */
-    @Override
-    public StoredDocument storeUploadedDocument(String originalFilename, byte[] body) throws IOException {
-        return storeUploadedDocument(originalFilename, body, defaultRequestContext());
-    }
-
-    /**
      * 上传链路采用“先写对象，再落元数据”的顺序。
      *
      * <p>这样可以避免数据库先成功、对象写入后失败时留下半成品文档。
@@ -266,18 +256,6 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
             deleteQuietly(strategy, storageKey);
             throw ex;
         }
-    }
-
-    /**
-     * 使用默认请求上下文导入远程文档。
-     *
-     * @param sourceUrl 远程文档地址
-     * @return 存储文档信息
-     * @throws IOException 远程下载或文件写入失败时抛出
-     */
-    @Override
-    public StoredDocument importRemoteDocument(String sourceUrl) throws IOException {
-        return importRemoteDocument(sourceUrl, defaultRequestContext());
     }
 
     /**
@@ -386,16 +364,6 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
         return resolveStrategy(entity).exists(entity.getStorageKey());
     }
 
-    /**
-     * 解析文档对应的存储 provider。
-     *
-     * @param entity 文档元数据实体
-     * @return 存储 provider
-     */
-    @Override
-    public StorageProvider resolveProvider(DocumentMetadataEntity entity) {
-        return storageProviderResolver.resolve(entity);
-    }
 
     /**
      * 通过懒加载方式初始化 RestClient，避免每次请求都重复 build。

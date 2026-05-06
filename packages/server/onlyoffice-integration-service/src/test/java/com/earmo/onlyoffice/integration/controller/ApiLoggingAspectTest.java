@@ -1,7 +1,7 @@
 package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.common.aspect.ApiLoggingAspect;
-import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;
+import com.earmo.onlyoffice.integration.model.llm.request.SendLlmMessageRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.CodeSignature;

@@ -12,17 +12,18 @@ import com.earmo.onlyoffice.integration.data.repository.DocumentLlmMessageVarian
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmRequestRepository;
 import com.earmo.onlyoffice.integration.data.repository.DocumentLlmSessionRepository;
 import com.earmo.onlyoffice.integration.exception.LlmApiException;
-import com.earmo.onlyoffice.integration.model.llm.CreateLlmSessionRequest;
-import com.earmo.onlyoffice.integration.model.llm.LlmCapabilityResponse;
-import com.earmo.onlyoffice.integration.model.llm.LlmMessageResponse;
-import com.earmo.onlyoffice.integration.model.llm.LlmMessageVariantResponse;
-import com.earmo.onlyoffice.integration.model.llm.LlmProviderOptionResponse;
-import com.earmo.onlyoffice.integration.model.llm.LlmRequestStatusResponse;
-import com.earmo.onlyoffice.integration.model.llm.LlmSessionDetailResponse;
-import com.earmo.onlyoffice.integration.model.llm.LlmSessionSummaryResponse;
-import com.earmo.onlyoffice.integration.model.llm.LlmStreamEventResponse;
-import com.earmo.onlyoffice.integration.model.llm.LlmUsageResponse;
-import com.earmo.onlyoffice.integration.model.llm.SendLlmMessageRequest;
+import com.earmo.onlyoffice.integration.model.llm.request.CreateLlmSessionRequest;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmCapabilityResponse;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmMessageResponse;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmMessageVariantResponse;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmProviderOptionResponse;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmRequestStatusResponse;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmSessionDetailResponse;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmSessionSummaryResponse;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmStreamEventResponse;
+import com.earmo.onlyoffice.integration.model.llm.response.LlmUsageResponse;
+import com.earmo.onlyoffice.integration.model.llm.request.SendLlmMessageRequest;
+import com.earmo.onlyoffice.integration.model.llm.request.SetLlmActiveVariantRequest;
 import com.earmo.onlyoffice.integration.service.llm.provider.SpringAiProviderRegistry;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -334,11 +335,11 @@ public class LlmConversationService {
    * @param request active variant 切换请求。
    * @return 切换后的 assistant message 响应。
    */
-  public LlmMessageResponse setActiveVariant(String documentId, String messageId, com.earmo.onlyoffice.integration.model.llm.SetLlmActiveVariantRequest request) {
+  public LlmMessageResponse setActiveVariant(String documentId, String messageId, SetLlmActiveVariantRequest request) {
     return setActiveVariant(documentId, messageId, request, CurrentAccessContext.getRequired());
   }
 
-  public LlmMessageResponse setActiveVariant(String documentId, String messageId, com.earmo.onlyoffice.integration.model.llm.SetLlmActiveVariantRequest request, AccessContext accessContext) {
+  public LlmMessageResponse setActiveVariant(String documentId, String messageId, SetLlmActiveVariantRequest request, AccessContext accessContext) {
     DocumentLlmMessageEntity assistantMessage = accessGuard.requireAssistantMessage(documentId, request.sessionId(), messageId, accessContext);
     List<DocumentLlmMessageVariantEntity> variants = documentLlmMessageVariantRepository.findByMessageScope(
         messageId,

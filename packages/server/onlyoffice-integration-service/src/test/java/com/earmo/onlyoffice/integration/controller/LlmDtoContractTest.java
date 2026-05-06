@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.controller;
 
-import com.earmo.onlyoffice.integration.model.llm.*;
+import com.earmo.onlyoffice.integration.model.llm.request.SendLlmMessageRequest;
+import com.earmo.onlyoffice.integration.model.llm.response.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
