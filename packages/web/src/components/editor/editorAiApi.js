@@ -39,10 +39,6 @@ export function startLlmMessageStream(payload, handlers) {
   return startLlmMessageStreamTransport(payload, handlers);
 }
 
-export function sendLlmMessage(payload) {
-  return postJson("/api/llm/messages", payload);
-}
-
 export function getLlmRequest(requestId, documentId) {
   return postJson("/api/llm/requests/detail", { documentId, requestId });
 }

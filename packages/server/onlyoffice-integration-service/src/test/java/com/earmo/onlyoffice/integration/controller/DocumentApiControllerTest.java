@@ -86,22 +86,20 @@ class DocumentApiControllerTest {
         when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
-        mockMvc.perform(get("/api/documents"))
+        mockMvc.perform(post("/api/documents/page")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tenantId").value("tenant-a"))
-                .andExpect(jsonPath("$.actorUser").value("user-a"))
-                .andExpect(jsonPath("$.actorName").value("Alice"))
-                .andExpect(jsonPath("$.pageNumber").value(1))
-                .andExpect(jsonPath("$.pageSize").value(10))
-                .andExpect(jsonPath("$.total").value(1))
-                .andExpect(jsonPath("$.totalPages").value(1))
-                .andExpect(jsonPath("$.documents[0].documentId").value("sample"))
-                .andExpect(jsonPath("$.documents[0].tenantId").value("tenant-a"))
-                .andExpect(jsonPath("$.documents[0].actorUser").value("user-a"))
-                .andExpect(jsonPath("$.documents[0].actorName").value("Alice"))
-                .andExpect(jsonPath("$.documents[0].sourceSystem").value("native"))
-                .andExpect(jsonPath("$.documents[0].lastEditedTime").value("2026-03-19T08:00:00Z"))
-                .andExpect(jsonPath("$.documents[0].storageAvailable").value(true));
+                .andExpect(jsonPath("$.data.currentPage").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(10))
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.result[0].documentId").value("sample"))
+                .andExpect(jsonPath("$.data.result[0].tenantId").value("tenant-a"))
+                .andExpect(jsonPath("$.data.result[0].actorUser").value("user-a"))
+                .andExpect(jsonPath("$.data.result[0].actorName").value("Alice"))
+                .andExpect(jsonPath("$.data.result[0].sourceSystem").value("native"))
+                .andExpect(jsonPath("$.data.result[0].lastEditedTime").value("2026-03-19T08:00:00Z"))
+                .andExpect(jsonPath("$.data.result[0].storageAvailable").value(true));
 
         verify(documentMetadataService).listDocumentPage("tenant-a", null, null, null, null, "desc", 1, 10);
     }
@@ -115,22 +113,26 @@ class DocumentApiControllerTest {
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
         mockMvc.perform(
-                        get("/api/documents")
-                                .param("query", "roadmap")
-                                .param("status", "failed")
-                                .param("sourceSystem", "native")
-                                .param("documentType", "word")
-                                .param("sortDirection", "asc")
-                                .param("pageNumber", "2")
-                                .param("pageSize", "20")
+                        post("/api/documents/page")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "query": "roadmap",
+                                          "status": "failed",
+                                          "sourceSystem": "native",
+                                          "documentType": "word",
+                                          "sortDirection": "asc",
+                                          "pageNumber": 2,
+                                          "pageSize": 20
+                                        }
+                                        """)
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pageNumber").value(2))
-                .andExpect(jsonPath("$.pageSize").value(20))
-                .andExpect(jsonPath("$.total").value(21))
-                .andExpect(jsonPath("$.totalPages").value(2))
-                .andExpect(jsonPath("$.documents[0].documentId").value("sample"))
-                .andExpect(jsonPath("$.documents[0].lastEditedTime").value("2026-03-19T08:00:00Z"));
+                .andExpect(jsonPath("$.data.currentPage").value(2))
+                .andExpect(jsonPath("$.data.pageSize").value(20))
+                .andExpect(jsonPath("$.data.totalCount").value(21))
+                .andExpect(jsonPath("$.data.result[0].documentId").value("sample"))
+                .andExpect(jsonPath("$.data.result[0].lastEditedTime").value("2026-03-19T08:00:00Z"));
 
         verify(documentMetadataService).listDocumentPage("tenant-a", "roadmap", "failed", "native", "word", "asc", 2, 20);
     }
@@ -170,11 +172,17 @@ class DocumentApiControllerTest {
         when(documentStatusService.countActiveEditingSessions(List.of("recent-2", "recent-1")))
                 .thenReturn(java.util.Map.of("recent-2", 0, "recent-1", 0));
 
-        mockMvc.perform(get("/api/documents/recent").param("limit", "2"))
+        mockMvc.perform(post("/api/documents/list/recent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "limit": 2
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].documentId").value("recent-2"))
-                .andExpect(jsonPath("$[0].lastEditedTime").value("2026-03-19T09:00:00Z"))
-                .andExpect(jsonPath("$[1].documentId").value("recent-1"));
+                .andExpect(jsonPath("$.data[0].documentId").value("recent-2"))
+                .andExpect(jsonPath("$.data[0].lastEditedTime").value("2026-03-19T09:00:00Z"))
+                .andExpect(jsonPath("$.data[1].documentId").value("recent-1"));
 
         verify(documentMetadataService).listRecentDocuments("tenant-a", 2);
     }
@@ -215,15 +223,20 @@ class DocumentApiControllerTest {
         when(documentStatusService.countActiveEditingSessions(List.of("available", "missing")))
                 .thenReturn(java.util.Map.of("available", 0, "missing", 0));
 
-        mockMvc.perform(get("/api/documents").param("storage", "unavailable"))
+        mockMvc.perform(post("/api/documents/page")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "storage": "unavailable"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pageNumber").value(1))
-                .andExpect(jsonPath("$.pageSize").value(10))
-                .andExpect(jsonPath("$.total").value(1))
-                .andExpect(jsonPath("$.totalPages").value(1))
-                .andExpect(jsonPath("$.documents.length()").value(1))
-                .andExpect(jsonPath("$.documents[0].documentId").value("missing"))
-                .andExpect(jsonPath("$.documents[0].storageAvailable").value(false));
+                .andExpect(jsonPath("$.data.currentPage").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(10))
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.result.length()").value(1))
+                .andExpect(jsonPath("$.data.result[0].documentId").value("missing"))
+                .andExpect(jsonPath("$.data.result[0].storageAvailable").value(false));
     }
 
     @Test
@@ -233,12 +246,18 @@ class DocumentApiControllerTest {
         when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(false);
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
-        mockMvc.perform(get("/api/documents/sample"))
+        mockMvc.perform(post("/api/documents/detail")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documentId").value("sample"))
-                .andExpect(jsonPath("$.actorUser").value("user-a"))
-                .andExpect(jsonPath("$.lastEditedTime").value("2026-03-19T08:00:00Z"))
-                .andExpect(jsonPath("$.storageAvailable").value(false));
+                .andExpect(jsonPath("$.data.documentId").value("sample"))
+                .andExpect(jsonPath("$.data.actorUser").value("user-a"))
+                .andExpect(jsonPath("$.data.lastEditedTime").value("2026-03-19T08:00:00Z"))
+                .andExpect(jsonPath("$.data.storageAvailable").value(false));
     }
 
     @Test
@@ -251,9 +270,11 @@ class DocumentApiControllerTest {
         when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 2));
 
-        mockMvc.perform(get("/api/documents"))
+        mockMvc.perform(post("/api/documents/page")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documents[0].status").value("editing"));
+                .andExpect(jsonPath("$.data.result[0].status").value("editing"));
     }
 
     @Test
@@ -266,9 +287,11 @@ class DocumentApiControllerTest {
         when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
-        mockMvc.perform(get("/api/documents"))
+        mockMvc.perform(post("/api/documents/page")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documents[0].status").value("saved"));
+                .andExpect(jsonPath("$.data.result[0].status").value("saved"));
     }
 
     @Test
@@ -280,9 +303,15 @@ class DocumentApiControllerTest {
         when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 1));
 
-        mockMvc.perform(get("/api/documents/sample"))
+        mockMvc.perform(post("/api/documents/detail")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("editing"));
+                .andExpect(jsonPath("$.data.status").value("editing"));
     }
 
     @Test
@@ -294,9 +323,15 @@ class DocumentApiControllerTest {
         when(documentStorageService.exists(any(DocumentMetadataEntity.class))).thenReturn(true);
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
-        mockMvc.perform(get("/api/documents/sample"))
+        mockMvc.perform(post("/api/documents/detail")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("saved"));
+                .andExpect(jsonPath("$.data.status").value("saved"));
     }
 
     @Test
@@ -393,8 +428,14 @@ class DocumentApiControllerTest {
         when(accessContextResolver.resolve(any())).thenReturn(accessContext());
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 0));
 
-        mockMvc.perform(delete("/api/documents/sample"))
-                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/documents/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
+                .andExpect(status().isOk());
 
         verify(documentMetadataService).archiveDocument("sample");
         verify(accessAuditService).recordDocumentArchived("sample");
@@ -405,7 +446,13 @@ class DocumentApiControllerTest {
         when(accessContextResolver.resolve(any())).thenReturn(accessContext());
         when(documentStatusService.countActiveEditingSessions(List.of("sample"))).thenReturn(java.util.Map.of("sample", 1));
 
-        mockMvc.perform(delete("/api/documents/sample"))
+        mockMvc.perform(post("/api/documents/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("文档仍有活跃编辑会话，暂时不能删除。"));
     }

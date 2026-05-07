@@ -5,6 +5,9 @@ import jakarta.validation.constraints.NotBlank;
 
 /**
  * 创建 AI 对话会话的请求体。
+ *
+ * @param documentId 会话所属的内部文档 ID。
+ * @param title      可选会话标题；为空时后端会生成默认标题。
  */
 @Schema(description = "创建 AI 对话会话的请求体。")
 public record CreateLlmSessionRequest(

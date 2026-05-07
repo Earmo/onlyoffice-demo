@@ -8,6 +8,16 @@ import jakarta.validation.constraints.Size;
 
 /**
  * 发送一次 AI 对话消息的请求体。
+ *
+ * @param documentId                   会话所属内部文档 ID。
+ * @param sessionId                    目标 AI 会话 ID。
+ * @param provider                     可选 provider 覆盖值。
+ * @param model                        可选模型覆盖值。
+ * @param question                     用户输入的问题正文。
+ * @param selectionSnapshot            发送时捕获的 ONLYOFFICE 选区快照。
+ * @param headingContext               发送时捕获的章节标题上下文。
+ * @param retryConfirmed               是否已确认在缺少选区或重试场景下继续发送。
+ * @param regenerateAssistantMessageId 需要重新生成的 assistant message ID。
  */
 @Schema(description = "发送一次 AI 对话消息的请求体。")
 public record SendLlmMessageRequest(
@@ -46,6 +56,9 @@ public record SendLlmMessageRequest(
 
     /**
      * 用户发送消息时的选区快照。
+     *
+     * @param text           选区文本。
+     * @param emptySelection 当前快照是否来自空选区。
      */
     @Schema(description = "用户发送消息时的选区快照。")
     public record SelectionSnapshot(
@@ -60,6 +73,10 @@ public record SendLlmMessageRequest(
 
     /**
      * 用户发送消息时的章节标题上下文。
+     *
+     * @param includeHeading 是否把标题上下文纳入 prompt。
+     * @param headingId      标题节点 ID。
+     * @param headingText    标题展示文本。
      */
     @Schema(description = "用户发送消息时的章节标题上下文。")
     public record HeadingContext(

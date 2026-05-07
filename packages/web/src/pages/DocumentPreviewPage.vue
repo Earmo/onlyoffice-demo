@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import EditorShell from "../components/editor/EditorShell.vue";
-import { apiFetch } from "../lib/api";
+import { apiFetch, parseJsonEnvelope } from "../lib/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -32,11 +32,14 @@ async function loadPreviewPageData() {
   errorMessage.value = "";
 
   try {
-    const response = await apiFetch(`/api/documents/${currentDocumentId.value}`);
+    const response = await apiFetch("/api/documents/detail", {
+      method: "POST",
+      body: JSON.stringify({ documentId: currentDocumentId.value })
+    });
     if (!response.ok) {
       throw new Error(await readErrorMessage(response, `文档详情加载失败，HTTP ${response.status}`));
     }
-    currentDocument.value = await response.json();
+    currentDocument.value = await parseJsonEnvelope(response);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "预览页加载失败";
   } finally {

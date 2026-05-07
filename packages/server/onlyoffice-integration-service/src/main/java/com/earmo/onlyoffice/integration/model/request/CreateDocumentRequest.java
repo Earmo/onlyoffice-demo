@@ -4,6 +4,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * 显式创建文档时的请求体。
+ *
+ * @param documentId         兼容旧调用方保留的字段，服务端会忽略并生成内部 ID。
+ * @param title              文档标题。
+ * @param externalDocumentId 外部业务系统中的文档 ID。
  */
 @Schema(description = "显式创建文档时的请求体。")
 public record CreateDocumentRequest(
@@ -18,5 +22,4 @@ public record CreateDocumentRequest(
         String externalDocumentId
 ) {
 }
-
 

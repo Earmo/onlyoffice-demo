@@ -1,6 +1,17 @@
 package com.earmo.onlyoffice.integration.model.request;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
-public record DocumentCloseSessionReq(@NotBlank(message = "documentId 不能为空。") String documentId) {
+/**
+ * 结束当前用户编辑会话的请求体。
+ *
+ * @param documentId 内部文档 ID。
+ */
+@Schema(description = "结束当前用户编辑会话的请求体。")
+public record DocumentCloseSessionReq(
+        @Schema(description = "内部文档 ID。", example = "demo")
+        @NotBlank(message = "documentId 不能为空。")
+        String documentId
+) {
 }

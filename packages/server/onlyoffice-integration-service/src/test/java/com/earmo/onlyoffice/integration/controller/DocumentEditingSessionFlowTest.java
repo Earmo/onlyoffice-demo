@@ -47,11 +47,7 @@ class DocumentEditingSessionFlowTest {
         String actorName = "Runtime User";
         String documentId = createDocument(actorUser, actorName);
 
-        mockMvc.perform(withAccessHeaders(
-                        get("/api/documents/{documentId}/editor-config", documentId),
-                        actorUser,
-                        actorName
-                ))
+        mockMvc.perform(withAccessHeaders(editorConfigRequest(documentId, false), actorUser, actorName))
                 .andExpect(status().isOk());
 
         DocumentEditorSessionEntity sessionBeforeStream = loadActiveSession(documentId, actorUser);
@@ -81,12 +77,12 @@ class DocumentEditingSessionFlowTest {
                 .isEqualTo(1L);
 
         mockMvc.perform(withAccessHeaders(
-                        post("/api/documents/{documentId}/editing-sessions/close", documentId),
+                        closeEditingSessionRequest(documentId),
                         actorUser,
                         actorName
                 ))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("draft"));
+                .andExpect(jsonPath("$.data.state").value("draft"));
 
         assertThat(documentEditorSessionRepository.countActiveByDocumentId(documentId, Instant.now().minusSeconds(30)))
                 .isZero();
@@ -98,36 +94,38 @@ class DocumentEditingSessionFlowTest {
         String actorName = "Session User";
         String documentId = createDocument(actorUser, actorName);
 
-        mockMvc.perform(withAccessHeaders(
-                        get("/api/documents/{documentId}/editor-config", documentId),
-                        actorUser,
-                        actorName
-                ))
+        mockMvc.perform(withAccessHeaders(editorConfigRequest(documentId, false), actorUser, actorName))
                 .andExpect(status().isOk());
 
         assertThat(documentEditorSessionRepository.countActiveByDocumentId(documentId, Instant.now().minusSeconds(30))).isEqualTo(1L);
 
         mockMvc.perform(withAccessHeaders(
-                        post("/api/documents/{documentId}/editing-sessions/close", documentId),
+                        closeEditingSessionRequest(documentId),
                         actorUser,
                         actorName
                 ))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("draft"));
+                .andExpect(jsonPath("$.data.state").value("draft"));
 
         assertThat(documentEditorSessionRepository.countActiveByDocumentId(documentId, Instant.now().minusSeconds(30))).isZero();
 
         mockMvc.perform(withAccessHeaders(
-                        get("/api/documents/{documentId}", documentId),
+                        detailRequest(documentId),
                         actorUser,
                         actorName
                 ))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("draft"));
+                .andExpect(jsonPath("$.data.status").value("draft"));
 
-        mockMvc.perform(withAccessHeaders(get("/api/documents"), actorUser, actorName))
+        mockMvc.perform(withAccessHeaders(
+                        post("/api/documents/page")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"),
+                        actorUser,
+                        actorName
+                ))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documents[?(@.documentId=='" + documentId + "')].status").value("draft"));
+                .andExpect(jsonPath("$.data.result[?(@.documentId=='" + documentId + "')].status").value("draft"));
     }
 
     @Test
@@ -150,12 +148,12 @@ class DocumentEditingSessionFlowTest {
         documentEditorSessionRepository.insert(session);
 
         mockMvc.perform(withAccessHeaders(
-                        get("/api/documents/{documentId}", documentId),
+                        detailRequest(documentId),
                         actorUser,
                         actorName
                 ))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("draft"));
+                .andExpect(jsonPath("$.data.status").value("draft"));
     }
 
     @Test
@@ -164,15 +162,11 @@ class DocumentEditingSessionFlowTest {
         String actorName = "Callback Four";
         String documentId = createDocument(actorUser, actorName);
 
-        mockMvc.perform(withAccessHeaders(
-                        get("/api/documents/{documentId}/editor-config", documentId),
-                        actorUser,
-                        actorName
-                ))
+        mockMvc.perform(withAccessHeaders(editorConfigRequest(documentId, false), actorUser, actorName))
                 .andExpect(status().isOk());
 
         mockMvc.perform(withAccessHeaders(
-                        post("/api/documents/{documentId}/editing-sessions/close", documentId),
+                        closeEditingSessionRequest(documentId),
                         actorUser,
                         actorName
                 ))
@@ -192,16 +186,22 @@ class DocumentEditingSessionFlowTest {
                 .andExpect(jsonPath("$.error").value(0));
 
         mockMvc.perform(withAccessHeaders(
-                        get("/api/documents/{documentId}", documentId),
+                        detailRequest(documentId),
                         actorUser,
                         actorName
                 ))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("draft"));
+                .andExpect(jsonPath("$.data.status").value("draft"));
 
-        mockMvc.perform(withAccessHeaders(get("/api/documents"), actorUser, actorName))
+        mockMvc.perform(withAccessHeaders(
+                        post("/api/documents/page")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"),
+                        actorUser,
+                        actorName
+                ))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documents[?(@.documentId=='" + documentId + "')].status").value("draft"));
+                .andExpect(jsonPath("$.data.result[?(@.documentId=='" + documentId + "')].status").value("draft"));
     }
 
     private String createDocument(String actorUser, String actorName) throws Exception {
@@ -228,6 +228,37 @@ class DocumentEditingSessionFlowTest {
     private DocumentEditorSessionEntity loadActiveSession(String documentId, String actorUser) {
         return documentEditorSessionRepository.findActiveByDocumentIdAndActorUser(documentId, actorUser)
                 .orElseThrow();
+    }
+
+    private MockHttpServletRequestBuilder editorConfigRequest(String documentId, boolean readonly) {
+        return post("/api/documents/editor-config")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "documentId": "%s",
+                          "readonly": %s
+                        }
+                        """.formatted(documentId, readonly));
+    }
+
+    private MockHttpServletRequestBuilder closeEditingSessionRequest(String documentId) {
+        return post("/api/documents/close/session")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "documentId": "%s"
+                        }
+                        """.formatted(documentId));
+    }
+
+    private MockHttpServletRequestBuilder detailRequest(String documentId) {
+        return post("/api/documents/detail")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "documentId": "%s"
+                        }
+                        """.formatted(documentId));
     }
 
     private String waitForRuntimeFrame(MvcResult runtimeEvents) throws Exception {

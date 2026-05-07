@@ -6,7 +6,6 @@ import com.earmo.onlyoffice.integration.model.request.CreateDocumentRequest;
 import com.earmo.onlyoffice.integration.model.request.DocumentDeleteReq;
 import com.earmo.onlyoffice.integration.model.request.DocumentGetReq;
 import com.earmo.onlyoffice.integration.model.request.DocumentImportRequest;
-import com.earmo.onlyoffice.integration.model.response.DocumentListResponse;
 import com.earmo.onlyoffice.integration.model.request.DocumentPageReq;
 import com.earmo.onlyoffice.integration.model.request.DocumentRecentReq;
 import com.earmo.onlyoffice.integration.model.response.DocumentSummaryResponse;
@@ -33,17 +32,12 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -68,6 +62,12 @@ public class DocumentApiController extends BaseController {
   private final AccessAuditService accessAuditService;
   private final ObjectMapper objectMapper;
 
+  /**
+   * 分页查询当前租户下的文档摘要列表。
+   *
+   * @param request 分页、筛选和排序请求体；为空时使用默认分页参数。
+   * @return 文档摘要分页结果。
+   */
   @PostMapping("/page")
   @Operation(summary = "分页查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要分页。")
   public ResponseDto<PageRespVo<DocumentSummaryResponse>> page(@RequestBody(required = false) DocumentPageReq request) {
@@ -92,79 +92,24 @@ public class DocumentApiController extends BaseController {
     ));
   }
 
+  /**
+   * 兼容 text/plain 形式提交的分页查询请求。
+   *
+   * @param body JSON 字符串形式的分页请求体。
+   * @return 文档摘要分页结果。
+   */
   @PostMapping(value = "/page", consumes = MediaType.TEXT_PLAIN_VALUE)
   @Operation(summary = "分页查询文档列表", description = "兼容 text/plain 形式提交的 JSON 查询参数。")
   public ResponseDto<PageRespVo<DocumentSummaryResponse>> pageText(@RequestBody(required = false) String body) {
     return page(readTextJsonBody(body, DocumentPageReq.class));
   }
 
-  @GetMapping
-  @Deprecated(forRemoval = false)
-  @Operation(summary = "查询文档列表", description = "按当前请求上下文中的 tenantId 返回文档摘要列表。")
-  public DocumentListResponse list(
-      @Parameter(description = "标题或文档标识关键词。", example = "sample")
-      @RequestParam(required = false) String query,
-      @Parameter(description = "文档状态筛选。", example = "failed")
-      @RequestParam(required = false) String status,
-      @Parameter(description = "来源系统筛选。", example = "native")
-      @RequestParam(required = false) String sourceSystem,
-      @Parameter(description = "文档类型筛选。", example = "word")
-      @RequestParam(required = false) String documentType,
-      @Parameter(description = "对象可用性筛选：all/available/unavailable。", example = "all")
-      @RequestParam(defaultValue = "all") String storage,
-      @Parameter(description = "列表排序方向：desc/asc。", example = "desc")
-      @RequestParam(defaultValue = "desc") String sortDirection,
-      @Parameter(description = "页码，从 1 开始。", example = "1")
-      @RequestParam(defaultValue = "1") Integer pageNumber,
-      @Parameter(description = "每页条数，最大 100。", example = "10")
-      @RequestParam(defaultValue = "10") Integer pageSize
-  ) {
-    String tenantId = currentTenantId();
-    String actorUser = currentActorUser();
-    String actorName = currentActorName();
-    int safePageNumber = sanitizePageNumber(pageNumber);
-    int safePageSize = sanitizePageSize(pageSize);
-
-    DocumentListPage listPage = resolveListPage(
-        query,
-        status,
-        sourceSystem,
-        documentType,
-        storage,
-        sortDirection,
-        safePageNumber,
-        safePageSize
-    );
-    return new DocumentListResponse(
-        tenantId,
-        actorUser,
-        actorName,
-        safePageNumber,
-        safePageSize,
-        listPage.total(),
-        listPage.totalPages(),
-        listPage.documents()
-    );
-  }
-
-  @GetMapping("/recent")
-  @Deprecated(forRemoval = false)
-  @Operation(summary = "查询最近编辑文档", description = "返回当前租户最近编辑的活跃文档列表。")
-  public List<DocumentSummaryResponse> recent(
-      @Parameter(description = "最近文档数量，默认 3，最大 10。", example = "3")
-      @RequestParam(defaultValue = "3") Integer limit
-  ) {
-    String tenantId = currentTenantId();
-    int safeLimit = sanitizeRecentLimit(limit);
-    List<DocumentMetadataEntity> entities = documentMetadataService.listRecentDocuments(tenantId, safeLimit);
-    Map<String, Integer> activeEditingCounts = documentStatusService.countActiveEditingSessions(
-        entities.stream().map(DocumentMetadataEntity::getDocumentId).toList()
-    );
-    return entities.stream()
-        .map(entity -> toSummary(entity, activeEditingCounts.getOrDefault(entity.getDocumentId(), 0)))
-        .toList();
-  }
-
+  /**
+   * 查询当前租户最近编辑的文档。
+   *
+   * @param request 最近文档查询请求体；为空时使用默认数量。
+   * @return 最近编辑文档摘要列表。
+   */
   @PostMapping("/list/recent")
   @Operation(summary = "查询最近编辑文档", description = "返回当前租户最近编辑的活跃文档列表。")
   public ResponseDto<List<DocumentSummaryResponse>> recent(@RequestBody(required = false) DocumentRecentReq request) {
@@ -178,23 +123,24 @@ public class DocumentApiController extends BaseController {
         .toList());
   }
 
+  /**
+   * 兼容 text/plain 形式提交的最近文档查询请求。
+   *
+   * @param body JSON 字符串形式的最近文档请求体。
+   * @return 最近编辑文档摘要列表。
+   */
   @PostMapping(value = "/list/recent", consumes = MediaType.TEXT_PLAIN_VALUE)
   @Operation(summary = "查询最近编辑文档", description = "兼容 text/plain 形式提交的 JSON 查询参数。")
   public ResponseDto<List<DocumentSummaryResponse>> recentText(@RequestBody(required = false) String body) {
     return recent(readTextJsonBody(body, DocumentRecentReq.class));
   }
 
-  @GetMapping("/{documentId}")
-  @Deprecated(forRemoval = false)
-  @Operation(summary = "查询文档详情", description = "根据内部 documentId 查询文档概要信息。")
-  public DocumentSummaryResponse detail(
-      @Parameter(description = "文档内部主键。", example = "sample")
-      @PathVariable String documentId
-  ) {
-    int activeEditors = documentStatusService.countActiveEditingSessions(List.of(documentId)).getOrDefault(documentId, 0);
-    return toSummary(documentMetadataService.requireAccessibleDocument(documentId), activeEditors);
-  }
-
+  /**
+   * 查询指定文档的摘要详情。
+   *
+   * @param request 文档详情查询请求体。
+   * @return 文档摘要详情。
+   */
   @PostMapping("/detail")
   @Operation(summary = "查询文档详情", description = "根据内部 documentId 查询文档概要信息。")
   public ResponseDto<DocumentSummaryResponse> detail(@Valid @RequestBody DocumentGetReq request) {
@@ -202,6 +148,13 @@ public class DocumentApiController extends BaseController {
     return successResponseWithData(toSummary(documentMetadataService.requireAccessibleDocument(request.documentId()), activeEditors));
   }
 
+  /**
+   * 显式创建一个新的原生文档。
+   *
+   * @param request 创建文档请求体；为空时使用默认标题和系统生成 ID。
+   * @return 新建文档摘要。
+   * @throws IOException 创建底层文档失败时抛出。
+   */
   @PostMapping("/create")
   @Operation(
       summary = "显式创建文档",
@@ -227,6 +180,13 @@ public class DocumentApiController extends BaseController {
     return successResponseWithData(toSummary(storedDocument));
   }
 
+  /**
+   * 上传本地文档并建立内部文档上下文。
+   *
+   * @param file 要上传的文档文件。
+   * @return 上传后的文档摘要。
+   * @throws IOException 读取或保存文件失败时抛出。
+   */
   @PostMapping("/upload")
   @Operation(summary = "上传文档", description = "上传本地文件并建立文档元数据，返回内部 documentId。")
   public ResponseDto<DocumentSummaryResponse> upload(
@@ -246,6 +206,13 @@ public class DocumentApiController extends BaseController {
     return successResponseWithData(toSummary(storedDocument));
   }
 
+  /**
+   * 从远程 URL 导入文档。
+   *
+   * @param request 远程文档导入请求体。
+   * @return 导入后的文档摘要。
+   * @throws IOException 下载或保存远程文档失败时抛出。
+   */
   @PostMapping("/import-remote")
   @Operation(summary = "导入远程文档", description = "从公网 URL 下载文档并建立内部文档上下文。")
   public ResponseDto<DocumentSummaryResponse> importRemote(@Valid @RequestBody DocumentImportRequest request) throws IOException {
@@ -263,22 +230,12 @@ public class DocumentApiController extends BaseController {
     return successResponseWithData(toSummary(storedDocument));
   }
 
-  @DeleteMapping("/{documentId}")
-  @Deprecated(forRemoval = false)
-  @ResponseStatus(HttpStatus.NO_CONTENT)
-  @Operation(summary = "删除文档", description = "逻辑删除文档并将状态归档。")
-  public void delete(
-      @Parameter(description = "文档内部主键。", example = "sample")
-      @PathVariable String documentId
-  ) {
-    int activeEditors = documentStatusService.countActiveEditingSessions(List.of(documentId)).getOrDefault(documentId, 0);
-    if (activeEditors > 0) {
-      throw new DocumentOperationConflictException("文档仍有活跃编辑会话，暂时不能删除。");
-    }
-    documentMetadataService.archiveDocument(documentId);
-    accessAuditService.recordDocumentArchived(documentId);
-  }
-
+  /**
+   * 逻辑删除指定文档。
+   *
+   * @param request 文档删除请求体。
+   * @return 空成功响应。
+   */
   @PostMapping("/delete")
   @Operation(summary = "删除文档", description = "逻辑删除文档并将状态归档。")
   public ResponseDto<Object> delete(@Valid @RequestBody DocumentDeleteReq request) {

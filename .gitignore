@@ -25,6 +25,7 @@ replay_pid*
 
 packages/web/node_modules/
 packages/web/dist/
+packages/web/test-output.txt
 packages/server/target/
 packages/server/**/target/
 packages/server/storage/

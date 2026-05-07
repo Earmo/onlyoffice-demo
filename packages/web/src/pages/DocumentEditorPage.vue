@@ -5,7 +5,7 @@ import { ArrowLeft, DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
 import { ElMessageBox } from "element-plus";
 import "element-plus/es/components/message-box/style/css";
 import EditorShell from "../components/editor/EditorShell.vue";
-import { apiFetch } from "../lib/api";
+import { apiFetch, parseJsonEnvelope } from "../lib/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -39,13 +39,16 @@ async function loadEditorPageData() {
   errorMessage.value = "";
 
   try {
-    const detailResponse = await apiFetch(`/api/documents/${currentDocumentId.value}`);
+    const detailResponse = await apiFetch("/api/documents/detail", {
+      method: "POST",
+      body: JSON.stringify({ documentId: currentDocumentId.value })
+    });
 
     if (!detailResponse.ok) {
       throw new Error(await readErrorMessage(detailResponse, `文档详情加载失败，HTTP ${detailResponse.status}`));
     }
 
-    currentDocument.value = await detailResponse.json();
+    currentDocument.value = await parseJsonEnvelope(detailResponse);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "编辑页加载失败";
   } finally {

@@ -3,10 +3,7 @@ package com.earmo.onlyoffice.integration.controller;
 import com.earmo.onlyoffice.integration.context.SkipAccessContext;
 import com.earmo.onlyoffice.integration.model.request.OnlyofficeCallbackRequest;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 
 import java.lang.reflect.Method;
 import java.nio.file.Files;
@@ -43,12 +40,10 @@ class ApiContractRouteTest {
     }
 
     @Test
-    void shouldMarkCompatibilityRoutesAsDeprecated() {
-        assertThat(deprecatedRouteNames(DocumentApiController.class)).contains("list", "recent", "detail", "delete");
-        assertThat(deprecatedRouteNames(DocumentController.class))
-                .contains("editorConfig", "closeEditingSession", "saveDocument", "saveStatus");
-        assertThat(deprecatedRouteNames(LlmController.class))
-                .contains("capability", "listSessions", "getSession", "deleteSession", "renameSession", "getRequest", "cancelRequest");
+    void shouldNotKeepDeprecatedCompatibilityRoutes() {
+        assertThat(deprecatedRouteNames(DocumentApiController.class)).isEmpty();
+        assertThat(deprecatedRouteNames(DocumentController.class)).isEmpty();
+        assertThat(deprecatedRouteNames(LlmController.class)).isEmpty();
     }
 
     @Test
@@ -129,10 +124,6 @@ class ApiContractRouteTest {
 
     private Set<String> deprecatedRouteNames(Class<?> controllerClass) {
         return Arrays.stream(controllerClass.getDeclaredMethods())
-                .filter(method -> method.isAnnotationPresent(GetMapping.class)
-                        || method.isAnnotationPresent(DeleteMapping.class)
-                        || method.isAnnotationPresent(PostMapping.class)
-                        || method.isAnnotationPresent(PutMapping.class))
                 .filter(method -> method.isAnnotationPresent(Deprecated.class))
                 .map(Method::getName)
                 .collect(Collectors.toSet());

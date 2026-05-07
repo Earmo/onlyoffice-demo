@@ -157,13 +157,19 @@ class DocumentControllerTest {
                 )
         ));
 
-        mockMvc.perform(get("/api/documents/sample/editor-config"))
+        mockMvc.perform(post("/api/documents/editor-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.config.editorConfig.user.id").value("user-a"))
-                .andExpect(jsonPath("$.config.editorConfig.user.name").value("Alice"))
-                .andExpect(jsonPath("$.config.editorConfig.mode").value("view"))
-                .andExpect(jsonPath("$.config.document.permissions.download").value(true))
-                .andExpect(jsonPath("$.config.document.permissions.comment").value(true));
+                .andExpect(jsonPath("$.data.config.editorConfig.user.id").value("user-a"))
+                .andExpect(jsonPath("$.data.config.editorConfig.user.name").value("Alice"))
+                .andExpect(jsonPath("$.data.config.editorConfig.mode").value("view"))
+                .andExpect(jsonPath("$.data.config.document.permissions.download").value(true))
+                .andExpect(jsonPath("$.data.config.document.permissions.comment").value(true));
 
         verify(documentStatusService).openEditingSession(anyString());
     }
@@ -192,9 +198,16 @@ class DocumentControllerTest {
                 )
         ));
 
-        mockMvc.perform(get("/api/documents/sample/editor-config").param("readonly", "true"))
+        mockMvc.perform(post("/api/documents/editor-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample",
+                                  "readonly": true
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.config.editorConfig.mode").value("view"));
+                .andExpect(jsonPath("$.data.config.editorConfig.mode").value("view"));
 
         verify(documentStatusService).initialize("sample");
     }
@@ -260,11 +273,17 @@ class DocumentControllerTest {
                 ))
         ));
 
-        mockMvc.perform(get("/api/documents/sample/save-status"))
+        mockMvc.perform(post("/api/documents/save-status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("saved"))
-                .andExpect(jsonPath("$.recentEvents[0].eventType").value("save_succeeded"))
-                .andExpect(jsonPath("$.recentEvents[0].callbackStatus").value(2));
+                .andExpect(jsonPath("$.data.state").value("saved"))
+                .andExpect(jsonPath("$.data.recentEvents[0].eventType").value("save_succeeded"))
+                .andExpect(jsonPath("$.data.recentEvents[0].callbackStatus").value(2));
     }
 
     @Test
@@ -328,10 +347,16 @@ class DocumentControllerTest {
                         List.of()
                 ));
 
-        mockMvc.perform(post("/api/documents/sample/editing-sessions/close"))
+        mockMvc.perform(post("/api/documents/close/session")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("saved"))
-                .andExpect(jsonPath("$.message").value("当前用户已离开编辑器，文档已退出活跃编辑状态。"));
+                .andExpect(jsonPath("$.data.state").value("saved"))
+                .andExpect(jsonPath("$.data.message").value("当前用户已离开编辑器，文档已退出活跃编辑状态。"));
 
         verify(documentStatusService).closeEditingSession(anyString());
     }
@@ -406,10 +431,16 @@ class DocumentControllerTest {
         ));
         when(onlyofficeCommandService.forceSaveAndAwait("sample", 8000L)).thenReturn(true);
 
-        mockMvc.perform(post("/api/documents/sample/save"))
+        mockMvc.perform(post("/api/documents/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.state").value("saved"))
-                .andExpect(jsonPath("$.lastCallbackStatus").value(6));
+                .andExpect(jsonPath("$.data.state").value("saved"))
+                .andExpect(jsonPath("$.data.lastCallbackStatus").value(6));
 
         verify(onlyofficeCommandService).forceSaveAndAwait("sample", 8000L);
         verify(documentStatusService).getStatus("sample");
@@ -426,7 +457,13 @@ class DocumentControllerTest {
                 org.mockito.ArgumentMatchers.any()
         )).thenThrow(new IllegalStateException("ONLYOFFICE 运行配置缺失：onlyoffice.integration.document-server-url 不能为空。"));
 
-        mockMvc.perform(get("/api/documents/sample/editor-config"))
+        mockMvc.perform(post("/api/documents/editor-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "sample"
+                                }
+                                """))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.message").value("服务端处理失败，请稍后重试。"));
     }
@@ -439,7 +476,13 @@ class DocumentControllerTest {
         when(documentStatusService.openEditingSession(anyString()))
                 .thenThrow(new DocumentNotFoundException("archived"));
 
-        mockMvc.perform(get("/api/documents/archived/editor-config"))
+        mockMvc.perform(post("/api/documents/editor-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "archived"
+                                }
+                                """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("文档不存在：archived"));
     }
@@ -459,7 +502,13 @@ class DocumentControllerTest {
         when(documentStatusService.getStatus("archived"))
                 .thenThrow(new DocumentNotFoundException("archived"));
 
-        mockMvc.perform(get("/api/documents/archived/save-status"))
+        mockMvc.perform(post("/api/documents/save-status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "documentId": "archived"
+                                }
+                                """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("文档不存在：archived"));
     }

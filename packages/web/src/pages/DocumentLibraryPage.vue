@@ -351,8 +351,9 @@ async function deleteDocument(document) {
 
   try {
     // 删除后不只刷新主列表，也要把最近文档一起刷新掉，保持首页两列一致。
-    const response = await apiFetch(`/api/documents/${document.documentId}`, {
-      method: "DELETE"
+    const response = await apiFetch("/api/documents/delete", {
+      method: "POST",
+      body: JSON.stringify({ documentId: document.documentId })
     });
     if (!response.ok) {
       throw new Error(await readErrorMessage(response, `删除文档失败，HTTP ${response.status}`));

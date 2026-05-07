@@ -12,6 +12,7 @@ import com.mybatisflex.core.paginate.Page;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -21,7 +22,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -94,7 +95,9 @@ class AccessContextErrorHandlingTest {
         when(documentMetadataService.listDocumentPage(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(new Page<>(List.of(), 1, 10, 0));
 
-        mockMvc.perform(get("/api/documents"))
+        mockMvc.perform(post("/api/documents/page")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().is4xxClientError())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("缺少用户上下文")));
     }
@@ -105,16 +108,21 @@ class AccessContextErrorHandlingTest {
                 .thenReturn(new Page<>(List.of(), 1, 10, 0));
         when(documentStatusService.countActiveEditingSessions(List.of())).thenReturn(java.util.Map.of());
 
-        mockMvc.perform(get("/api/documents")
+        mockMvc.perform(post("/api/documents/page")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
                         .header("X-External-User-Id", "user-a")
                         .header("X-User-Display-Name", "Alice"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documents").isArray());
+                .andExpect(jsonPath("$.data.result").isArray());
     }
 
     @Test
     void shouldReturn4xxWhenJwtIsInvalid() throws Exception {
-        mockMvc.perform(get("/api/documents").header("Authorization", "Bearer invalid-token"))
+        mockMvc.perform(post("/api/documents/page")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .header("Authorization", "Bearer invalid-token"))
                 .andExpect(status().is4xxClientError())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("访问上下文解析失败")));
     }

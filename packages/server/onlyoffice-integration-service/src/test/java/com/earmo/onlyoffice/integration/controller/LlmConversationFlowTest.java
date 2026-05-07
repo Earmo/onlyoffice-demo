@@ -19,6 +19,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import reactor.core.publisher.Flux;
 
 import javax.sql.DataSource;
@@ -72,11 +73,16 @@ class LlmConversationFlowTest {
         stubStreamingProvider.enqueueSuccess("这是模型返回的建议。", Duration.ofMillis(10));
         String documentId = createDocument("llm-user", "LLM User");
 
-        mockMvc.perform(get("/api/llm/capability").param("documentId", documentId).headers(TestAccessHeaders.headers("llm-user", "LLM User")))
+        mockMvc.perform(post("/api/llm/capability/query")
+                        .headers(TestAccessHeaders.headers("llm-user", "LLM User"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"documentId":"%s"}
+                                """.formatted(documentId)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.llmAvailable").value(true))
-                .andExpect(jsonPath("$.defaultProvider").value("stub-provider"))
-                .andExpect(jsonPath("$.availableProviders[0].provider").value("stub-provider"));
+                .andExpect(jsonPath("$.data.llmAvailable").value(true))
+                .andExpect(jsonPath("$.data.defaultProvider").value("stub-provider"))
+                .andExpect(jsonPath("$.data.availableProviders[0].provider").value("stub-provider"));
 
         MvcResult createSessionResult = mockMvc.perform(
                         post("/api/llm/sessions/create")
@@ -125,26 +131,24 @@ class LlmConversationFlowTest {
         assertThat(requestId).isNotBlank();
 
         mockMvc.perform(
-                        get("/api/llm/requests/{requestId}", requestId)
-                                .param("documentId", documentId)
+                        llmRequestDetailRequest(documentId, requestId)
                                 .headers(TestAccessHeaders.headers("llm-user", "LLM User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("completed"))
-                .andExpect(jsonPath("$.assistantText").value("这是模型返回的建议。"))
-                .andExpect(jsonPath("$.assistantMessageId").isNotEmpty())
-                .andExpect(jsonPath("$.sessionId").value(sessionId))
-                .andExpect(jsonPath("$.providerResponseMeta.reasoningContent").value("先分析选区上下文，再组织最终建议。"))
-                .andExpect(jsonPath("$.providerResponseMeta.provider").value("stub-provider"))
-                .andExpect(jsonPath("$.providerResponseMeta.model").value("fake-gpt"));
+                .andExpect(jsonPath("$.data.status").value("completed"))
+                .andExpect(jsonPath("$.data.assistantText").value("这是模型返回的建议。"))
+                .andExpect(jsonPath("$.data.assistantMessageId").isNotEmpty())
+                .andExpect(jsonPath("$.data.sessionId").value(sessionId))
+                .andExpect(jsonPath("$.data.providerResponseMeta.reasoningContent").value("先分析选区上下文，再组织最终建议。"))
+                .andExpect(jsonPath("$.data.providerResponseMeta.provider").value("stub-provider"))
+                .andExpect(jsonPath("$.data.providerResponseMeta.model").value("fake-gpt"));
 
         mockMvc.perform(
-                        get("/api/llm/sessions/{sessionId}", sessionId)
-                                .param("documentId", documentId)
+                        llmSessionDetailRequest(documentId, sessionId)
                                 .headers(TestAccessHeaders.headers("llm-user", "LLM User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.title").value("STREAM 首轮问题"));
+                .andExpect(jsonPath("$.data.title").value("STREAM 首轮问题"));
     }
 
     @Test
@@ -179,13 +183,16 @@ class LlmConversationFlowTest {
         String secondSessionId = jsonValue(secondSessionResult, "sessionId");
 
         mockMvc.perform(
-                        get("/api/llm/sessions")
-                                .param("documentId", documentId)
+                        post("/api/llm/sessions/list")
                                 .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"documentId":"%s"}
+                                        """.formatted(documentId))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].sessionId").value(secondSessionId))
-                .andExpect(jsonPath("$[0].lastConversationTime").isNotEmpty());
+                .andExpect(jsonPath("$.data[0].sessionId").value(secondSessionId))
+                .andExpect(jsonPath("$.data[0].lastConversationTime").isNotEmpty());
 
         mockMvc.perform(
                         post("/api/llm/messages/stream")
@@ -211,13 +218,16 @@ class LlmConversationFlowTest {
         Thread.sleep(120L);
 
         mockMvc.perform(
-                        get("/api/llm/sessions")
-                                .param("documentId", documentId)
+                        post("/api/llm/sessions/list")
                                 .headers(TestAccessHeaders.headers("sort-user", "Sort User"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"documentId":"%s"}
+                                        """.formatted(documentId))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].sessionId").value(firstSessionId))
-                .andExpect(jsonPath("$[1].sessionId").value(secondSessionId));
+                .andExpect(jsonPath("$.data[0].sessionId").value(firstSessionId))
+                .andExpect(jsonPath("$.data[1].sessionId").value(secondSessionId));
     }
 
     @Test
@@ -238,9 +248,10 @@ class LlmConversationFlowTest {
         String sessionId = jsonValue(createSessionResult, "sessionId");
 
         MvcResult sendResult = mockMvc.perform(
-                        post("/api/llm/messages")
+                        post("/api/llm/messages/stream")
                                 .headers(TestAccessHeaders.headers("cancel-user", "Cancel User"))
                                 .contentType(MediaType.APPLICATION_JSON)
+                                .accept(MediaType.TEXT_EVENT_STREAM)
                                 .content("""
                                         {
                                           "documentId":"%s",
@@ -254,37 +265,38 @@ class LlmConversationFlowTest {
                                         }
                                         """.formatted(documentId, sessionId))
                 )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("in_progress"))
+                .andExpect(request().asyncStarted())
                 .andReturn();
-        String requestId = jsonValue(sendResult, "requestId");
+        Thread.sleep(120L);
+        String requestId = jsonFieldFromSse(sendResult.getResponse().getContentAsString(StandardCharsets.UTF_8), "requestId");
 
         mockMvc.perform(
-                        post("/api/llm/requests/{requestId}/cancel", requestId)
-                                .param("documentId", documentId)
+                        post("/api/llm/requests/cancel")
                                 .headers(TestAccessHeaders.headers("cancel-user", "Cancel User"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"documentId":"%s","requestId":"%s"}
+                                        """.formatted(documentId, requestId))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("cancelled"))
-                .andExpect(jsonPath("$.errorCode").value("LLM_REQUEST_CANCELLED"));
+                .andExpect(jsonPath("$.data.status").value("cancelled"))
+                .andExpect(jsonPath("$.data.errorCode").value("LLM_REQUEST_CANCELLED"));
 
         Thread.sleep(2400L);
 
         mockMvc.perform(
-                        get("/api/llm/requests/{requestId}", requestId)
-                                .param("documentId", documentId)
+                        llmRequestDetailRequest(documentId, requestId)
                                 .headers(TestAccessHeaders.headers("cancel-user", "Cancel User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("cancelled"))
-                .andExpect(jsonPath("$.assistantText").isEmpty())
-                .andExpect(jsonPath("$.assistantMessageId").isNotEmpty())
-                .andExpect(jsonPath("$.sessionId").value(sessionId))
-                .andExpect(jsonPath("$.errorCode").value("LLM_REQUEST_CANCELLED"));
+                .andExpect(jsonPath("$.data.status").value("cancelled"))
+                .andExpect(jsonPath("$.data.assistantText").isEmpty())
+                .andExpect(jsonPath("$.data.assistantMessageId").isNotEmpty())
+                .andExpect(jsonPath("$.data.sessionId").value(sessionId))
+                .andExpect(jsonPath("$.data.errorCode").value("LLM_REQUEST_CANCELLED"));
 
         mockMvc.perform(
-                        get("/api/llm/sessions/{sessionId}", sessionId)
-                                .param("documentId", documentId)
+                        llmSessionDetailRequest(documentId, sessionId)
                                 .headers(TestAccessHeaders.headers("other-user", "Other User"))
                 )
                 .andExpect(status().isForbidden())
@@ -337,15 +349,14 @@ class LlmConversationFlowTest {
         Thread.sleep(260L);
 
         mockMvc.perform(
-                        get("/api/llm/requests/{requestId}", requestId)
-                                .param("documentId", documentId)
+                        llmRequestDetailRequest(documentId, requestId)
                                 .headers(TestAccessHeaders.headers("disconnect-user", "Disconnect User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("completed"))
-                .andExpect(jsonPath("$.assistantText").value("断流后仍落终态"))
-                .andExpect(jsonPath("$.assistantMessageId").isNotEmpty())
-                .andExpect(jsonPath("$.sessionId").value(sessionId));
+                .andExpect(jsonPath("$.data.status").value("completed"))
+                .andExpect(jsonPath("$.data.assistantText").value("断流后仍落终态"))
+                .andExpect(jsonPath("$.data.assistantMessageId").isNotEmpty())
+                .andExpect(jsonPath("$.data.sessionId").value(sessionId));
     }
 
     @Test
@@ -395,14 +406,13 @@ class LlmConversationFlowTest {
         assertThat(requestId).isNotBlank();
 
         mockMvc.perform(
-                        get("/api/llm/requests/{requestId}", requestId)
-                                .param("documentId", documentId)
+                        llmRequestDetailRequest(documentId, requestId)
                                 .headers(TestAccessHeaders.headers("failed-user", "Failed User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("failed"))
-                .andExpect(jsonPath("$.assistantText").isEmpty())
-                .andExpect(jsonPath("$.errorCode").value("LLM_PROVIDER_BAD_REQUEST"));
+                .andExpect(jsonPath("$.data.status").value("failed"))
+                .andExpect(jsonPath("$.data.assistantText").isEmpty())
+                .andExpect(jsonPath("$.data.errorCode").value("LLM_PROVIDER_BAD_REQUEST"));
     }
 
     @Test
@@ -453,15 +463,14 @@ class LlmConversationFlowTest {
         assertThat(requestId).isNotBlank();
 
         mockMvc.perform(
-                        get("/api/llm/requests/{requestId}", requestId)
-                                .param("documentId", documentId)
+                        llmRequestDetailRequest(documentId, requestId)
                                 .headers(TestAccessHeaders.headers("partial-failed-user", "Partial Failed User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("failed"))
-                .andExpect(jsonPath("$.assistantText").value("partial"))
-                .andExpect(jsonPath("$.providerResponseMeta.reasoningContent").value("先分析选区上下文，"))
-                .andExpect(jsonPath("$.errorCode").value("LLM_PROVIDER_UPSTREAM_ERROR"));
+                .andExpect(jsonPath("$.data.status").value("failed"))
+                .andExpect(jsonPath("$.data.assistantText").value("partial"))
+                .andExpect(jsonPath("$.data.providerResponseMeta.reasoningContent").value("先分析选区上下文，"))
+                .andExpect(jsonPath("$.data.errorCode").value("LLM_PROVIDER_UPSTREAM_ERROR"));
     }
 
     @Test
@@ -508,25 +517,27 @@ class LlmConversationFlowTest {
         assertThat(requestId).isNotBlank();
 
         mockMvc.perform(
-                        post("/api/llm/requests/{requestId}/cancel", requestId)
-                                .param("documentId", documentId)
+                        post("/api/llm/requests/cancel")
                                 .headers(TestAccessHeaders.headers("partial-cancel-user", "Partial Cancel User"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"documentId":"%s","requestId":"%s"}
+                                        """.formatted(documentId, requestId))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("cancelled"));
+                .andExpect(jsonPath("$.data.status").value("cancelled"));
 
         Thread.sleep(520L);
 
         mockMvc.perform(
-                        get("/api/llm/requests/{requestId}", requestId)
-                                .param("documentId", documentId)
+                        llmRequestDetailRequest(documentId, requestId)
                                 .headers(TestAccessHeaders.headers("partial-cancel-user", "Partial Cancel User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("cancelled"))
-                .andExpect(jsonPath("$.assistantText").value("partia"))
-                .andExpect(jsonPath("$.providerResponseMeta.reasoningContent").value("先分析选区上下文，"))
-                .andExpect(jsonPath("$.errorCode").value("LLM_REQUEST_CANCELLED"));
+                .andExpect(jsonPath("$.data.status").value("cancelled"))
+                .andExpect(jsonPath("$.data.assistantText").value("partia"))
+                .andExpect(jsonPath("$.data.providerResponseMeta.reasoningContent").value("先分析选区上下文，"))
+                .andExpect(jsonPath("$.data.errorCode").value("LLM_REQUEST_CANCELLED"));
     }
 
     @Test
@@ -614,16 +625,15 @@ class LlmConversationFlowTest {
         assertThat(jsonFieldFromSse(regenerateBody, "variantIndex")).isEqualTo("1");
 
         mockMvc.perform(
-                        get("/api/llm/sessions/{sessionId}", sessionId)
-                                .param("documentId", documentId)
+                        llmSessionDetailRequest(documentId, sessionId)
                                 .headers(TestAccessHeaders.headers("regen-user", "Regen User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.messages.length()").value(2))
-                .andExpect(jsonPath("$.messages[1].messageId").value(assistantMessageId))
-                .andExpect(jsonPath("$.messages[1].variants.length()").value(2))
-                .andExpect(jsonPath("$.messages[1].variants[0].variantIndex").value(0))
-                .andExpect(jsonPath("$.messages[1].variants[1].variantIndex").value(1));
+                .andExpect(jsonPath("$.data.messages.length()").value(2))
+                .andExpect(jsonPath("$.data.messages[1].messageId").value(assistantMessageId))
+                .andExpect(jsonPath("$.data.messages[1].variants.length()").value(2))
+                .andExpect(jsonPath("$.data.messages[1].variants[0].variantIndex").value(0))
+                .andExpect(jsonPath("$.data.messages[1].variants[1].variantIndex").value(1));
     }
 
     @Test
@@ -682,13 +692,12 @@ class LlmConversationFlowTest {
         assertThat(jsonFieldFromSse(firstBody, "variantIndex")).isNotEqualTo(jsonFieldFromSse(secondBody, "variantIndex"));
 
         mockMvc.perform(
-                        get("/api/llm/sessions/{sessionId}", sessionId)
-                                .param("documentId", documentId)
+                        llmSessionDetailRequest(documentId, sessionId)
                                 .headers(TestAccessHeaders.headers("regen-race-user", "Regen Race User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.messages.length()").value(2))
-                .andExpect(jsonPath("$.messages[1].variants.length()").value(3));
+                .andExpect(jsonPath("$.data.messages.length()").value(2))
+                .andExpect(jsonPath("$.data.messages[1].variants.length()").value(3));
     }
 
     @Test
@@ -713,14 +722,13 @@ class LlmConversationFlowTest {
         assertThat(streamBody).contains("\"activeVariantIndex\":0");
 
         mockMvc.perform(
-                        get("/api/llm/requests/{requestId}", requestId)
-                                .param("documentId", documentId)
+                        llmRequestDetailRequest(documentId, requestId)
                                 .headers(TestAccessHeaders.headers("variant-event-user", "Variant Event User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.variantId").value(variantId))
-                .andExpect(jsonPath("$.variantIndex").value(0))
-                .andExpect(jsonPath("$.activeVariantIndex").value(0));
+                .andExpect(jsonPath("$.data.variantId").value(variantId))
+                .andExpect(jsonPath("$.data.variantIndex").value(0))
+                .andExpect(jsonPath("$.data.activeVariantIndex").value(0));
     }
 
     @Test
@@ -741,26 +749,28 @@ class LlmConversationFlowTest {
         assertThat(jsonFieldFromSse(regenerateBody, "variantIndex")).isEqualTo("1");
 
         mockMvc.perform(
-                        post("/api/llm/requests/{requestId}/cancel", requestId)
-                                .param("documentId", documentId)
+                        post("/api/llm/requests/cancel")
                                 .headers(TestAccessHeaders.headers("variant-cancel-user", "Variant Cancel User"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {"documentId":"%s","requestId":"%s"}
+                                        """.formatted(documentId, requestId))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("cancelled"))
-                .andExpect(jsonPath("$.variantIndex").value(1));
+                .andExpect(jsonPath("$.data.status").value("cancelled"))
+                .andExpect(jsonPath("$.data.variantIndex").value(1));
 
         Thread.sleep(420L);
 
         mockMvc.perform(
-                        get("/api/llm/sessions/{sessionId}", sessionId)
-                                .param("documentId", documentId)
+                        llmSessionDetailRequest(documentId, sessionId)
                                 .headers(TestAccessHeaders.headers("variant-cancel-user", "Variant Cancel User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.messages[1].activeVariantIndex").value(0))
-                .andExpect(jsonPath("$.messages[1].assistantText").value("可用旧版本"))
-                .andExpect(jsonPath("$.messages[1].variants[1].status").value("cancelled"))
-                .andExpect(jsonPath("$.messages[1].variants[1].assistantText").value("被取消"));
+                .andExpect(jsonPath("$.data.messages[1].activeVariantIndex").value(0))
+                .andExpect(jsonPath("$.data.messages[1].assistantText").value("可用旧版本"))
+                .andExpect(jsonPath("$.data.messages[1].variants[1].status").value("cancelled"))
+                .andExpect(jsonPath("$.data.messages[1].variants[1].assistantText").value("被取消"));
     }
 
     @Test
@@ -789,13 +799,12 @@ class LlmConversationFlowTest {
                 .andExpect(jsonPath("$.data.assistantText").value("版本零"));
 
         mockMvc.perform(
-                        get("/api/llm/sessions/{sessionId}", sessionId)
-                                .param("documentId", documentId)
+                        llmSessionDetailRequest(documentId, sessionId)
                                 .headers(TestAccessHeaders.headers("variant-switch-user", "Variant Switch User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.messages[1].activeVariantIndex").value(0))
-                .andExpect(jsonPath("$.messages[1].assistantText").value("版本零"));
+                .andExpect(jsonPath("$.data.messages[1].activeVariantIndex").value(0))
+                .andExpect(jsonPath("$.data.messages[1].assistantText").value("版本零"));
     }
 
     @Test
@@ -826,14 +835,13 @@ class LlmConversationFlowTest {
         Thread.sleep(340L);
 
         mockMvc.perform(
-                        get("/api/llm/sessions/{sessionId}", sessionId)
-                                .param("documentId", documentId)
+                        llmSessionDetailRequest(documentId, sessionId)
                                 .headers(TestAccessHeaders.headers("variant-race-user", "Variant Race User"))
                 )
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.messages[1].activeVariantIndex").value(0))
-                .andExpect(jsonPath("$.messages[1].assistantText").value("稳定旧版本"))
-                .andExpect(jsonPath("$.messages[1].variants[1].status").value("completed"));
+                .andExpect(jsonPath("$.data.messages[1].activeVariantIndex").value(0))
+                .andExpect(jsonPath("$.data.messages[1].assistantText").value("稳定旧版本"))
+                .andExpect(jsonPath("$.data.messages[1].variants[1].status").value("completed"));
     }
 
     @Test
@@ -933,6 +941,27 @@ class LlmConversationFlowTest {
                 .andReturn();
     }
 
+    private MockHttpServletRequestBuilder llmSessionDetailRequest(String documentId, String sessionId) {
+        return post("/api/llm/sessions/detail")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "documentId": "%s",
+                          "sessionId": "%s"
+                        }
+                        """.formatted(documentId, sessionId));
+    }
+
+    private MockHttpServletRequestBuilder llmRequestDetailRequest(String documentId, String requestId) {
+        return post("/api/llm/requests/detail")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "documentId": "%s",
+                          "requestId": "%s"
+                        }
+                        """.formatted(documentId, requestId));
+    }
     private String jsonValue(MvcResult result, String key) throws Exception {
         String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
         String needle = "\"" + key + "\":\"";

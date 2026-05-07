@@ -6,6 +6,11 @@ import jakarta.validation.constraints.Size;
 
 /**
  * 切换 assistant 消息当前展示版本的请求体。
+ *
+ * @param documentId   会话所属内部文档 ID。
+ * @param sessionId    AI 会话 ID。
+ * @param variantId    目标 variant 主键。
+ * @param variantIndex 目标 variant 序号。
  */
 @Schema(description = "切换 assistant 消息当前展示版本的请求体。")
 public record SetLlmActiveVariantRequest(

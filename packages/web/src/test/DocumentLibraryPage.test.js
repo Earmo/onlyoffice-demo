@@ -253,8 +253,9 @@ describe("DocumentLibraryPage", () => {
 
     expect(window.confirm).toHaveBeenCalledWith("确认删除《待删除文档.docx》吗？删除后它不会再出现在文档列表和最近文档中。");
     expect(fetch).toHaveBeenCalledTimes(5);
-    expect(requestUrl(2).pathname).toBe("/api/documents/doc-1");
-    expect(fetch.mock.calls[2][1]?.method).toBe("DELETE");
+    expect(requestUrl(2).pathname).toBe("/api/documents/delete");
+    expect(fetch.mock.calls[2][1]?.method).toBe("POST");
+    expect(requestBody(2).documentId).toBe("doc-1");
     expect(routerReplace).toHaveBeenCalledWith({ path: "/", query: {} });
     expect(requestUrl(3).pathname).toBe("/api/documents/page");
     expect(requestUrl(4).pathname).toBe("/api/documents/list/recent");
