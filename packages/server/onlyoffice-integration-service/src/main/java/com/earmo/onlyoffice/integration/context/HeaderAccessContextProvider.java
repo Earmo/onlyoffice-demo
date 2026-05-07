@@ -39,6 +39,8 @@ public class HeaderAccessContextProvider implements AccessContextProvider {
         String sourceSystem = readHeader(request, headerProperties.getSourceSystemHeader());
         String externalUserId = readHeader(request, headerProperties.getExternalUserIdHeader());
         String displayName = readHeader(request, headerProperties.getDisplayNameHeader());
+        String orgId = readHeader(request, headerProperties.getOrgIdHeader());
+        String orgName = readHeader(request, headerProperties.getOrgNameHeader());
         String permissionsHeader = readHeader(request, headerProperties.getPermissionsHeader());
 
         AccessContext accessContext = new AccessContext(
@@ -46,6 +48,8 @@ public class HeaderAccessContextProvider implements AccessContextProvider {
                 sourceSystem,
                 externalUserId,
                 displayName,
+                orgId,
+                orgName,
                 AccessContextPermissionParser.parse(permissionsHeader),
                 name()
         );

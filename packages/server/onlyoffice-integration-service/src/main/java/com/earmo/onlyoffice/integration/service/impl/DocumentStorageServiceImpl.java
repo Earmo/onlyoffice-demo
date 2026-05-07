@@ -1142,7 +1142,9 @@ public class DocumentStorageServiceImpl implements DocumentStorageService {
                 onlyofficeIntegrationProperties.getDefaultTenantId(),
                 onlyofficeIntegrationProperties.getDefaultSourceSystem(),
                 onlyofficeIntegrationProperties.getDefaultUser(),
-                onlyofficeIntegrationProperties.getDefaultUserName()
+                onlyofficeIntegrationProperties.getDefaultUserName(),
+                onlyofficeIntegrationProperties.getDefaultOrgId(),
+                onlyofficeIntegrationProperties.getDefaultOrgName()
         );
     }
 

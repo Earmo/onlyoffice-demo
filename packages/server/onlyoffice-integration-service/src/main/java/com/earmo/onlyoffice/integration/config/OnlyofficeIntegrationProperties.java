@@ -76,7 +76,19 @@ public class OnlyofficeIntegrationProperties {
      * 缺省租户 ID。
      */
     @NotBlank
-    private String defaultTenantId = "native";
+    private String defaultTenantId = "000001";
+
+    /**
+     * 缺省组织 ID。
+     */
+    @NotBlank
+    private String defaultOrgId = "default-org";
+
+    /**
+     * 缺省组织名称。
+     */
+    @NotBlank
+    private String defaultOrgName = "默认组织";
 
     /**
      * 缺省来源系统。
@@ -331,6 +343,18 @@ public class OnlyofficeIntegrationProperties {
         private String displayNameHeader = "X-User-Display-Name";
 
         /**
+         * 读取组织 ID 的请求头名称。
+         */
+        @NotBlank
+        private String orgIdHeader = "X-Org-Id";
+
+        /**
+         * 读取组织名称的请求头名称。
+         */
+        @NotBlank
+        private String orgNameHeader = "X-Org-Name";
+
+        /**
          * 读取最小权限集合的请求头名称。
          */
         @NotBlank
@@ -386,6 +410,18 @@ public class OnlyofficeIntegrationProperties {
          */
         @NotBlank
         private String displayName = "displayName";
+
+        /**
+         * orgId 对应的 claim 名称。
+         */
+        @NotBlank
+        private String orgId = "orgId";
+
+        /**
+         * orgName 对应的 claim 名称。
+         */
+        @NotBlank
+        private String orgName = "orgName";
 
         /**
          * permissions 对应的 claim 名称。
@@ -447,4 +483,3 @@ public class OnlyofficeIntegrationProperties {
         }
     }
 }
-

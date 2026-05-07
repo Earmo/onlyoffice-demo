@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentRuntimeEventEntity;
 import com.earmo.onlyoffice.integration.data.repository.DocumentEditorSessionRepository;
@@ -72,7 +73,7 @@ class DocumentStatusServiceTest {
         DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
         when(metadataService.recordCallbackReceived("demo", 4)).thenReturn(status("demo", "editing"));
         when(metadataService.reconcileClosedEditingSession("demo")).thenReturn(status("demo", "saved"));
-        when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(0L);
+        when(documentEditorSessionRepository.countActiveByDocumentId(isNull(), isNull(), eq("demo"), any())).thenReturn(0L);
         when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
                 .thenReturn(List.of(event("callback_received", "已收到 ONLYOFFICE 保存回调。", 4)));
 
@@ -130,7 +131,7 @@ class DocumentStatusServiceTest {
         when(metadataService.markEditingStarted("demo")).thenReturn(status("demo", "editing"));
         when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
                 .thenReturn(List.of(event("editing_session_started", "编辑会话已建立。", null)));
-        when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
+        when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("tenant-a", "org-a", "demo", "user-a"))
                 .thenReturn(Optional.empty());
 
         DocumentStatusService service = new DocumentStatusServiceImpl(
@@ -156,9 +157,9 @@ class DocumentStatusServiceTest {
         DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
         DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
         DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
-        when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
+        when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("tenant-a", "org-a", "demo", "user-a"))
                 .thenReturn(Optional.of(editorSession()));
-        when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(0L);
+        when(documentEditorSessionRepository.countActiveByDocumentId(eq("tenant-a"), eq("org-a"), eq("demo"), any())).thenReturn(0L);
         when(metadataService.reconcileClosedEditingSession("demo")).thenReturn(status("demo", "saved"));
         when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
                 .thenReturn(List.of(event("editing_session_closed", "当前用户已离开编辑器，文档已退出活跃编辑状态。", null)));
@@ -185,9 +186,9 @@ class DocumentStatusServiceTest {
         DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
         DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
         DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
-        when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
+        when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("tenant-a", "org-a", "demo", "user-a"))
                 .thenReturn(Optional.of(editorSession()));
-        when(documentEditorSessionRepository.countActiveByDocumentId(eq("demo"), any())).thenReturn(2L);
+        when(documentEditorSessionRepository.countActiveByDocumentId(eq("tenant-a"), eq("org-a"), eq("demo"), any())).thenReturn(2L);
         when(metadataService.getStatus("demo")).thenReturn(status("demo", "editing"));
         when(runtimeEventRepository.listRecentByDocumentId("demo", 5))
                 .thenReturn(List.of(event("editing_session_closed", "当前用户已离开编辑器，仍有其他活跃编辑用户。", null)));
@@ -214,7 +215,7 @@ class DocumentStatusServiceTest {
         DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
         DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
         DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
-        when(documentEditorSessionRepository.countActiveByDocumentIds(eq(List.of("doc-1", "doc-2")), any()))
+        when(documentEditorSessionRepository.countActiveByDocumentIds(isNull(), isNull(), eq(List.of("doc-1", "doc-2")), any()))
                 .thenReturn(Map.of("doc-1", 2, "doc-2", 0));
 
         DocumentStatusService service = new DocumentStatusServiceImpl(
@@ -229,7 +230,7 @@ class DocumentStatusServiceTest {
 
         assertEquals(2, counts.get("doc-1"));
         assertEquals(0, counts.get("doc-2"));
-        verify(documentEditorSessionRepository).countActiveByDocumentIds(eq(List.of("doc-1", "doc-2")), any());
+        verify(documentEditorSessionRepository).countActiveByDocumentIds(isNull(), isNull(), eq(List.of("doc-1", "doc-2")), any());
     }
 
     @Test
@@ -238,7 +239,7 @@ class DocumentStatusServiceTest {
         DocumentRuntimeEventRepository runtimeEventRepository = mock(DocumentRuntimeEventRepository.class);
         DocumentEditorSessionRepository documentEditorSessionRepository = mock(DocumentEditorSessionRepository.class);
         DocumentRuntimeEventStreamService runtimeEventStreamService = mock(DocumentRuntimeEventStreamService.class);
-        when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("demo", "user-a"))
+        when(documentEditorSessionRepository.findActiveByDocumentIdAndActorUser("tenant-a", "org-a", "demo", "user-a"))
                 .thenReturn(Optional.of(editorSession()));
 
         DocumentStatusService service = new DocumentStatusServiceImpl(
@@ -301,6 +302,8 @@ class DocumentStatusServiceTest {
                 "native",
                 "user-a",
                 "Alice",
+                "org-a",
+                "Org A",
                 Map.of("edit", true),
                 "header"
         );
@@ -315,6 +318,8 @@ class DocumentStatusServiceTest {
         entity.setSessionId("session-1");
         entity.setDocumentId("demo");
         entity.setTenantId("tenant-a");
+        entity.setOrgId("org-a");
+        entity.setOrgName("Org A");
         entity.setActorUser("user-a");
         entity.setActorName("Alice");
         entity.setOpenedTime(Instant.parse("2026-03-25T09:55:00Z"));
@@ -333,5 +338,4 @@ class DocumentStatusServiceTest {
         return entity;
     }
 }
-
 

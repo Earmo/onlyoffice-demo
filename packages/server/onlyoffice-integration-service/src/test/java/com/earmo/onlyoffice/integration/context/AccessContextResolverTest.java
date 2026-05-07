@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.exception.MissingAccessContextException;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
@@ -60,6 +61,30 @@ class AccessContextResolverTest {
         assertEquals("native", accessContext.sourceSystem());
         assertEquals("user-a", accessContext.externalUserId());
         assertEquals("Alice", accessContext.displayName());
+        assertEquals("default-org", accessContext.orgId());
+    }
+
+    @Test
+    void shouldRejectExplicitContextWithoutOrgWhenDefaultContextNotAllowed() {
+        OnlyofficeIntegrationProperties properties = new OnlyofficeIntegrationProperties();
+        properties.getAccessContext().setAllowDefaultContext(false);
+
+        AccessContextResolver resolver = new AccessContextResolver(
+                properties,
+                List.of(new HeaderAccessContextProvider(properties), new DefaultAccessContextProvider(properties))
+        );
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("X-Tenant-Id", "tenant-a");
+        request.addHeader("X-Source-System", "erp");
+        request.addHeader("X-External-User-Id", "user-a");
+        request.addHeader("X-User-Display-Name", "Alice");
+
+        MissingAccessContextException exception = assertThrows(
+                MissingAccessContextException.class,
+                () -> resolver.resolve(request)
+        );
+
+        assertTrue(exception.getMessage().contains("orgId"));
     }
 
     @Test

@@ -35,6 +35,14 @@ public class DocumentLlmMessageEntity {
   @Column("tenant_id")
   private String tenantId;
 
+  /** 消息所属组织标识。 */
+  @Column("org_id")
+  private String orgId;
+
+  /** 消息所属组织名称。 */
+  @Column("org_name")
+  private String orgName;
+
   /** 消息所属用户标识。 */
   @Column("actor_user")
   private String actorUser;

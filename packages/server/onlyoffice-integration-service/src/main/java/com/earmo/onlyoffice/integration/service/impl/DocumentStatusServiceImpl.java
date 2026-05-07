@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.service.impl;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
 import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.data.entity.DocumentEditorSessionEntity;
 import com.earmo.onlyoffice.integration.data.entity.DocumentRuntimeEventEntity;
 import com.earmo.onlyoffice.integration.data.repository.DocumentEditorSessionRepository;
@@ -81,8 +82,13 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
             return publishAndReturn(mergeRecentEvents(documentMetadataService.getStatus(documentId)));
         }
 
-        closeEditingSessionRecord(documentId, accessContext.actorUser());
-        long activeEditors = documentEditorSessionRepository.countActiveByDocumentId(documentId, activeSessionSince());
+        closeEditingSessionRecord(documentId, accessContext);
+        long activeEditors = documentEditorSessionRepository.countActiveByDocumentId(
+                accessContext.tenantId(),
+                accessContext.orgId(),
+                documentId,
+                activeSessionSince()
+        );
         DocumentSaveStatusResponse summary = activeEditors > 0
                 ? documentMetadataService.getStatus(documentId)
                 : documentMetadataService.reconcileClosedEditingSession(documentId);
@@ -112,7 +118,12 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
         // 如果当前已经没有任何活跃编辑会话，就不能继续把主状态留在 editing，
         // 否则列表页会在“会话已关闭”的情况下错误展示为“编辑中”。
         if (Integer.valueOf(4).equals(callbackStatus)
-                && documentEditorSessionRepository.countActiveByDocumentId(documentId, activeSessionSince()) == 0) {
+                && documentEditorSessionRepository.countActiveByDocumentId(
+                        currentTenantId(),
+                        currentOrgId(),
+                        documentId,
+                        activeSessionSince()
+                ) == 0) {
             summary = documentMetadataService.reconcileClosedEditingSession(documentId);
         }
         recordRuntimeEvent(documentId, "callback_received", callbackStatus, "已收到 ONLYOFFICE 保存回调。");
@@ -190,7 +201,12 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
             return;
         }
 
-        documentEditorSessionRepository.findActiveByDocumentIdAndActorUser(documentId, accessContext.actorUser())
+        documentEditorSessionRepository.findActiveByDocumentIdAndActorUser(
+                        accessContext.tenantId(),
+                        accessContext.orgId(),
+                        documentId,
+                        accessContext.actorUser()
+                )
                 .ifPresent(session -> {
                     Instant now = Instant.now();
                     session.setActorName(accessContext.actorName());
@@ -208,7 +224,12 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
      */
     @Override
     public Map<String, Integer> countActiveEditingSessions(List<String> documentIds) {
-        return documentEditorSessionRepository.countActiveByDocumentIds(documentIds, activeSessionSince());
+        return documentEditorSessionRepository.countActiveByDocumentIds(
+                currentTenantId(),
+                currentOrgId(),
+                documentIds,
+                activeSessionSince()
+        );
     }
 
     /**
@@ -245,7 +266,12 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     private void upsertEditingSession(String documentId, AccessContext accessContext) {
         Instant now = Instant.now();
         DocumentEditorSessionEntity entity = documentEditorSessionRepository
-                .findActiveByDocumentIdAndActorUser(documentId, accessContext.actorUser())
+                .findActiveByDocumentIdAndActorUser(
+                        accessContext.tenantId(),
+                        accessContext.orgId(),
+                        documentId,
+                        accessContext.actorUser()
+                )
                 .orElseGet(DocumentEditorSessionEntity::new);
 
         boolean isNewSession = !StringUtils.hasText(entity.getSessionId());
@@ -253,6 +279,8 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
             entity.setSessionId(UUID.randomUUID().toString());
             entity.setDocumentId(documentId);
             entity.setTenantId(accessContext.tenantId());
+            entity.setOrgId(accessContext.orgId());
+            entity.setOrgName(accessContext.orgName());
             entity.setActorUser(accessContext.actorUser());
             entity.setOpenedTime(now);
             entity.setCreatedTime(now);
@@ -273,11 +301,16 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     /**
      * 关闭当前用户的编辑会话记录。
      *
-     * @param documentId 文档唯一标识
-     * @param actorUser  当前操作者标识
+     * @param documentId    文档唯一标识
+     * @param accessContext 当前访问上下文
      */
-    private void closeEditingSessionRecord(String documentId, String actorUser) {
-        documentEditorSessionRepository.findActiveByDocumentIdAndActorUser(documentId, actorUser)
+    private void closeEditingSessionRecord(String documentId, AccessContext accessContext) {
+        documentEditorSessionRepository.findActiveByDocumentIdAndActorUser(
+                        accessContext.tenantId(),
+                        accessContext.orgId(),
+                        documentId,
+                        accessContext.actorUser()
+                )
                 .ifPresent(session -> {
                     Instant now = Instant.now();
                     session.setClosedTime(now);
@@ -295,6 +328,16 @@ public class DocumentStatusServiceImpl implements DocumentStatusService {
     private Instant activeSessionSince() {
         long timeoutSeconds = Math.max(5L, onlyofficeIntegrationProperties.getEditingSession().getActiveTimeoutSeconds());
         return Instant.now().minusSeconds(timeoutSeconds);
+    }
+
+    private String currentTenantId() {
+        AccessContext accessContext = CurrentAccessContext.get();
+        return accessContext == null ? null : accessContext.tenantId();
+    }
+
+    private String currentOrgId() {
+        AccessContext accessContext = CurrentAccessContext.get();
+        return accessContext == null ? null : accessContext.orgId();
     }
 
     /**

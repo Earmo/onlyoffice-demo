@@ -19,9 +19,22 @@ public record AccessContext(
         String sourceSystem,
         String externalUserId,
         String displayName,
+        String orgId,
+        String orgName,
         Map<String, Boolean> permissions,
         String source
 ) {
+
+    public AccessContext(
+            String tenantId,
+            String sourceSystem,
+            String externalUserId,
+            String displayName,
+            Map<String, Boolean> permissions,
+            String source
+    ) {
+        this(tenantId, sourceSystem, externalUserId, displayName, null, null, permissions, source);
+    }
 
     public AccessContext {
         permissions = permissions == null
@@ -37,6 +50,8 @@ public record AccessContext(
                 || hasText(sourceSystem)
                 || hasText(externalUserId)
                 || hasText(displayName)
+                || hasText(orgId)
+                || hasText(orgName)
                 || !permissions.isEmpty();
     }
 
@@ -47,7 +62,8 @@ public record AccessContext(
         return hasText(tenantId)
                 && hasText(sourceSystem)
                 && hasText(externalUserId)
-                && hasText(displayName);
+                && hasText(displayName)
+                && hasText(orgId);
     }
 
     /**
@@ -61,6 +77,8 @@ public record AccessContext(
                 firstNonBlank(sourceSystem, defaults.sourceSystem()),
                 firstNonBlank(externalUserId, defaults.externalUserId()),
                 firstNonBlank(displayName, defaults.displayName()),
+                firstNonBlank(orgId, defaults.orgId()),
+                firstNonBlank(orgName, defaults.orgName()),
                 mergedPermissions,
                 source
         );
@@ -70,7 +88,7 @@ public record AccessContext(
      * 兼容仍然使用旧 `RequestContext` 的服务层。
      */
     public RequestContext toRequestContext() {
-        return new RequestContext(tenantId, sourceSystem, externalUserId, displayName);
+        return new RequestContext(tenantId, sourceSystem, externalUserId, displayName, orgId, orgName);
     }
 
     public String actorUser() {
@@ -79,6 +97,14 @@ public record AccessContext(
 
     public String actorName() {
         return displayName;
+    }
+
+    public String currentOrgId() {
+        return orgId;
+    }
+
+    public String currentOrgName() {
+        return orgName;
     }
 
     public boolean permission(String key, boolean defaultValue) {

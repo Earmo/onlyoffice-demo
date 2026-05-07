@@ -28,7 +28,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class DocumentEditingSessionFlowTest {
 
-    private static final String TENANT_ID = "native";
+    private static final String TENANT_ID = "000001";
+    private static final String ORG_ID = "default-org";
+    private static final String ORG_NAME = "Default Organization";
     private static final String SOURCE_SYSTEM = "native";
     private static final String ACCESS_PERMISSIONS = "edit=true,download=true,comment=true,print=true";
 
@@ -138,7 +140,9 @@ class DocumentEditingSessionFlowTest {
         DocumentEditorSessionEntity session = new DocumentEditorSessionEntity();
         session.setSessionId(UUID.randomUUID().toString());
         session.setDocumentId(documentId);
-        session.setTenantId("native");
+        session.setTenantId(TENANT_ID);
+        session.setOrgId(ORG_ID);
+        session.setOrgName(ORG_NAME);
         session.setActorUser(actorUser);
         session.setActorName(actorName);
         session.setOpenedTime(staleTime);
@@ -279,6 +283,8 @@ class DocumentEditingSessionFlowTest {
     ) {
         return requestBuilder
                 .header("X-Tenant-Id", TENANT_ID)
+                .header("X-Org-Id", ORG_ID)
+                .header("X-Org-Name", ORG_NAME)
                 .header("X-Source-System", SOURCE_SYSTEM)
                 .header("X-External-User-Id", actorUser)
                 .header("X-User-Display-Name", actorName)

@@ -14,6 +14,8 @@ const router = useRouter();
 // - success/error/highlight 用于处理创建回流、错误反馈和列表定位。
 const documents = ref([]);
 const tenantId = ref("");
+const orgId = ref("");
+const orgName = ref("");
 const actorUser = ref("");
 const actorName = ref("");
 const isLoading = ref(true);
@@ -25,6 +27,8 @@ const showCreateDialog = ref(false);
 const showContextDialog = ref(false);
 const contextForm = ref({
   tenantId: "",
+  orgId: "",
+  orgName: "",
   actorUser: "",
   actorName: "",
   sourceSystem: ""
@@ -112,6 +116,8 @@ async function loadDocuments() {
   const payload = await parseJsonEnvelope(response);
   documents.value = payload.documents ?? payload.result ?? [];
   tenantId.value = payload.tenantId ?? "";
+  orgId.value = payload.orgId ?? "";
+  orgName.value = payload.orgName ?? "";
   actorUser.value = payload.actorUser ?? "";
   actorName.value = payload.actorName ?? "";
   pageNumber.value = payload.pageNumber ?? payload.currentPage ?? pageNumber.value;
@@ -379,6 +385,8 @@ function openContextDialog() {
   const current = getCustomAccessContext() || {};
   contextForm.value = {
     tenantId: current.tenantId || "",
+    orgId: current.orgId || "",
+    orgName: current.orgName || "",
     actorUser: current.actorUser || "",
     actorName: current.actorName || "",
     sourceSystem: current.sourceSystem || ""
@@ -390,6 +398,8 @@ async function saveContext() {
   // 保存上下文后主动重置筛选与高亮，避免把旧租户条件残留到新身份下。
   saveCustomAccessContext({
     tenantId: contextForm.value.tenantId.trim(),
+    orgId: contextForm.value.orgId.trim(),
+    orgName: contextForm.value.orgName.trim(),
     actorUser: contextForm.value.actorUser.trim(),
     actorName: contextForm.value.actorName.trim(),
     sourceSystem: contextForm.value.sourceSystem.trim()
@@ -439,6 +449,7 @@ onMounted(loadLibraryWorkspace);
               <p class="muted-copy">
                 当前租户 <el-tag size="small">{{ tenantId || "未解析" }}</el-tag>，当前用户
                 <el-tag size="small" type="info">{{ actorName || actorUser || "未解析" }}</el-tag>。
+                当前组织 <el-tag size="small" type="success">{{ orgName || orgId || "未解析" }}</el-tag>。
               </p>
             </el-card>
 
@@ -603,6 +614,12 @@ onMounted(loadLibraryWorkspace);
         <el-form label-position="top" :model="contextForm">
           <el-form-item label="租户 ID (Tenant ID)">
             <el-input v-model="contextForm.tenantId" placeholder="使用系统默认值" />
+          </el-form-item>
+          <el-form-item label="组织 ID (Org ID)">
+            <el-input v-model="contextForm.orgId" placeholder="使用系统默认值" />
+          </el-form-item>
+          <el-form-item label="组织名称 (Org Name)">
+            <el-input v-model="contextForm.orgName" placeholder="使用系统默认值" />
           </el-form-item>
           <el-form-item label="当前用户 ID (Actor User)">
             <el-input v-model="contextForm.actorUser" placeholder="使用系统默认值" />

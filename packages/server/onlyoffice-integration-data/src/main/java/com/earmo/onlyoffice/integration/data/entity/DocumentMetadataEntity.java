@@ -33,6 +33,16 @@ public class DocumentMetadataEntity {
   @Column("tenant_id")
   private String tenantId;
 
+  /** 文档所属组织标识。 */
+  @Schema(description = "文档所属组织标识。", example = "org-3301")
+  @Column("org_id")
+  private String orgId;
+
+  /** 文档所属组织名称。 */
+  @Schema(description = "文档所属组织名称。", example = "华东区域公司")
+  @Column("org_name")
+  private String orgName;
+
   /** 文档 owner 用户标识。 */
   @Schema(description = "文档 owner 用户标识。", example = "starter-user")
   @Column("owner_user")

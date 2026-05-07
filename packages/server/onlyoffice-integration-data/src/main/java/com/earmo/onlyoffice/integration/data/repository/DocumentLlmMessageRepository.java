@@ -31,7 +31,18 @@ public class DocumentLlmMessageRepository {
       String actorUser,
       int activeVariantIndex
   ) {
-    Optional<DocumentLlmMessageEntity> entityOptional = findMessageByScope(messageId, documentId, tenantId, actorUser);
+    return updateActiveVariantIndex(messageId, null, documentId, tenantId, actorUser, activeVariantIndex);
+  }
+
+  public int updateActiveVariantIndex(
+      String messageId,
+      String orgId,
+      String documentId,
+      String tenantId,
+      String actorUser,
+      int activeVariantIndex
+  ) {
+    Optional<DocumentLlmMessageEntity> entityOptional = findMessageByScope(messageId, orgId, documentId, tenantId, actorUser);
     if (entityOptional.isEmpty()) {
       return 0;
     }
@@ -47,17 +58,41 @@ public class DocumentLlmMessageRepository {
       String tenantId,
       String actorUser
   ) {
+    return findMessageByScope(messageId, null, documentId, tenantId, actorUser);
+  }
+
+  public Optional<DocumentLlmMessageEntity> findMessageByScope(
+      String messageId,
+      String orgId,
+      String documentId,
+      String tenantId,
+      String actorUser
+  ) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_LLM_MESSAGE_ENTITY.MESSAGE_ID.eq(messageId))
         .and(DOCUMENT_LLM_MESSAGE_ENTITY.DOCUMENT_ID.eq(documentId))
         .and(DOCUMENT_LLM_MESSAGE_ENTITY.TENANT_ID.eq(tenantId))
         .and(DOCUMENT_LLM_MESSAGE_ENTITY.ACTOR_USER.eq(actorUser))
         .limit(1);
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_MESSAGE_ENTITY.ORG_ID.eq(orgId));
+    }
     return Optional.ofNullable(documentLlmMessageMapper.selectOneByQuery(queryWrapper));
   }
 
   public List<DocumentLlmMessageEntity> findMessagesBySessionScope(
       String sessionId,
+      String documentId,
+      String tenantId,
+      String actorUser,
+      int limit
+  ) {
+    return findMessagesBySessionScope(sessionId, null, documentId, tenantId, actorUser, limit);
+  }
+
+  public List<DocumentLlmMessageEntity> findMessagesBySessionScope(
+      String sessionId,
+      String orgId,
       String documentId,
       String tenantId,
       String actorUser,
@@ -70,6 +105,9 @@ public class DocumentLlmMessageRepository {
         .and(DOCUMENT_LLM_MESSAGE_ENTITY.ACTOR_USER.eq(actorUser))
         .orderBy(DOCUMENT_LLM_MESSAGE_ENTITY.CREATED_TIME.asc())
         .limit(limit);
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_MESSAGE_ENTITY.ORG_ID.eq(orgId));
+    }
     return documentLlmMessageMapper.selectListByQuery(queryWrapper);
   }
 }

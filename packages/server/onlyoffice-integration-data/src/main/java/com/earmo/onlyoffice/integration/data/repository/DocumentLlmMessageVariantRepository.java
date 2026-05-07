@@ -30,9 +30,20 @@ public class DocumentLlmMessageVariantRepository {
     documentLlmMessageVariantMapper.update(entity);
   }
 
-  public Optional<DocumentLlmMessageVariantEntity> findByMessageScope(
+  public Optional<DocumentLlmMessageVariantEntity> findVariantByMessageScope(
       String messageId,
       String variantId,
+      String documentId,
+      String tenantId,
+      String actorUser
+  ) {
+    return findVariantByMessageScope(messageId, variantId, null, documentId, tenantId, actorUser);
+  }
+
+  public Optional<DocumentLlmMessageVariantEntity> findVariantByMessageScope(
+      String messageId,
+      String variantId,
+      String orgId,
       String documentId,
       String tenantId,
       String actorUser
@@ -44,11 +55,24 @@ public class DocumentLlmMessageVariantRepository {
         .and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.TENANT_ID.eq(tenantId))
         .and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.ACTOR_USER.eq(actorUser))
         .limit(1);
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.ORG_ID.eq(orgId));
+    }
     return Optional.ofNullable(documentLlmMessageVariantMapper.selectOneByQuery(queryWrapper));
   }
 
   public List<DocumentLlmMessageVariantEntity> findByMessageScope(
       String messageId,
+      String documentId,
+      String tenantId,
+      String actorUser
+  ) {
+    return findByMessageScope(messageId, null, documentId, tenantId, actorUser);
+  }
+
+  public List<DocumentLlmMessageVariantEntity> findByMessageScope(
+      String messageId,
+      String orgId,
       String documentId,
       String tenantId,
       String actorUser
@@ -59,11 +83,24 @@ public class DocumentLlmMessageVariantRepository {
         .and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.TENANT_ID.eq(tenantId))
         .and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.ACTOR_USER.eq(actorUser))
         .orderBy(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.VARIANT_INDEX.asc());
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.ORG_ID.eq(orgId));
+    }
     return documentLlmMessageVariantMapper.selectListByQuery(queryWrapper);
   }
 
   public List<DocumentLlmMessageVariantEntity> findByMessageIdsScope(
       Collection<String> messageIds,
+      String documentId,
+      String tenantId,
+      String actorUser
+  ) {
+    return findByMessageIdsScope(messageIds, null, documentId, tenantId, actorUser);
+  }
+
+  public List<DocumentLlmMessageVariantEntity> findByMessageIdsScope(
+      Collection<String> messageIds,
+      String orgId,
       String documentId,
       String tenantId,
       String actorUser
@@ -78,6 +115,9 @@ public class DocumentLlmMessageVariantRepository {
         .and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.ACTOR_USER.eq(actorUser))
         .orderBy(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.MESSAGE_ID.asc())
         .orderBy(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.VARIANT_INDEX.asc());
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.ORG_ID.eq(orgId));
+    }
     return documentLlmMessageVariantMapper.selectListByQuery(queryWrapper);
   }
 
@@ -90,8 +130,22 @@ public class DocumentLlmMessageVariantRepository {
       String status,
       Instant now
   ) {
+    return createNextVariantForMessageScope(messageId, null, documentId, tenantId, actorUser, status, now);
+  }
+
+  @Transactional
+  public DocumentLlmMessageVariantEntity createNextVariantForMessageScope(
+      String messageId,
+      String orgId,
+      String documentId,
+      String tenantId,
+      String actorUser,
+      String status,
+      Instant now
+  ) {
     DocumentLlmMessageEntity message = documentLlmMessageRepository.findMessageByScope(
             messageId,
+            orgId,
             documentId,
             tenantId,
             actorUser
@@ -100,13 +154,15 @@ public class DocumentLlmMessageVariantRepository {
     int attempts = 0;
     while (attempts < 2) {
       attempts++;
-      int nextVariantIndex = nextVariantIndex(messageId, documentId, tenantId, actorUser);
+      int nextVariantIndex = nextVariantIndex(messageId, orgId, documentId, tenantId, actorUser);
       DocumentLlmMessageVariantEntity entity = new DocumentLlmMessageVariantEntity();
       entity.setVariantId(UUID.randomUUID().toString());
       entity.setMessageId(message.getMessageId());
       entity.setSessionId(message.getSessionId());
       entity.setDocumentId(message.getDocumentId());
       entity.setTenantId(message.getTenantId());
+      entity.setOrgId(message.getOrgId());
+      entity.setOrgName(message.getOrgName());
       entity.setActorUser(message.getActorUser());
       entity.setVariantIndex(nextVariantIndex);
       entity.setStatus(status);
@@ -125,6 +181,10 @@ public class DocumentLlmMessageVariantRepository {
   }
 
   private int nextVariantIndex(String messageId, String documentId, String tenantId, String actorUser) {
+    return nextVariantIndex(messageId, null, documentId, tenantId, actorUser);
+  }
+
+  private int nextVariantIndex(String messageId, String orgId, String documentId, String tenantId, String actorUser) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .select(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.VARIANT_INDEX)
         .where(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.MESSAGE_ID.eq(messageId))
@@ -133,6 +193,9 @@ public class DocumentLlmMessageVariantRepository {
         .and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.ACTOR_USER.eq(actorUser))
         .orderBy(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.VARIANT_INDEX.desc())
         .limit(1);
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_MESSAGE_VARIANT_ENTITY.ORG_ID.eq(orgId));
+    }
     DocumentLlmMessageVariantEntity latest = documentLlmMessageVariantMapper.selectOneByQuery(queryWrapper);
     return latest == null || latest.getVariantIndex() == null ? 0 : latest.getVariantIndex() + 1;
   }

@@ -44,7 +44,7 @@ class DocumentStorageServiceTest {
         StorageKeyFactory keyFactory = new StorageKeyFactory();
 
         DocumentMetadataService metadataService = mock(DocumentMetadataService.class);
-        DocumentMetadataEntity entity = entity("sample", "sample.docx", "native/native/sample.docx", "docx", "word");
+        DocumentMetadataEntity entity = entity("sample", "sample.docx", "000001/native/sample.docx", "docx", "word");
         when(metadataService.findDocument("sample")).thenReturn(Optional.empty());
         when(metadataService.createDocument(
                 anyString(),
@@ -93,8 +93,8 @@ class DocumentStorageServiceTest {
         StoredDocument document = service.ensureBootstrapDocument("sample");
 
         assertEquals("sample.docx", document.title());
-        assertEquals("native/native/sample.docx", document.storageKey());
-        assertTrue(document.path().toString().replace("\\", "/").endsWith("native/native/sample.docx"));
+        assertEquals("000001/native/sample.docx", document.storageKey());
+        assertTrue(document.path().toString().replace("\\", "/").endsWith("000001/native/sample.docx"));
         assertTrue(java.nio.file.Files.exists(document.path()));
     }
 
@@ -746,7 +746,9 @@ class DocumentStorageServiceTest {
     ) {
         DocumentMetadataEntity entity = new DocumentMetadataEntity();
         entity.setDocumentId(documentId);
-        entity.setTenantId(storageKey.startsWith("tenant-a/") ? "tenant-a" : "native");
+        entity.setTenantId(storageKey.startsWith("tenant-a/") ? "tenant-a" : "000001");
+        entity.setOrgId(storageKey.startsWith("tenant-a/") ? null : "default-org");
+        entity.setOrgName(storageKey.startsWith("tenant-a/") ? null : "默认组织");
         entity.setOwnerUser("starter-user");
         entity.setSourceSystem("native");
         entity.setTitle(title);

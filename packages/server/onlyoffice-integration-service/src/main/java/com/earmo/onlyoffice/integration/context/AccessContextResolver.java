@@ -54,7 +54,7 @@ public class AccessContextResolver {
             if (onlyofficeIntegrationProperties.getAccessContext().isAllowDefaultContext()) {
                 return partialContext.fillMissing(resolveDefaultContext(providersByName, request));
             }
-            throw new MissingAccessContextException("缺少用户上下文：tenantId、sourceSystem、externalUserId 或 displayName 不完整。");
+            throw new MissingAccessContextException("缺少用户上下文：tenantId、sourceSystem、externalUserId、displayName 或 orgId 不完整。");
         }
 
         if (!onlyofficeIntegrationProperties.getAccessContext().isRequireExplicitContext()

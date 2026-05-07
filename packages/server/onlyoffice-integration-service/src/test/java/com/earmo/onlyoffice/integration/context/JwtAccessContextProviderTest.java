@@ -27,6 +27,8 @@ class JwtAccessContextProviderTest {
                 "sourceSystem", "crm",
                 "externalUserId", "jwt-user",
                 "displayName", "JWT Alice",
+                "orgId", "org-jwt",
+                "orgName", "JWT 组织",
                 "permissions", Map.of("edit", false, "download", true)
         )));
 
@@ -37,6 +39,8 @@ class JwtAccessContextProviderTest {
         assertEquals("crm", accessContext.get().sourceSystem());
         assertEquals("jwt-user", accessContext.get().externalUserId());
         assertEquals("JWT Alice", accessContext.get().displayName());
+        assertEquals("org-jwt", accessContext.get().orgId());
+        assertEquals("JWT 组织", accessContext.get().orgName());
         assertEquals(false, accessContext.get().permission("edit", true));
         assertEquals(true, accessContext.get().permission("download", false));
         assertEquals("jwt", accessContext.get().source());

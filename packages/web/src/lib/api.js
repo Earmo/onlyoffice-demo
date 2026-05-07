@@ -39,7 +39,9 @@ function normalizeHeaderValue(value, fallbackValue) {
  */
 function resolveDefaultAccessContextHeaders() {
   return {
-    "X-Tenant-Id": normalizeHeaderValue(import.meta.env.VITE_ACCESS_CONTEXT_TENANT_ID, "native"),
+    "X-Tenant-Id": normalizeHeaderValue(import.meta.env.VITE_ACCESS_CONTEXT_TENANT_ID, "000001"),
+    "X-Org-Id": normalizeHeaderValue(import.meta.env.VITE_ACCESS_CONTEXT_ORG_ID, "default-org"),
+    "X-Org-Name": normalizeHeaderValue(import.meta.env.VITE_ACCESS_CONTEXT_ORG_NAME, "Default Organization"),
     "X-Source-System": normalizeHeaderValue(import.meta.env.VITE_ACCESS_CONTEXT_SOURCE_SYSTEM, "native"),
     "X-External-User-Id": normalizeHeaderValue(import.meta.env.VITE_ACCESS_CONTEXT_EXTERNAL_USER_ID, "starter-user"),
     "X-User-Display-Name": normalizeHeaderValue(import.meta.env.VITE_ACCESS_CONTEXT_DISPLAY_NAME, "Default User"),
@@ -60,7 +62,7 @@ const CUSTOM_CONTEXT_STORAGE_KEY = "MOCK_ACCESS_CONTEXT";
 /**
  * 获取本地调试覆盖的访问上下文。
  *
- * @returns {{tenantId?: string, actorUser?: string, actorName?: string, sourceSystem?: string} | null}
+ * @returns {{tenantId?: string, orgId?: string, orgName?: string, actorUser?: string, actorName?: string, sourceSystem?: string} | null}
  *   用户在工作台里保存过的上下文；不存在或 JSON 损坏时返回 null。
  */
 export function getCustomAccessContext() {
@@ -75,7 +77,7 @@ export function getCustomAccessContext() {
 /**
  * 保存或清空本地调试访问上下文。
  *
- * @param {{tenantId?: string, actorUser?: string, actorName?: string, sourceSystem?: string} | null} context
+ * @param {{tenantId?: string, orgId?: string, orgName?: string, actorUser?: string, actorName?: string, sourceSystem?: string} | null} context
  *   传入对象时写入 localStorage，传入 null/undefined 时清空。
  */
 export function saveCustomAccessContext(context) {
@@ -103,6 +105,12 @@ export function createAccessContextHeaders(headers = {}) {
 
   if (customContext.tenantId) {
     mergedHeaders["X-Tenant-Id"] = normalizeHeaderValue(customContext.tenantId, mergedHeaders["X-Tenant-Id"]);
+  }
+  if (customContext.orgId) {
+    mergedHeaders["X-Org-Id"] = normalizeHeaderValue(customContext.orgId, mergedHeaders["X-Org-Id"]);
+  }
+  if (customContext.orgName) {
+    mergedHeaders["X-Org-Name"] = normalizeHeaderValue(customContext.orgName, mergedHeaders["X-Org-Name"]);
   }
   if (customContext.sourceSystem) {
     mergedHeaders["X-Source-System"] = normalizeHeaderValue(customContext.sourceSystem, mergedHeaders["X-Source-System"]);

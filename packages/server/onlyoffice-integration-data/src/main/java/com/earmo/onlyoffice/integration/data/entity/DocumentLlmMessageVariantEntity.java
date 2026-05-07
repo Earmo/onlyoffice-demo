@@ -38,6 +38,14 @@ public class DocumentLlmMessageVariantEntity {
   @Column("tenant_id")
   private String tenantId;
 
+  /** variant 所属组织标识。 */
+  @Column("org_id")
+  private String orgId;
+
+  /** variant 所属组织名称。 */
+  @Column("org_name")
+  private String orgName;
+
   /** variant 所属用户标识。 */
   @Column("actor_user")
   private String actorUser;

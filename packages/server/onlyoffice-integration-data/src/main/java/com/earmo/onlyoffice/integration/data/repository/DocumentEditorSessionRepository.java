@@ -30,11 +30,26 @@ public class DocumentEditorSessionRepository {
       String documentId,
       String actorUser
   ) {
+    return findActiveByDocumentIdAndActorUser(null, null, documentId, actorUser);
+  }
+
+  public Optional<DocumentEditorSessionEntity> findActiveByDocumentIdAndActorUser(
+      String tenantId,
+      String orgId,
+      String documentId,
+      String actorUser
+  ) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_EDITOR_SESSION_ENTITY.DOCUMENT_ID.eq(documentId))
         .and(DOCUMENT_EDITOR_SESSION_ENTITY.ACTOR_USER.eq(actorUser))
-        .and(DOCUMENT_EDITOR_SESSION_ENTITY.CLOSED_TIME.isNull())
-        .limit(1);
+        .and(DOCUMENT_EDITOR_SESSION_ENTITY.CLOSED_TIME.isNull());
+    if (tenantId != null) {
+      queryWrapper.and(DOCUMENT_EDITOR_SESSION_ENTITY.TENANT_ID.eq(tenantId));
+    }
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_EDITOR_SESSION_ENTITY.ORG_ID.eq(orgId));
+    }
+    queryWrapper.limit(1);
     return Optional.ofNullable(documentEditorSessionMapper.selectOneByQuery(queryWrapper));
   }
 
@@ -47,14 +62,33 @@ public class DocumentEditorSessionRepository {
   }
 
   public long countActiveByDocumentId(String documentId, Instant activeSince) {
+    return countActiveByDocumentId(null, null, documentId, activeSince);
+  }
+
+  public long countActiveByDocumentId(String tenantId, String orgId, String documentId, Instant activeSince) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_EDITOR_SESSION_ENTITY.DOCUMENT_ID.eq(documentId))
         .and(DOCUMENT_EDITOR_SESSION_ENTITY.CLOSED_TIME.isNull())
         .and(DOCUMENT_EDITOR_SESSION_ENTITY.LAST_SEEN_TIME.ge(activeSince));
+    if (tenantId != null) {
+      queryWrapper.and(DOCUMENT_EDITOR_SESSION_ENTITY.TENANT_ID.eq(tenantId));
+    }
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_EDITOR_SESSION_ENTITY.ORG_ID.eq(orgId));
+    }
     return documentEditorSessionMapper.selectCountByQuery(queryWrapper);
   }
 
   public Map<String, Integer> countActiveByDocumentIds(List<String> documentIds, Instant activeSince) {
+    return countActiveByDocumentIds(null, null, documentIds, activeSince);
+  }
+
+  public Map<String, Integer> countActiveByDocumentIds(
+      String tenantId,
+      String orgId,
+      List<String> documentIds,
+      Instant activeSince
+  ) {
     if (documentIds == null || documentIds.isEmpty()) {
       return Map.of();
     }
@@ -63,6 +97,12 @@ public class DocumentEditorSessionRepository {
         .where(DOCUMENT_EDITOR_SESSION_ENTITY.DOCUMENT_ID.in(documentIds))
         .and(DOCUMENT_EDITOR_SESSION_ENTITY.CLOSED_TIME.isNull())
         .and(DOCUMENT_EDITOR_SESSION_ENTITY.LAST_SEEN_TIME.ge(activeSince));
+    if (tenantId != null) {
+      queryWrapper.and(DOCUMENT_EDITOR_SESSION_ENTITY.TENANT_ID.eq(tenantId));
+    }
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_EDITOR_SESSION_ENTITY.ORG_ID.eq(orgId));
+    }
 
     Map<String, Integer> counts = new LinkedHashMap<>();
     for (DocumentEditorSessionEntity entity : documentEditorSessionMapper.selectListByQuery(queryWrapper)) {

@@ -40,7 +40,13 @@ public class LlmConversationAccessGuard {
      * @return 当前用户有权访问的会话实体
      */
     public DocumentLlmSessionEntity requireSession(String documentId, String sessionId, AccessContext accessContext) {
-        return documentLlmSessionRepository.findSessionByScope(sessionId, documentId, accessContext.tenantId(), accessContext.actorUser())
+        return documentLlmSessionRepository.findSessionByScope(
+                        sessionId,
+                        accessContext.orgId(),
+                        documentId,
+                        accessContext.tenantId(),
+                        accessContext.actorUser()
+                )
                 .orElseGet(() -> {
                     if (documentLlmSessionRepository.findBySessionId(sessionId).isPresent()) {
                         throw new LlmApiException(LlmErrorCodes.LLM_SESSION_FORBIDDEN, HttpStatus.FORBIDDEN, "当前用户无权访问该对话会话。");
@@ -61,7 +67,13 @@ public class LlmConversationAccessGuard {
      * @return 当前用户有权访问的请求实体
      */
     public DocumentLlmRequestEntity requireRequest(String documentId, String requestId, AccessContext accessContext) {
-        return documentLlmRequestRepository.findRequestByScope(requestId, documentId, accessContext.tenantId(), accessContext.actorUser())
+        return documentLlmRequestRepository.findRequestByScope(
+                        requestId,
+                        accessContext.orgId(),
+                        documentId,
+                        accessContext.tenantId(),
+                        accessContext.actorUser()
+                )
                 .orElseGet(() -> {
                     if (documentLlmRequestRepository.findByRequestId(requestId).isPresent()) {
                         throw new LlmApiException(LlmErrorCodes.LLM_SESSION_FORBIDDEN, HttpStatus.FORBIDDEN, "当前用户无权访问该对话请求。");
@@ -87,6 +99,7 @@ public class LlmConversationAccessGuard {
     ) {
         DocumentLlmMessageEntity message = documentLlmMessageRepository.findMessageByScope(
                         messageId,
+                        accessContext.orgId(),
                         documentId,
                         accessContext.tenantId(),
                         accessContext.actorUser()

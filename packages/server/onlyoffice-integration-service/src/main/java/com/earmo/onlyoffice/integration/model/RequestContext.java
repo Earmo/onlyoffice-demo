@@ -17,8 +17,16 @@ public record RequestContext(
         @Schema(description = "外部用户标识。", example = "starter-user")
         String externalUser,
         @Schema(description = "用户展示名。", example = "默认用户")
-        String displayName
+        String displayName,
+        @Schema(description = "组织 ID。", example = "org-3301")
+        String orgId,
+        @Schema(description = "组织名称。", example = "华东区域公司")
+        String orgName
 ) {
+
+    public RequestContext(String tenantId, String sourceSystem, String externalUser, String displayName) {
+        this(tenantId, sourceSystem, externalUser, displayName, null, null);
+    }
 
     public String ownerUser() {
         return externalUser;

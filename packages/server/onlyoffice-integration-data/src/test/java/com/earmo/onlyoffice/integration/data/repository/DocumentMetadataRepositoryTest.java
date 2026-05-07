@@ -50,6 +50,33 @@ class DocumentMetadataRepositoryTest {
   }
 
   @Test
+  void shouldFilterVisibleDocumentsByTenantAndOrg() {
+    documentMetadataMapper.insert(entity("org-1-doc", "tenant-org", "org-a", "external-org-1", "draft", Instant.parse("2026-03-19T08:00:00Z")));
+    documentMetadataMapper.insert(entity("org-2-doc", "tenant-org", "org-b", "external-org-2", "saved", Instant.parse("2026-03-19T09:00:00Z")));
+
+    List<DocumentMetadataEntity> documents = documentMetadataRepository.listByTenant("tenant-org", "org-a");
+
+    assertEquals(1, documents.size());
+    assertEquals("org-1-doc", documents.get(0).getDocumentId());
+  }
+
+  @Test
+  void shouldFindExternalDocumentWithinTenantAndOrgOnly() {
+    documentMetadataMapper.insert(entity("org-source-1", "tenant-source", "org-a", "same-external", "draft", Instant.parse("2026-03-19T08:00:00Z")));
+    documentMetadataMapper.insert(entity("org-source-2", "tenant-source", "org-b", "same-external", "draft", Instant.parse("2026-03-19T09:00:00Z")));
+
+    Optional<DocumentMetadataEntity> document = documentMetadataRepository.findBySourceSystemAndExternalDocument(
+        "tenant-source",
+        "org-b",
+        "native",
+        "same-external"
+    );
+
+    assertTrue(document.isPresent());
+    assertEquals("org-source-2", document.get().getDocumentId());
+  }
+
+  @Test
   void shouldFindBySourceSystemAndExternalDocument() {
     documentMetadataMapper.insert(entity("repo-9", "tenant-b", "external-9", "draft", Instant.parse("2026-03-19T10:00:00Z")));
 
@@ -69,9 +96,22 @@ class DocumentMetadataRepositoryTest {
       String status,
       Instant updatedTime
   ) {
+    return entity(documentId, tenantId, "org-default", externalDocumentId, status, updatedTime);
+  }
+
+  private DocumentMetadataEntity entity(
+      String documentId,
+      String tenantId,
+      String orgId,
+      String externalDocumentId,
+      String status,
+      Instant updatedTime
+  ) {
     DocumentMetadataEntity entity = new DocumentMetadataEntity();
     entity.setDocumentId(documentId);
     entity.setTenantId(tenantId);
+    entity.setOrgId(orgId);
+    entity.setOrgName(orgId + "-name");
     entity.setOwnerUser("user-a");
     entity.setSourceSystem("native");
     entity.setExternalDocumentId(externalDocumentId);

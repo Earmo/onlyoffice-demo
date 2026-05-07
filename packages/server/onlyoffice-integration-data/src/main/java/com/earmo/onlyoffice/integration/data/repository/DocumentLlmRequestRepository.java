@@ -29,12 +29,25 @@ public class DocumentLlmRequestRepository {
       String tenantId,
       String actorUser
   ) {
+    return findRequestByScope(requestId, null, documentId, tenantId, actorUser);
+  }
+
+  public Optional<DocumentLlmRequestEntity> findRequestByScope(
+      String requestId,
+      String orgId,
+      String documentId,
+      String tenantId,
+      String actorUser
+  ) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_LLM_REQUEST_ENTITY.REQUEST_ID.eq(requestId))
         .and(DOCUMENT_LLM_REQUEST_ENTITY.DOCUMENT_ID.eq(documentId))
         .and(DOCUMENT_LLM_REQUEST_ENTITY.TENANT_ID.eq(tenantId))
         .and(DOCUMENT_LLM_REQUEST_ENTITY.ACTOR_USER.eq(actorUser))
         .limit(1);
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_REQUEST_ENTITY.ORG_ID.eq(orgId));
+    }
     return Optional.ofNullable(documentLlmRequestMapper.selectOneByQuery(queryWrapper));
   }
 
@@ -51,13 +64,25 @@ public class DocumentLlmRequestRepository {
       String actorUser,
       String cancelSource
   ) {
-    Optional<DocumentLlmRequestEntity> entityOptional = Optional.ofNullable(documentLlmRequestMapper.selectOneByQuery(
-        QueryWrapper.create()
-            .where(DOCUMENT_LLM_REQUEST_ENTITY.REQUEST_ID.eq(requestId))
-            .and(DOCUMENT_LLM_REQUEST_ENTITY.TENANT_ID.eq(tenantId))
-            .and(DOCUMENT_LLM_REQUEST_ENTITY.ACTOR_USER.eq(actorUser))
-            .limit(1)
-    ));
+    return markCancelRequested(requestId, null, tenantId, actorUser, cancelSource);
+  }
+
+  public int markCancelRequested(
+      String requestId,
+      String orgId,
+      String tenantId,
+      String actorUser,
+      String cancelSource
+  ) {
+    QueryWrapper queryWrapper = QueryWrapper.create()
+        .where(DOCUMENT_LLM_REQUEST_ENTITY.REQUEST_ID.eq(requestId))
+        .and(DOCUMENT_LLM_REQUEST_ENTITY.TENANT_ID.eq(tenantId))
+        .and(DOCUMENT_LLM_REQUEST_ENTITY.ACTOR_USER.eq(actorUser));
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_REQUEST_ENTITY.ORG_ID.eq(orgId));
+    }
+    queryWrapper.limit(1);
+    Optional<DocumentLlmRequestEntity> entityOptional = Optional.ofNullable(documentLlmRequestMapper.selectOneByQuery(queryWrapper));
     if (entityOptional.isEmpty()) {
       return 0;
     }

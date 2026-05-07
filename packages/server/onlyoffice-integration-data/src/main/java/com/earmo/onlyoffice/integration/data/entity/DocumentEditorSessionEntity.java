@@ -38,6 +38,16 @@ public class DocumentEditorSessionEntity {
   @Column("tenant_id")
   private String tenantId;
 
+  /** 会话所属组织标识。 */
+  @Schema(description = "会话所属组织标识。", example = "org-3301")
+  @Column("org_id")
+  private String orgId;
+
+  /** 会话所属组织名称。 */
+  @Schema(description = "会话所属组织名称。", example = "华东区域公司")
+  @Column("org_name")
+  private String orgName;
+
   /** 当前编辑用户标识。 */
   @Schema(description = "当前编辑用户标识。", example = "starter-user")
   @Column("actor_user")

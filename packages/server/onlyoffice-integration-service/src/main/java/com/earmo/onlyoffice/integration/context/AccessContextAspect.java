@@ -34,9 +34,10 @@ public class AccessContextAspect {
         AccessContext accessContext = accessContextResolver.resolve(request);
         CurrentAccessContext.set(accessContext);
         log.info(
-                "access context bound: method={}, tenantId={}, actorUser={}",
+                "access context bound: method={}, tenantId={}, orgId={}, actorUser={}",
                 joinPoint.getSignature().toShortString(),
                 accessContext.tenantId(),
+                accessContext.currentOrgId(),
                 accessContext.actorUser()
         );
         try {

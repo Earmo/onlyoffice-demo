@@ -76,6 +76,32 @@ public final class CurrentAccessContext {
   }
 
   /**
+   * 获取当前访问者组织 ID。
+   *
+   * @return 当前访问上下文中的组织 ID。
+   */
+  public static String orgId() {
+    return getRequired().currentOrgId();
+  }
+
+  /**
+   * 获取当前访问者组织名称。
+   *
+   * @return 当前访问上下文中的组织名称。
+   */
+  public static String orgName() {
+    return getRequired().currentOrgName();
+  }
+
+  public static String currentOrgId() {
+    return orgId();
+  }
+
+  public static String currentOrgName() {
+    return orgName();
+  }
+
+  /**
    * 获取当前操作者权限映射。
    *
    * @return 当前访问上下文中的权限映射。

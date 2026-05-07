@@ -3,6 +3,8 @@ package com.earmo.onlyoffice.integration.service.impl;
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
 import com.earmo.onlyoffice.integration.data.mapper.DocumentMetadataMapper;
 import com.earmo.onlyoffice.integration.data.repository.DocumentMetadataRepository;
+import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
@@ -74,6 +76,14 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
         if (STATUS_ARCHIVED.equals(entity.getStatus())) {
             throw new DocumentNotFoundException(documentId);
         }
+        AccessContext currentContext = CurrentAccessContext.get();
+        if (currentContext != null && StringUtils.hasText(currentContext.orgId())) {
+            String currentOrgId = currentContext.orgId().trim();
+            String documentOrgId = entity.getOrgId() == null ? null : entity.getOrgId().trim();
+            if (!currentOrgId.equals(documentOrgId)) {
+                throw new DocumentNotFoundException(documentId);
+            }
+        }
         return entity;
     }
 
@@ -86,7 +96,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
     @Override
     @Transactional(readOnly = true)
     public List<DocumentMetadataEntity> listDocuments(String tenantId) {
-        return documentMetadataRepository.listVisibleByTenant(tenantId, null, null, null, null, "desc");
+        return documentMetadataRepository.listVisibleByTenant(tenantId, currentOrgId(), null, null, null, null, "desc");
     }
 
     /**
@@ -116,6 +126,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
     ) {
         return documentMetadataRepository.listVisibleByTenant(
                 tenantId,
+                currentOrgId(),
                 query,
                 status,
                 sourceSystem,
@@ -151,6 +162,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
     ) {
         return documentMetadataRepository.paginateVisibleByTenant(
                 tenantId,
+                currentOrgId(),
                 query,
                 status,
                 sourceSystem,
@@ -171,7 +183,7 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
     @Override
     @Transactional(readOnly = true)
     public List<DocumentMetadataEntity> listRecentDocuments(String tenantId, int limit) {
-        return documentMetadataRepository.listRecentVisibleByTenant(tenantId, limit);
+        return documentMetadataRepository.listRecentVisibleByTenant(tenantId, currentOrgId(), limit);
     }
 
     /**
@@ -239,6 +251,8 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
     ) {
         if (StringUtils.hasText(externalDocumentId)) {
             Optional<DocumentMetadataEntity> mapped = documentMetadataRepository.findBySourceSystemAndExternalDocument(
+                    requestContext.tenantId(),
+                    requestContext.orgId(),
                     requestContext.sourceSystem(),
                     externalDocumentId
             );
@@ -500,6 +514,8 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
         DocumentMetadataEntity entity = new DocumentMetadataEntity();
         entity.setDocumentId(documentId);
         entity.setTenantId(requestContext.tenantId());
+        entity.setOrgId(requestContext.orgId());
+        entity.setOrgName(requestContext.orgName());
         entity.setOwnerUser(ownerUser);
         entity.setSourceSystem(requestContext.sourceSystem());
         entity.setExternalDocumentId(externalDocumentId);
@@ -597,6 +613,14 @@ public class DocumentMetadataServiceImpl implements DocumentMetadataService {
      */
     private void insertEntity(DocumentMetadataEntity entity) {
         documentMetadataMapper.insert(entity);
+    }
+
+    private String currentOrgId() {
+        AccessContext currentContext = CurrentAccessContext.get();
+        if (currentContext == null || !StringUtils.hasText(currentContext.orgId())) {
+            return null;
+        }
+        return currentContext.orgId().trim();
     }
 
     /**

@@ -96,8 +96,12 @@ describe("DocumentLibraryPage", () => {
     expect(requestUrl(1).pathname).toBe("/api/documents/list/recent");
     expect(requestBody(1).limit).toBe(3);
     expect(fetch.mock.calls[1][1]?.headers?.["Content-Type"]).toBe("application/json");
+    expect(fetch.mock.calls[0][1]?.headers?.["X-Tenant-Id"]).toBe("000001");
+    expect(fetch.mock.calls[0][1]?.headers?.["X-Org-Id"]).toBe("default-org");
+    expect(fetch.mock.calls[0][1]?.headers?.["X-Org-Name"]).toBe("Default Organization");
     expect(fetch.mock.calls[0][1]?.headers?.["X-External-User-Id"]).toBe("starter-user");
     expect(wrapper.text()).toContain("tenant-a");
+    expect(wrapper.text()).toContain("Org A");
     expect(wrapper.text()).toContain("Alice");
     expect(wrapper.text()).toContain("项目路线图.docx");
     expect(wrapper.text()).toContain("最近编辑文档.docx");
@@ -269,6 +273,8 @@ describe("DocumentLibraryPage", () => {
       .mockResolvedValueOnce(jsonResponse(recentPayload()))
       .mockResolvedValueOnce(jsonResponse(listPayload({
         tenantId: "my-tenant",
+        orgId: "org-custom",
+        orgName: "Custom Org",
         actorUser: "custom-user",
         actorName: "John Doe",
         documents: [documentSummary({ documentId: "doc-new", title: "自定义身份查看到的文档.docx" })]
@@ -282,6 +288,8 @@ describe("DocumentLibraryPage", () => {
     await flushPromises();
 
     wrapper.vm.contextForm.tenantId = "my-tenant";
+    wrapper.vm.contextForm.orgId = "org-custom";
+    wrapper.vm.contextForm.orgName = "Custom Org";
     wrapper.vm.contextForm.actorUser = "custom-user";
     wrapper.vm.contextForm.actorName = "John Doe";
     wrapper.vm.contextForm.sourceSystem = "admin-sys";
@@ -292,6 +300,8 @@ describe("DocumentLibraryPage", () => {
     expect(fetch).toHaveBeenCalledTimes(4);
     expect(requestUrl(2).pathname).toBe("/api/documents/page");
     expect(fetch.mock.calls[2][1]?.headers?.["X-Tenant-Id"]).toBe("my-tenant");
+    expect(fetch.mock.calls[2][1]?.headers?.["X-Org-Id"]).toBe("org-custom");
+    expect(fetch.mock.calls[2][1]?.headers?.["X-Org-Name"]).toBe("Custom Org");
     expect(fetch.mock.calls[2][1]?.headers?.["X-External-User-Id"]).toBe("custom-user");
     expect(fetch.mock.calls[2][1]?.headers?.["X-User-Display-Name"]).toBe("John Doe");
     expect(fetch.mock.calls[2][1]?.headers?.["X-Source-System"]).toBe("admin-sys");
@@ -319,6 +329,8 @@ function listPayload({
 } = {}) {
   return {
     tenantId: "tenant-a",
+    orgId: "org-a",
+    orgName: "Org A",
     actorUser: "user-a",
     actorName: "Alice",
     pageNumber,
@@ -339,6 +351,8 @@ function documentSummary(overrides = {}) {
     title: "项目路线图.docx",
     status: "saved",
     tenantId: "tenant-a",
+    orgId: "org-a",
+    orgName: "Org A",
     ownerUser: "owner-a",
     actorUser: "user-a",
     actorName: "Alice",

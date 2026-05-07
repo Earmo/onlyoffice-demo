@@ -104,7 +104,7 @@ class AccessContextErrorHandlingTest {
 
     @Test
     void shouldAllowPartialContextWhenDefaultFillIsEnabled() throws Exception {
-        when(documentMetadataService.listDocumentPage("native", null, null, null, null, "desc", 1, 10))
+        when(documentMetadataService.listDocumentPage("000001", null, null, null, null, "desc", 1, 10))
                 .thenReturn(new Page<>(List.of(), 1, 10, 0));
         when(documentStatusService.countActiveEditingSessions(List.of())).thenReturn(java.util.Map.of());
 

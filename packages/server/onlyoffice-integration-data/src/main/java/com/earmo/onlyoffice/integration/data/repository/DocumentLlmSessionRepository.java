@@ -31,6 +31,16 @@ public class DocumentLlmSessionRepository {
       String tenantId,
       String actorUser
   ) {
+    return findSessionByScope(sessionId, null, documentId, tenantId, actorUser);
+  }
+
+  public Optional<DocumentLlmSessionEntity> findSessionByScope(
+      String sessionId,
+      String orgId,
+      String documentId,
+      String tenantId,
+      String actorUser
+  ) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_LLM_SESSION_ENTITY.SESSION_ID.eq(sessionId))
         .and(DOCUMENT_LLM_SESSION_ENTITY.DOCUMENT_ID.eq(documentId))
@@ -38,6 +48,9 @@ public class DocumentLlmSessionRepository {
         .and(DOCUMENT_LLM_SESSION_ENTITY.ACTOR_USER.eq(actorUser))
         .and(DOCUMENT_LLM_SESSION_ENTITY.ARCHIVED_TIME.isNull())
         .limit(1);
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_SESSION_ENTITY.ORG_ID.eq(orgId));
+    }
     return Optional.ofNullable(documentLlmSessionMapper.selectOneByQuery(queryWrapper));
   }
 
@@ -54,6 +67,16 @@ public class DocumentLlmSessionRepository {
       String actorUser,
       int limit
   ) {
+    return findSessionsByScope(documentId, null, tenantId, actorUser, limit);
+  }
+
+  public List<DocumentLlmSessionEntity> findSessionsByScope(
+      String documentId,
+      String orgId,
+      String tenantId,
+      String actorUser,
+      int limit
+  ) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_LLM_SESSION_ENTITY.DOCUMENT_ID.eq(documentId))
         .and(DOCUMENT_LLM_SESSION_ENTITY.TENANT_ID.eq(tenantId))
@@ -62,6 +85,9 @@ public class DocumentLlmSessionRepository {
         .orderBy(DOCUMENT_LLM_SESSION_ENTITY.LAST_CONVERSATION_TIME.desc())
         .orderBy(DOCUMENT_LLM_SESSION_ENTITY.CREATED_TIME.desc())
         .limit(limit);
+    if (orgId != null) {
+      queryWrapper.and(DOCUMENT_LLM_SESSION_ENTITY.ORG_ID.eq(orgId));
+    }
     return documentLlmSessionMapper.selectListByQuery(queryWrapper);
   }
 
@@ -72,7 +98,18 @@ public class DocumentLlmSessionRepository {
       int keep,
       Instant archivedTime
   ) {
-    List<DocumentLlmSessionEntity> sessions = findSessionsByScope(documentId, tenantId, actorUser, keep + 100);
+    archiveOverflowSessions(documentId, null, tenantId, actorUser, keep, archivedTime);
+  }
+
+  public void archiveOverflowSessions(
+      String documentId,
+      String orgId,
+      String tenantId,
+      String actorUser,
+      int keep,
+      Instant archivedTime
+  ) {
+    List<DocumentLlmSessionEntity> sessions = findSessionsByScope(documentId, orgId, tenantId, actorUser, keep + 100);
     if (sessions.size() <= keep) {
       return;
     }

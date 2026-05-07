@@ -215,7 +215,13 @@ public class LlmConversationService {
   }
 
   public List<LlmSessionSummaryResponse> listSessions(String documentId, AccessContext accessContext) {
-    return documentLlmSessionRepository.findSessionsByScope(documentId, accessContext.tenantId(), accessContext.actorUser(), 50)
+    return documentLlmSessionRepository.findSessionsByScope(
+            documentId,
+            accessContext.orgId(),
+            accessContext.tenantId(),
+            accessContext.actorUser(),
+            50
+        )
         .stream()
         .map(this::toSessionSummary)
         .toList();
@@ -243,6 +249,8 @@ public class LlmConversationService {
     entity.setSessionId(UUID.randomUUID().toString());
     entity.setDocumentId(request.documentId());
     entity.setTenantId(accessContext.tenantId());
+    entity.setOrgId(accessContext.orgId());
+    entity.setOrgName(accessContext.orgName());
     entity.setActorUser(accessContext.actorUser());
     entity.setTitle(request.title() == null || request.title().isBlank() ? "新会话 " + SESSION_TITLE_FORMATTER.format(now) : request.title().trim());
     entity.setLastSnapshotText("");
@@ -253,6 +261,7 @@ public class LlmConversationService {
     documentLlmSessionRepository.insert(entity);
     documentLlmSessionRepository.archiveOverflowSessions(
         request.documentId(),
+        accessContext.orgId(),
         accessContext.tenantId(),
         accessContext.actorUser(),
         llmProperties.getSession().getMaxSessionsPerDocument(),
@@ -343,6 +352,7 @@ public class LlmConversationService {
     DocumentLlmMessageEntity assistantMessage = accessGuard.requireAssistantMessage(documentId, request.sessionId(), messageId, accessContext);
     List<DocumentLlmMessageVariantEntity> variants = documentLlmMessageVariantRepository.findByMessageScope(
         messageId,
+        accessContext.orgId(),
         documentId,
         accessContext.tenantId(),
         accessContext.actorUser()
@@ -470,6 +480,7 @@ public class LlmConversationService {
     DocumentLlmRequestEntity requestEntity = accessGuard.requireRequest(documentId, requestId, accessContext);
     DocumentLlmMessageEntity assistantMessage = documentLlmMessageRepository.findMessageByScope(
             requestEntity.getAssistantMessageId(),
+            accessContext.orgId(),
             documentId,
             accessContext.tenantId(),
             accessContext.actorUser()
@@ -506,6 +517,7 @@ public class LlmConversationService {
     }
     DocumentLlmMessageEntity assistantMessage = documentLlmMessageRepository.findMessageByScope(
             requestEntity.getAssistantMessageId(),
+            accessContext.orgId(),
             documentId,
             accessContext.tenantId(),
             accessContext.actorUser()
@@ -533,6 +545,7 @@ public class LlmConversationService {
     boolean regenerate = request.regenerateAssistantMessageId() != null && !request.regenerateAssistantMessageId().isBlank();
     boolean firstConversationTurn = documentLlmMessageRepository.findMessagesBySessionScope(
         session.getSessionId(),
+        accessContext.orgId(),
         session.getDocumentId(),
         accessContext.tenantId(),
         accessContext.actorUser(),
@@ -552,6 +565,7 @@ public class LlmConversationService {
       previousActiveVariantIndex = assistantMessage.getActiveVariantIndex();
       List<DocumentLlmMessageEntity> messages = documentLlmMessageRepository.findMessagesBySessionScope(
           session.getSessionId(),
+          accessContext.orgId(),
           session.getDocumentId(),
           accessContext.tenantId(),
           accessContext.actorUser(),
@@ -574,6 +588,8 @@ public class LlmConversationService {
       userMessage.setSessionId(session.getSessionId());
       userMessage.setDocumentId(request.documentId());
       userMessage.setTenantId(accessContext.tenantId());
+      userMessage.setOrgId(accessContext.orgId());
+      userMessage.setOrgName(accessContext.orgName());
       userMessage.setActorUser(accessContext.actorUser());
       userMessage.setRole("user");
       userMessage.setMessageText(request.question());
@@ -591,6 +607,8 @@ public class LlmConversationService {
       assistantMessage.setSessionId(session.getSessionId());
       assistantMessage.setDocumentId(request.documentId());
       assistantMessage.setTenantId(accessContext.tenantId());
+      assistantMessage.setOrgId(accessContext.orgId());
+      assistantMessage.setOrgName(accessContext.orgName());
       assistantMessage.setActorUser(accessContext.actorUser());
       assistantMessage.setRole("assistant");
       assistantMessage.setSnapshotText(request.selectionSnapshot().text());
@@ -601,12 +619,13 @@ public class LlmConversationService {
       assistantMessage.setStatus(STATUS_PENDING);
       assistantMessage.setActiveVariantIndex(0);
       assistantMessage.setProviderMetaJson(writeJson(initialProviderMeta(runtimeSelection)));
-      assistantMessage.setCreatedTime(now);
+      assistantMessage.setCreatedTime(now.plusMillis(1));
       documentLlmMessageRepository.insert(assistantMessage);
     }
 
     DocumentLlmMessageVariantEntity variant = documentLlmMessageVariantRepository.createNextVariantForMessageScope(
         assistantMessage.getMessageId(),
+        accessContext.orgId(),
         request.documentId(),
         accessContext.tenantId(),
         accessContext.actorUser(),
@@ -630,6 +649,8 @@ public class LlmConversationService {
     requestEntity.setSessionId(session.getSessionId());
     requestEntity.setDocumentId(request.documentId());
     requestEntity.setTenantId(accessContext.tenantId());
+    requestEntity.setOrgId(accessContext.orgId());
+    requestEntity.setOrgName(accessContext.orgName());
     requestEntity.setActorUser(accessContext.actorUser());
     requestEntity.setUserMessageId(userMessage.getMessageId());
     requestEntity.setAssistantMessageId(assistantMessage.getMessageId());
@@ -661,6 +682,7 @@ public class LlmConversationService {
 
     List<DocumentLlmMessageEntity> history = new ArrayList<>(documentLlmMessageRepository.findMessagesBySessionScope(
         session.getSessionId(),
+        accessContext.orgId(),
         session.getDocumentId(),
         accessContext.tenantId(),
         accessContext.actorUser(),
@@ -1097,6 +1119,7 @@ public class LlmConversationService {
   ) {
     documentLlmRequestRepository.markCancelRequested(
         requestEntity.getRequestId(),
+        accessContext.orgId(),
         accessContext.tenantId(),
         accessContext.actorUser(),
         cancelSource
@@ -1107,9 +1130,10 @@ public class LlmConversationService {
     requestEntity.setFinishedTime(Instant.now());
     documentLlmRequestRepository.update(requestEntity);
 
-    DocumentLlmMessageVariantEntity variant = documentLlmMessageVariantRepository.findByMessageScope(
+    DocumentLlmMessageVariantEntity variant = documentLlmMessageVariantRepository.findVariantByMessageScope(
             assistantMessage.getMessageId(),
             requestEntity.getVariantId(),
+            accessContext.orgId(),
             requestEntity.getDocumentId(),
             accessContext.tenantId(),
             accessContext.actorUser()
@@ -1211,6 +1235,7 @@ public class LlmConversationService {
   private boolean shouldAutoActivateCompletedVariant(PreparedRequest preparedRequest) {
     DocumentLlmMessageEntity currentAssistantMessage = documentLlmMessageRepository.findMessageByScope(
             preparedRequest.assistantMessage().getMessageId(),
+            preparedRequest.accessContext().orgId(),
             preparedRequest.assistantMessage().getDocumentId(),
             preparedRequest.assistantMessage().getTenantId(),
             preparedRequest.assistantMessage().getActorUser()
@@ -1243,6 +1268,7 @@ public class LlmConversationService {
     }
     return documentLlmMessageVariantRepository.findByMessageScope(
             assistantMessage.getMessageId(),
+            assistantMessage.getOrgId(),
             assistantMessage.getDocumentId(),
             assistantMessage.getTenantId(),
             assistantMessage.getActorUser()
@@ -1367,6 +1393,7 @@ public class LlmConversationService {
         .toList();
     return documentLlmMessageVariantRepository.findByMessageIdsScope(
             assistantMessageIds,
+            accessContext.orgId(),
             documentId,
             accessContext.tenantId(),
             accessContext.actorUser()
@@ -1806,9 +1833,10 @@ public class LlmConversationService {
       DocumentLlmRequestEntity requestEntity,
       DocumentLlmMessageEntity assistantMessage
   ) {
-    DocumentLlmMessageVariantEntity variant = requestEntity.getVariantId() == null ? null : documentLlmMessageVariantRepository.findByMessageScope(
+    DocumentLlmMessageVariantEntity variant = requestEntity.getVariantId() == null ? null : documentLlmMessageVariantRepository.findVariantByMessageScope(
             assistantMessage.getMessageId(),
             requestEntity.getVariantId(),
+            assistantMessage.getOrgId(),
             requestEntity.getDocumentId(),
             requestEntity.getTenantId(),
             requestEntity.getActorUser()

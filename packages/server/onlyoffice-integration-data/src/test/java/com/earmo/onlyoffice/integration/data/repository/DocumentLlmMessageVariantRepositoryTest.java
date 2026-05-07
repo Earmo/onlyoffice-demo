@@ -33,14 +33,14 @@ class DocumentLlmMessageVariantRepositoryTest {
     DocumentLlmMessageVariantEntity variant = variant("variant-scope-1", message, 0, "已完成版本");
     documentLlmMessageVariantRepository.insert(variant);
 
-    Optional<DocumentLlmMessageVariantEntity> sameScope = documentLlmMessageVariantRepository.findByMessageScope(
+    Optional<DocumentLlmMessageVariantEntity> sameScope = documentLlmMessageVariantRepository.findVariantByMessageScope(
         "assistant-scope-1",
         "variant-scope-1",
         "doc-scope-1",
         "tenant-scope-1",
         "user-scope-1"
     );
-    Optional<DocumentLlmMessageVariantEntity> otherActor = documentLlmMessageVariantRepository.findByMessageScope(
+    Optional<DocumentLlmMessageVariantEntity> otherActor = documentLlmMessageVariantRepository.findVariantByMessageScope(
         "assistant-scope-1",
         "variant-scope-1",
         "doc-scope-1",

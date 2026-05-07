@@ -18,6 +18,8 @@ class HeaderAccessContextProviderTest {
         request.addHeader("X-Source-System", "erp");
         request.addHeader("X-External-User-Id", "user-a");
         request.addHeader("X-User-Display-Name", "Alice");
+        request.addHeader("X-Org-Id", "org-a");
+        request.addHeader("X-Org-Name", "组织 A");
         request.addHeader("X-Access-Permissions", "edit=false,download=true,comment=true,print=false");
 
         Optional<AccessContext> accessContext = provider.resolve(request);
@@ -27,6 +29,8 @@ class HeaderAccessContextProviderTest {
         assertEquals("erp", accessContext.get().sourceSystem());
         assertEquals("user-a", accessContext.get().externalUserId());
         assertEquals("Alice", accessContext.get().displayName());
+        assertEquals("org-a", accessContext.get().orgId());
+        assertEquals("组织 A", accessContext.get().orgName());
         assertFalse(accessContext.get().permission("edit", true));
         assertTrue(accessContext.get().permission("download", false));
         assertEquals("header", accessContext.get().source());

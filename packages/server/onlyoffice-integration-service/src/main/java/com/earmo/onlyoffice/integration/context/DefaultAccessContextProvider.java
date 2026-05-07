@@ -37,6 +37,8 @@ public class DefaultAccessContextProvider implements AccessContextProvider {
                 onlyofficeIntegrationProperties.getDefaultSourceSystem(),
                 onlyofficeIntegrationProperties.getDefaultUser(),
                 onlyofficeIntegrationProperties.getDefaultUserName(),
+                onlyofficeIntegrationProperties.getDefaultOrgId(),
+                onlyofficeIntegrationProperties.getDefaultOrgName(),
                 Map.of(),
                 name()
         ));

@@ -75,6 +75,8 @@ public class JwtAccessContextProvider implements AccessContextProvider {
                 readClaimAsString(claims, mappings.getSourceSystem()),
                 readClaimAsString(claims, mappings.getExternalUserId()),
                 readClaimAsString(claims, mappings.getDisplayName()),
+                readClaimAsString(claims, mappings.getOrgId()),
+                readClaimAsString(claims, mappings.getOrgName()),
                 parsePermissions(claims.get(mappings.getPermissions())),
                 name()
         );
