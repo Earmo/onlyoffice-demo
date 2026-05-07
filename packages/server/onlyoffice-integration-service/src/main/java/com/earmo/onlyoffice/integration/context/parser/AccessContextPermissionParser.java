@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.context;
+package com.earmo.onlyoffice.integration.context.parser;
 
 import com.earmo.onlyoffice.integration.exception.InvalidAccessContextException;
 import org.springframework.util.StringUtils;
@@ -13,12 +13,12 @@ import java.util.Map;
  * 之所以不直接上更重的权限 DSL，是因为 Phase 3 只需要把少量和 editor config 直接相关的能力透传进来，
  * 先把语义跑通，再为后续扩展保留空间。
  */
-final class AccessContextPermissionParser {
+public final class AccessContextPermissionParser {
 
     private AccessContextPermissionParser() {
     }
 
-    static Map<String, Boolean> parse(String rawValue) {
+    public static Map<String, Boolean> parse(String rawValue) {
         if (!StringUtils.hasText(rawValue)) {
             return Map.of();
         }

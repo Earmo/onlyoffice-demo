@@ -1,6 +1,7 @@
 package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.context.provider.impl.HeaderAccessContextProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 

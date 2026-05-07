@@ -1,4 +1,4 @@
-package com.earmo.onlyoffice.integration.context;
+package com.earmo.onlyoffice.integration.context.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

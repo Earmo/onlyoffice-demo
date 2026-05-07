@@ -1,5 +1,8 @@
-package com.earmo.onlyoffice.integration.context;
+package com.earmo.onlyoffice.integration.context.aspect;
 
+import com.earmo.onlyoffice.integration.context.AccessContext;
+import com.earmo.onlyoffice.integration.context.AccessContextResolver;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
 import com.earmo.onlyoffice.integration.exception.AccessContextException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +29,8 @@ public class AccessContextAspect {
     @Around("""
             within(@org.springframework.web.bind.annotation.RestController *)
             && within(com.earmo.onlyoffice.integration.controller..*)
-            && !@annotation(com.earmo.onlyoffice.integration.context.SkipAccessContext)
-            && !@within(com.earmo.onlyoffice.integration.context.SkipAccessContext)
+            && !@annotation(com.earmo.onlyoffice.integration.context.annotation.SkipAccessContext)
+            && !@within(com.earmo.onlyoffice.integration.context.annotation.SkipAccessContext)
             """)
     public Object bindAccessContext(ProceedingJoinPoint joinPoint) throws Throwable {
         HttpServletRequest request = currentRequest();

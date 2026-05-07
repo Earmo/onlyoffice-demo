@@ -1,6 +1,9 @@
 package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.context.provider.AccessContextProvider;
+import com.earmo.onlyoffice.integration.context.provider.impl.DefaultAccessContextProvider;
+import com.earmo.onlyoffice.integration.context.provider.impl.HeaderAccessContextProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;

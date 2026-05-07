@@ -1,6 +1,6 @@
 package com.earmo.onlyoffice.integration.controller;
 
-import com.earmo.onlyoffice.integration.context.SkipAccessContext;
+import com.earmo.onlyoffice.integration.context.annotation.SkipAccessContext;
 import com.earmo.onlyoffice.integration.model.*;
 import com.earmo.onlyoffice.integration.model.request.*;
 import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;

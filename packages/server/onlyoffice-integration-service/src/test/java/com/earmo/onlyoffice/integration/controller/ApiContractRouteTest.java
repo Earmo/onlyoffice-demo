@@ -1,6 +1,6 @@
 package com.earmo.onlyoffice.integration.controller;
 
-import com.earmo.onlyoffice.integration.context.SkipAccessContext;
+import com.earmo.onlyoffice.integration.context.annotation.SkipAccessContext;
 import com.earmo.onlyoffice.integration.model.request.OnlyofficeCallbackRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.PostMapping;

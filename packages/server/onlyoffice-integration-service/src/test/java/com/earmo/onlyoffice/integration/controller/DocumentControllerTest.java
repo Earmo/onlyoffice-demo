@@ -1,7 +1,7 @@
 package com.earmo.onlyoffice.integration.controller;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.context.AccessContextAspect;
+import com.earmo.onlyoffice.integration.context.aspect.AccessContextAspect;
 import com.earmo.onlyoffice.integration.context.AccessContextResolver;
 import com.earmo.onlyoffice.integration.data.mapper.*;
 import com.earmo.onlyoffice.integration.exception.DocumentNotFoundException;

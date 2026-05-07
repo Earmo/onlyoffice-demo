@@ -1,5 +1,6 @@
-package com.earmo.onlyoffice.integration.context;
+package com.earmo.onlyoffice.integration.context.provider;
 
+import com.earmo.onlyoffice.integration.context.AccessContext;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.Optional;

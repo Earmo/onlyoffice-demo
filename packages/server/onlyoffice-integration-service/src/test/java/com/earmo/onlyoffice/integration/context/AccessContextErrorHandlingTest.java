@@ -2,6 +2,9 @@ package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.common.exception.GlobalExceptionHandler;
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.context.provider.impl.DefaultAccessContextProvider;
+import com.earmo.onlyoffice.integration.context.provider.impl.HeaderAccessContextProvider;
+import com.earmo.onlyoffice.integration.context.provider.impl.JwtAccessContextProvider;
 import com.earmo.onlyoffice.integration.controller.DocumentApiController;
 import com.earmo.onlyoffice.integration.service.AccessAuditService;
 import com.earmo.onlyoffice.integration.service.DocumentMetadataService;
