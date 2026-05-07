@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 数据迁移"
+  short_description: "数据模块、Entity、Repository、Flyway、审计、会话和 LLM 表规则"
+  default_prompt: "按 ONLYOFFICE 数据与迁移规则处理当前任务。"

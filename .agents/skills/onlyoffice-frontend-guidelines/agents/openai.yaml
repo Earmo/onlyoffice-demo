@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 前端规范"
+  short_description: "前端目录职责、Vue 编码、UI 交互、API 封装、桥接、测试和构建"
+  default_prompt: "按 ONLYOFFICE 前端详细规范处理当前任务。"

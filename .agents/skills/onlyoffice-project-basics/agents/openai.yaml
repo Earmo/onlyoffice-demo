@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 项目基础"
+  short_description: "项目定位、模块结构、根命令、文档导航、命名和搜索工具规则"
+  default_prompt: "按 ONLYOFFICE 项目基础规则处理当前任务。"

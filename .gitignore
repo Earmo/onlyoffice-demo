@@ -48,7 +48,7 @@ packages/server/storage/
 .windsurf/
 .codebuddy/
 .qwen/
-agents/
+
 get-shit-done/
 
 **/rebel.xml

@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 前端工作台"
+  short_description: "Vue 文档列表、预览、编辑页、编辑器桥接、AI 工作台和测试规则"
+  default_prompt: "按 ONLYOFFICE 前端工作台规则处理当前任务。"
