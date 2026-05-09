@@ -114,6 +114,74 @@ describe("onlyofficeBridge", () => {
     bridge.dispose();
   });
 
+  it("应将 selectTextOnPage 请求发送至插件窗口并在 textLocated 响应后 resolve", async () => {
+    const pluginWindow = { postMessage: vi.fn() };
+
+    const bridge = createOnlyofficeBridge({
+      getEditor: () => null,
+      getIframe: () => ({ contentWindow: { postMessage: vi.fn() } }),
+      requestTimeoutMs: 1000
+    });
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        channel: "onlyoffice-ai-bridge",
+        type: ONLYOFFICE_AI_BRIDGE_EVENTS.ready,
+        capability: "plugin"
+      },
+      source: pluginWindow
+    }));
+    await bridge.waitForReady();
+
+    const locatePromise = bridge.selectTextOnPage({
+      pageIndex: 2,
+      text: "目标段落",
+      occurrence: 1,
+      matchCase: true
+    });
+    await Promise.resolve();
+
+    expect(pluginWindow.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "onlyoffice-ai-bridge",
+        type: ONLYOFFICE_AI_BRIDGE_EVENTS.locateText,
+        payload: {
+          pageIndex: 2,
+          text: "目标段落",
+          occurrence: 1,
+          matchCase: true
+        }
+      }),
+      "*"
+    );
+
+    const sentMessage = pluginWindow.postMessage.mock.calls.find(
+      (call) => call[0].type === ONLYOFFICE_AI_BRIDGE_EVENTS.locateText
+    )[0];
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {
+        channel: "onlyoffice-ai-bridge",
+        type: ONLYOFFICE_AI_BRIDGE_EVENTS.textLocated,
+        requestId: sentMessage.requestId,
+        payload: {
+          pageIndex: 2,
+          occurrence: 1,
+          totalMatches: 3,
+          pageScoped: false
+        }
+      },
+      source: pluginWindow
+    }));
+
+    await expect(locatePromise).resolves.toEqual({
+      pageIndex: 2,
+      occurrence: 1,
+      totalMatches: 3,
+      pageScoped: false
+    });
+    bridge.dispose();
+  });
+
   it("insertHtml 在插件返回 error 时应 reject 并透传错误信息", async () => {
     const pluginWindow = { postMessage: vi.fn() };
 
@@ -185,6 +253,10 @@ describe("onlyofficeBridge", () => {
     expect(publicPlugin).toBe(distPlugin);
     expect(publicPlugin).toContain(ONLYOFFICE_AI_BRIDGE_EVENTS.insertHtml);
     expect(publicPlugin).toContain(ONLYOFFICE_AI_BRIDGE_EVENTS.htmlInserted);
+    expect(publicPlugin).toContain(ONLYOFFICE_AI_BRIDGE_EVENTS.locateText);
+    expect(publicPlugin).toContain(ONLYOFFICE_AI_BRIDGE_EVENTS.textLocated);
     expect(publicPlugin).toContain("\"PasteHtml\"");
+    expect(publicPlugin).toContain("doc.Search");
+    expect(publicPlugin).toContain("range.Select");
   });
 });

@@ -13,6 +13,8 @@ export const ONLYOFFICE_AI_BRIDGE_EVENTS = {
   outlineRefreshed: "onlyoffice-ai-bridge:outline-refreshed",
   jumpToHeading: "onlyoffice-ai-bridge:jump-to-heading",
   headingJumped: "onlyoffice-ai-bridge:heading-jumped",
+  locateText: "onlyoffice-ai-bridge:locate-text",
+  textLocated: "onlyoffice-ai-bridge:text-located",
   insertHtml: "onlyoffice-ai-bridge:insert-html",
   htmlInserted: "onlyoffice-ai-bridge:html-inserted"
 };
@@ -221,6 +223,20 @@ export function createOnlyofficeBridge({
           paragraphIndex: heading?.paragraphIndex ?? -1
         },
         "定位章节标题"
+      );
+    },
+    async selectTextOnPage(target) {
+      // 指定页码 + 文本的临时选中必须在插件内部执行，避免宿主页跨 iframe 操作编辑器 DOM。
+      await waitForReady();
+      return sendRequest(
+        ONLYOFFICE_AI_BRIDGE_EVENTS.locateText,
+        {
+          pageIndex: Number.isInteger(target?.pageIndex) ? target.pageIndex : -1,
+          text: typeof target?.text === "string" ? target.text : "",
+          occurrence: Number.isInteger(target?.occurrence) ? target.occurrence : 0,
+          matchCase: Boolean(target?.matchCase)
+        },
+        "定位并选中文本"
       );
     },
     async insertHtml(html) {

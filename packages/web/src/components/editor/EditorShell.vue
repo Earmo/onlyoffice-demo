@@ -315,6 +315,27 @@ async function jumpToHeading(heading) {
   }
 }
 
+async function selectTextOnPage(target) {
+  if (!target || !(await waitForBridgeReady())) {
+    return null;
+  }
+
+  bridgeErrorMessage.value = "";
+
+  try {
+    const payload = await onlyofficeBridge.selectTextOnPage(target);
+    activeHeadingId.value = "";
+    activeHeadingNode.value = null;
+    bridgeStatusMessage.value = payload.pageScoped === false
+      ? "已选中匹配文本；当前 DOCX 能力不支持严格页内过滤，页码仅用于辅助定位。"
+      : "已选中指定页面中的匹配文本。";
+    return payload;
+  } catch (error) {
+    bridgeErrorMessage.value = toBridgeErrorMessage(error, "定位并选中文本失败，请检查页码和文本后重试。");
+    return null;
+  }
+}
+
 async function loadEditorConfig() {
   isLoading.value = true;
   errorMessage.value = "";
@@ -877,6 +898,7 @@ defineExpose({
   captureSelectedText,
   refreshOutline,
   jumpToHeading,
+  selectTextOnPage,
   outlineTreeData,
   isRefreshingOutline,
   hasEmptyOutline,

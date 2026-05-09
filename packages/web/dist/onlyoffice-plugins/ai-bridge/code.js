@@ -13,6 +13,8 @@
     outlineRefreshed: "onlyoffice-ai-bridge:outline-refreshed",       // 章节目录回传
     jumpToHeading: "onlyoffice-ai-bridge:jump-to-heading",            // 宿主页请求跳转到指定标题
     headingJumped: "onlyoffice-ai-bridge:heading-jumped",             // 跳转结果回传
+    locateText: "onlyoffice-ai-bridge:locate-text",                   // 宿主页请求定位并临时选中文本
+    textLocated: "onlyoffice-ai-bridge:text-located",                 // 定位选中文本结果回传
     insertHtml: "onlyoffice-ai-bridge:insert-html",                   // 宿主页请求向文档写入 HTML
     htmlInserted: "onlyoffice-ai-bridge:html-inserted"                // 写入结果回传
   };
@@ -389,6 +391,97 @@
   }
 
   /**
+   * 根据页码和文本定位并临时选中匹配内容。
+   * 当前 ONLYOFFICE DOCX API 没有公开页内搜索范围，因此 GoToPage 只作为视口定位辅助；
+   * 真实命中仍来自全文 Search，调用方可通过 pageScoped=false 向用户解释这个限制。
+   */
+  function locateText(requestId, payload) {
+    const pageIndex = Number(payload && payload.pageIndex);
+    const occurrence = Number(payload && payload.occurrence);
+    const text = payload && typeof payload.text === "string" ? payload.text : "";
+
+    window.Asc.scope.locateTextPageIndex = Number.isInteger(pageIndex) ? pageIndex : -1;
+    window.Asc.scope.locateTextOccurrence = Number.isInteger(occurrence) && occurrence >= 0 ? occurrence : 0;
+    window.Asc.scope.locateTextMatchCase = Boolean(payload && payload.matchCase);
+    window.Asc.scope.locateTextText = text;
+
+    window.Asc.plugin.callCommand(function () {
+      const doc = Api.GetDocument();
+      const targetText = String(Asc.scope.locateTextText || "");
+      const targetPageIndex = Number(Asc.scope.locateTextPageIndex);
+      const targetOccurrence = Number(Asc.scope.locateTextOccurrence);
+      const matchCase = Boolean(Asc.scope.locateTextMatchCase);
+
+      if (!targetText.trim()) {
+        return {
+          ok: false,
+          message: "请输入需要定位的文本。"
+        };
+      }
+
+      if (Number.isInteger(targetPageIndex) && targetPageIndex >= 0 && typeof doc.GoToPage === "function") {
+        doc.GoToPage(targetPageIndex);
+      }
+
+      if (typeof doc.Search !== "function") {
+        return {
+          ok: false,
+          message: "当前文档类型或 ONLYOFFICE 版本不支持文本搜索。"
+        };
+      }
+
+      const ranges = doc.Search(targetText, matchCase) || [];
+      if (!Array.isArray(ranges) || ranges.length === 0) {
+        return {
+          ok: false,
+          message: "未在文档中找到指定文本。"
+        };
+      }
+
+      if (targetOccurrence >= ranges.length) {
+        return {
+          ok: false,
+          message: "指定文本存在，但 occurrence 超出命中数量。"
+        };
+      }
+
+      const range = ranges[targetOccurrence];
+      if (!range || typeof range.Select !== "function") {
+        return {
+          ok: false,
+          message: "已找到文本，但当前 ONLYOFFICE 版本无法选中该范围。"
+        };
+      }
+
+      const selected = range.Select();
+      return {
+        ok: selected === true || selected === undefined,
+        pageIndex: targetPageIndex,
+        occurrence: targetOccurrence,
+        totalMatches: ranges.length,
+        pageScoped: false,
+        message: selected === false ? "已找到文本，但选中操作未成功。" : ""
+      };
+    }, false, false, function (result) {
+      if (!result || result.ok !== true) {
+        postError(result?.message || "定位并选中文本失败。", requestId);
+        return;
+      }
+
+      postMessage(
+        EVENTS.textLocated,
+        {
+          pageIndex: result.pageIndex,
+          occurrence: result.occurrence,
+          totalMatches: result.totalMatches,
+          pageScoped: result.pageScoped
+        },
+        requestId
+      );
+    });
+  }
+
+  /**
    * 将 HTML 字符串粘贴到文档当前光标位置。
    * ONLYOFFICE PasteHtml 语义：有选区时替换选区，无选区时在光标处插入。
    *
@@ -417,7 +510,7 @@
 
   /**
    * 处理宿主页发来的 postMessage 请求。
-   * 插件只暴露非常克制的四类命令：抓选区、刷目录、跳标题、写入 HTML。
+   * 插件只暴露非常克制的几类命令：抓选区、刷目录、跳标题、定位文本、写入 HTML。
    * 真正的 AI 调用仍放在宿主页或后端，不放进插件里。
    */
   function handleHostMessage(event) {
@@ -436,6 +529,9 @@
           break;
         case EVENTS.jumpToHeading:
           jumpToHeading(message.requestId, message.payload || {});
+          break;
+        case EVENTS.locateText:
+          locateText(message.requestId, message.payload || {});
           break;
         case EVENTS.insertHtml:
           insertHtmlAtCursor(message.requestId, message.payload || {});
