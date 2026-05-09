@@ -9,6 +9,7 @@ const bridgeMocks = vi.hoisted(() => ({
   captureSelectedText: vi.fn(),
   refreshOutline: vi.fn(),
   jumpToHeading: vi.fn(),
+  selectTextOnPage: vi.fn(),
   insertHtml: vi.fn(),
   dispose: vi.fn()
 }));
@@ -48,7 +49,7 @@ vi.mock("../components/editor/EditorAiWorkbench.vue", () => ({
   default: {
     name: "EditorAiWorkbenchStub",
     props: ["documentTitle", "runtimeContext", "loading", "closing"],
-    emits: ["capture-selection", "refresh-outline", "jump-to-heading", "insert-image", "insert-html"],
+    emits: ["capture-selection", "refresh-outline", "jump-to-heading", "select-text-on-page", "insert-image", "insert-html"],
     template: `
       <div class="ai-workbench-stub">
         <p class="workbench-title">{{ documentTitle }}</p>
@@ -58,6 +59,7 @@ vi.mock("../components/editor/EditorAiWorkbench.vue", () => ({
         <button class="emit-capture" @click="$emit('capture-selection')">capture</button>
         <button class="emit-refresh" @click="$emit('refresh-outline')">refresh</button>
         <button class="emit-jump" @click="$emit('jump-to-heading', { id: 'heading-1', text: '一、项目背景', paragraphIndex: 3 })">jump</button>
+        <button class="emit-select-text" @click="$emit('select-text-on-page', { pageIndex: 2, text: '目标段落', occurrence: 0, matchCase: false })">select text</button>
         <button class="emit-insert-html" @click="$emit('insert-html', { html: '<p>hello</p>' })">insert html</button>
       </div>
     `
@@ -185,6 +187,7 @@ describe("EditorShell", () => {
     bridgeMocks.captureSelectedText.mockReset();
     bridgeMocks.refreshOutline.mockReset();
     bridgeMocks.jumpToHeading.mockReset();
+    bridgeMocks.selectTextOnPage.mockReset();
     bridgeMocks.insertHtml.mockReset();
     bridgeMocks.dispose.mockReset();
     bridgeMocks.createOnlyofficeBridge.mockReset();
@@ -199,12 +202,14 @@ describe("EditorShell", () => {
       emptyOutline: false
     });
     bridgeMocks.jumpToHeading.mockResolvedValue({ id: "heading-1", paragraphIndex: 3 });
+    bridgeMocks.selectTextOnPage.mockResolvedValue({ pageIndex: 2, occurrence: 0, totalMatches: 1, pageScoped: false });
     bridgeMocks.createOnlyofficeBridge.mockImplementation(() => ({
       capability: "plugin",
       waitForReady: bridgeMocks.waitForReady,
       captureSelectedText: bridgeMocks.captureSelectedText,
       refreshOutline: bridgeMocks.refreshOutline,
       jumpToHeading: bridgeMocks.jumpToHeading,
+      selectTextOnPage: bridgeMocks.selectTextOnPage,
       insertHtml: bridgeMocks.insertHtml,
       dispose: bridgeMocks.dispose
     }));
@@ -282,6 +287,13 @@ describe("EditorShell", () => {
     expect(bridgeMocks.jumpToHeading).toHaveBeenCalledWith(
       expect.objectContaining({ id: "heading-1", paragraphIndex: 3 })
     );
+
+    await wrapper.find(".emit-select-text").trigger("click");
+    await flushPromises();
+    expect(bridgeMocks.selectTextOnPage).toHaveBeenCalledWith(
+      expect.objectContaining({ pageIndex: 2, text: "目标段落", occurrence: 0 })
+    );
+    expect(bridgeMocks.captureSelectedText).toHaveBeenCalledTimes(2);
   });
 
   describe("handleInsertHtml", () => {

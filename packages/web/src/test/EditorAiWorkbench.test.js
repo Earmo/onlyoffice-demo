@@ -161,6 +161,36 @@ describe("EditorAiWorkbench", () => {
     expect(wrapper.text()).toContain("llmAvailable=false");
   });
 
+  it("文档工具箱应按页码和文本发起临时选中请求", async () => {
+    const wrapper = mountWorkbench();
+    await flushPromises();
+
+    await wrapper.find(".locate-page-input input").setValue("3");
+    await wrapper.find(".locate-text-input input").setValue("目标段落");
+    await wrapper.find(".toolbox-locate-row .el-button").trigger("click");
+
+    expect(wrapper.emitted("select-text-on-page")?.[0]?.[0]).toEqual({
+      pageIndex: 2,
+      text: "目标段落",
+      occurrence: 0,
+      matchCase: false
+    });
+  });
+
+  it("文档桥接未就绪时应禁用工具箱定位按钮", async () => {
+    const wrapper = mountWorkbench({
+      runtimeContext: runtimeContext({
+        bridgeReady: false
+      })
+    });
+    await flushPromises();
+
+    await wrapper.find(".locate-text-input input").setValue("目标段落");
+
+    expect(wrapper.find(".toolbox-locate-row .el-button").classes()).toContain("is-disabled");
+    expect(wrapper.emitted("select-text-on-page")).toBeUndefined();
+  });
+
   it("应忽略自动建会话 stale response", async () => {
     const firstSession = deferred();
     const secondSession = deferred();
