@@ -72,6 +72,7 @@ describe("DocumentLibraryPage", () => {
   });
 
   it("应按后端分页参数加载文档工作台，并展示当前上下文与高亮文档", async () => {
+    // 首页初始化时会并行拉“主列表 + 最近文档”，这个行为在分页改造后很容易被改坏。
     routeState.query = { highlight: "doc-1" };
     fetch
       .mockResolvedValueOnce(jsonResponse(listPayload({
@@ -87,14 +88,20 @@ describe("DocumentLibraryPage", () => {
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(requestUrl(0).pathname).toBe("/api/documents");
-    expect(requestUrl(0).searchParams.get("pageNumber")).toBe("1");
-    expect(requestUrl(0).searchParams.get("pageSize")).toBe("10");
-    expect(requestUrl(0).searchParams.get("sortDirection")).toBeNull();
-    expect(requestUrl(1).pathname).toBe("/api/documents/recent");
-    expect(requestUrl(1).searchParams.get("limit")).toBe("3");
+    expect(requestUrl(0).pathname).toBe("/api/documents/page");
+    expect(requestBody(0).pageNumber).toBe(1);
+    expect(requestBody(0).pageSize).toBe(10);
+    expect(requestBody(0).sortDirection).toBeUndefined();
+    expect(fetch.mock.calls[0][1]?.headers?.["Content-Type"]).toBe("application/json");
+    expect(requestUrl(1).pathname).toBe("/api/documents/list/recent");
+    expect(requestBody(1).limit).toBe(3);
+    expect(fetch.mock.calls[1][1]?.headers?.["Content-Type"]).toBe("application/json");
+    expect(fetch.mock.calls[0][1]?.headers?.["X-Tenant-Id"]).toBe("000001");
+    expect(fetch.mock.calls[0][1]?.headers?.["X-Org-Id"]).toBe("default-org");
+    expect(fetch.mock.calls[0][1]?.headers?.["X-Org-Name"]).toBe("Default Organization");
     expect(fetch.mock.calls[0][1]?.headers?.["X-External-User-Id"]).toBe("starter-user");
     expect(wrapper.text()).toContain("tenant-a");
+    expect(wrapper.text()).toContain("Org A");
     expect(wrapper.text()).toContain("Alice");
     expect(wrapper.text()).toContain("项目路线图.docx");
     expect(wrapper.text()).toContain("最近编辑文档.docx");
@@ -157,26 +164,25 @@ describe("DocumentLibraryPage", () => {
     }
     await flushPromises();
 
-    // Since ElDialog might transport content using Teleport to document.body,
-    // we should emit 'create' directly from the DocumentCreateActionsStub component instance
-    // or simulate the event on the stub if it can be found.
+    // ElDialog 可能通过 Teleport 把内容挂到 document.body，
+    // 所以这里优先直接从 stub 组件实例发 create 事件，必要时再退回 DOM 点击。
     const createActions = wrapper.findComponent({ name: "DocumentCreateActionsStub" });
     if (createActions.exists()) {
       createActions.vm.$emit("create");
     } else {
-      // Fallback for document.body portaled nodes in some test setups
+      // 某些测试环境下找不到 stub 实例时，兜底点一下 teleport 后的按钮。
       document.querySelector(".create-doc").click();
     }
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledTimes(5);
-    expect(requestUrl(2).pathname).toBe("/api/documents");
+    expect(requestUrl(2).pathname).toBe("/api/documents/create");
     expect(fetch.mock.calls[2][1]?.method).toBe("POST");
     expect(fetch.mock.calls[2][1]?.body).toContain("\"title\":\"新计划.docx\"");
     expect(routerReplace).toHaveBeenCalledWith({ path: "/", query: { highlight: "doc-2" } });
-    expect(requestUrl(3).searchParams.get("pageNumber")).toBe("1");
-    expect(requestUrl(3).searchParams.get("pageSize")).toBe("10");
-    expect(requestUrl(4).pathname).toBe("/api/documents/recent");
+    expect(requestBody(3).pageNumber).toBe(1);
+    expect(requestBody(3).pageSize).toBe(10);
+    expect(requestUrl(4).pathname).toBe("/api/documents/list/recent");
     expect(wrapper.text()).toContain("已创建 新计划.docx，结果已回到工作台列表。");
     expect(wrapper.text()).toContain("新计划.docx|draft");
   });
@@ -212,16 +218,16 @@ describe("DocumentLibraryPage", () => {
     pagination.vm.$emit("current-change", 2);
     await flushPromises();
 
-    expect(requestUrl(2).searchParams.get("pageNumber")).toBe("2");
-    expect(requestUrl(2).searchParams.get("pageSize")).toBe("10");
+    expect(requestBody(2).pageNumber).toBe(2);
+    expect(requestBody(2).pageSize).toBe(10);
     expect(wrapper.text()).toContain("第二页文档.docx|saved");
 
     pagination.vm.$emit("update:page-size", 50);
     pagination.vm.$emit("size-change", 50);
     await flushPromises();
 
-    expect(requestUrl(3).searchParams.get("pageNumber")).toBe("1");
-    expect(requestUrl(3).searchParams.get("pageSize")).toBe("50");
+    expect(requestBody(3).pageNumber).toBe(1);
+    expect(requestBody(3).pageSize).toBe(50);
     expect(wrapper.findComponent({ name: "ElPagination" }).props("total")).toBe(42);
     expect(wrapper.text()).toContain("大页文档.docx|saved");
   });
@@ -251,11 +257,12 @@ describe("DocumentLibraryPage", () => {
 
     expect(window.confirm).toHaveBeenCalledWith("确认删除《待删除文档.docx》吗？删除后它不会再出现在文档列表和最近文档中。");
     expect(fetch).toHaveBeenCalledTimes(5);
-    expect(requestUrl(2).pathname).toBe("/api/documents/doc-1");
-    expect(fetch.mock.calls[2][1]?.method).toBe("DELETE");
+    expect(requestUrl(2).pathname).toBe("/api/documents/delete");
+    expect(fetch.mock.calls[2][1]?.method).toBe("POST");
+    expect(requestBody(2).documentId).toBe("doc-1");
     expect(routerReplace).toHaveBeenCalledWith({ path: "/", query: {} });
-    expect(requestUrl(3).pathname).toBe("/api/documents");
-    expect(requestUrl(4).pathname).toBe("/api/documents/recent");
+    expect(requestUrl(3).pathname).toBe("/api/documents/page");
+    expect(requestUrl(4).pathname).toBe("/api/documents/list/recent");
     expect(wrapper.text()).toContain("已删除 待删除文档.docx。");
     expect(wrapper.text()).toContain("保留文档.docx|saved");
   });
@@ -266,6 +273,8 @@ describe("DocumentLibraryPage", () => {
       .mockResolvedValueOnce(jsonResponse(recentPayload()))
       .mockResolvedValueOnce(jsonResponse(listPayload({
         tenantId: "my-tenant",
+        orgId: "org-custom",
+        orgName: "Custom Org",
         actorUser: "custom-user",
         actorName: "John Doe",
         documents: [documentSummary({ documentId: "doc-new", title: "自定义身份查看到的文档.docx" })]
@@ -279,6 +288,8 @@ describe("DocumentLibraryPage", () => {
     await flushPromises();
 
     wrapper.vm.contextForm.tenantId = "my-tenant";
+    wrapper.vm.contextForm.orgId = "org-custom";
+    wrapper.vm.contextForm.orgName = "Custom Org";
     wrapper.vm.contextForm.actorUser = "custom-user";
     wrapper.vm.contextForm.actorName = "John Doe";
     wrapper.vm.contextForm.sourceSystem = "admin-sys";
@@ -287,8 +298,10 @@ describe("DocumentLibraryPage", () => {
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledTimes(4);
-    expect(requestUrl(2).pathname).toBe("/api/documents");
+    expect(requestUrl(2).pathname).toBe("/api/documents/page");
     expect(fetch.mock.calls[2][1]?.headers?.["X-Tenant-Id"]).toBe("my-tenant");
+    expect(fetch.mock.calls[2][1]?.headers?.["X-Org-Id"]).toBe("org-custom");
+    expect(fetch.mock.calls[2][1]?.headers?.["X-Org-Name"]).toBe("Custom Org");
     expect(fetch.mock.calls[2][1]?.headers?.["X-External-User-Id"]).toBe("custom-user");
     expect(fetch.mock.calls[2][1]?.headers?.["X-User-Display-Name"]).toBe("John Doe");
     expect(fetch.mock.calls[2][1]?.headers?.["X-Source-System"]).toBe("admin-sys");
@@ -299,7 +312,12 @@ describe("DocumentLibraryPage", () => {
 });
 
 function requestUrl(callIndex) {
+  // 统一把 fetch 调用还原成 URL 对象，便于断言 query 参数。
   return new URL(fetch.mock.calls[callIndex][0], "http://example.test");
+}
+
+function requestBody(callIndex) {
+  return JSON.parse(fetch.mock.calls[callIndex][1]?.body || "{}");
 }
 
 function listPayload({
@@ -311,6 +329,8 @@ function listPayload({
 } = {}) {
   return {
     tenantId: "tenant-a",
+    orgId: "org-a",
+    orgName: "Org A",
     actorUser: "user-a",
     actorName: "Alice",
     pageNumber,
@@ -331,6 +351,8 @@ function documentSummary(overrides = {}) {
     title: "项目路线图.docx",
     status: "saved",
     tenantId: "tenant-a",
+    orgId: "org-a",
+    orgName: "Org A",
     ownerUser: "owner-a",
     actorUser: "user-a",
     actorName: "Alice",

@@ -1,7 +1,8 @@
 package com.earmo.onlyoffice.integration.service;
 
-import com.earmo.onlyoffice.integration.model.InsertImageResponse;
+import com.earmo.onlyoffice.integration.model.response.InsertImageResponse;
 import com.earmo.onlyoffice.integration.model.RemoteImageResource;
+
 import java.io.IOException;
 
 /**
@@ -9,7 +10,7 @@ import java.io.IOException;
  */
 public interface OnlyofficeImageService {
 
-  InsertImageResponse buildInsertImageResponse(String documentId, String sourceUrl);
+    InsertImageResponse buildInsertImageResponse(String documentId, String sourceUrl);
 
-  RemoteImageResource proxyRemoteImage(String sourceUrl) throws IOException;
+    RemoteImageResource proxyRemoteImage(String sourceUrl) throws IOException;
 }

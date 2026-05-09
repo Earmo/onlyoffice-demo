@@ -4,7 +4,11 @@ services:
   postgres:
     image: postgres:18.1-alpine
     container_name: onlyoffice-integration-postgres
+    ports:
+      - "15434:5432"
     environment:
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
       POSTGRES_DB: onlyoffice
       POSTGRES_USER: onlyoffice
       POSTGRES_PASSWORD: onlyoffice
@@ -18,23 +22,37 @@ services:
     restart: unless-stopped
 
   onlyoffice:
-    image: onlyoffice/documentserver:9.3
+    # image: onlyoffice/documentserver:9.3
+    image: onlyoffice/documentserver-de:9.3.1.2
     container_name: onlyoffice-integration-docs
+    ports:
+      - "18080:80"
     environment:
+      TZ: Asia/Shanghai
       JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/healthcheck >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/healthcheck > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 40s
+    # ONLYOFFICE "File → Download as" 把 cmd+JWT 放在 URI 中，超过默认 8k 缓冲上限触发 413。
+    # 通过注入 conf.d 配置在 nginx http-level 覆盖缓冲区大小解决该问题。
+    volumes:
+      - ./infra/nginx/onlyoffice-header-buffers.conf:/etc/nginx/conf.d/99-header-buffers.conf:ro
     restart: unless-stopped
+
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: onlyoffice-integration-minio
     command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     environment:
+      # MinIO 镜像不内置完整 zoneinfo，使用 POSIX 写法确保 date 显示 +0800。
+      TZ: CST-8
       MINIO_ROOT_USER: onlyoffice
       MINIO_ROOT_PASSWORD: onlyoffice123
     healthcheck:
@@ -52,8 +70,11 @@ services:
       context: ./packages/server
     container_name: onlyoffice-integration-starter
     environment:
-      ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL: ""
-      ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL: ""
+      TZ: Asia/Shanghai
+      JAVA_TOOL_OPTIONS: -Duser.timezone=Asia/Shanghai
+      ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL: ${ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL:-http://172.18.109.7:12333}
+      ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL:-http://172.18.109.7:12333/api/office}
+      ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_COMMAND_URL: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_COMMAND_URL:-http://onlyoffice:80}
       ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL: http://web:80
       ONLYOFFICE_INTEGRATION_JWT_SECRET: ${JWT_SECRET:-5d8fc72d49e070f303bb963f69902fe626eece4e}
       ONLYOFFICE_INTEGRATION_DEFAULT_TENANT_ID: native
@@ -86,8 +107,10 @@ services:
     build:
       context: ./packages/web
     container_name: onlyoffice-integration-web
+    environment:
+      TZ: Asia/Shanghai
     ports:
-      - "${WEB_PORT:-12333}:80"
+      - "${WEB_BIND_IP:-0.0.0.0}:${WEB_PORT:-12333}:80"
     depends_on:
       server:
         condition: service_started

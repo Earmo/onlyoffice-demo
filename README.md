@@ -67,6 +67,35 @@ SPRING_PROFILES_ACTIVE=dev
 docker compose up -d
 ```
 
+默认 compose 会把 `web` 监听在 `0.0.0.0:${WEB_PORT:-12333}`，并默认把公开入口固定为 `http://172.18.109.7:12333`。如果你需要换成自己的局域网 IP、公网域名或反向代理地址，再覆盖下面两个变量：
+
+```bash
+$env:ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL="https://你的公网域名或IP:端口"
+$env:ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL="https://你的公网域名或IP:端口/api/office"
+$env:WEB_BIND_IP="0.0.0.0"
+docker compose up -d
+```
+
+例如临时切回本机：
+
+```bash
+$env:ONLYOFFICE_INTEGRATION_PUBLIC_BASE_URL="http://localhost:12333"
+$env:ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL="http://localhost:12333/api/office"
+docker compose up -d
+```
+
+当前默认会把 ONLYOFFICE 浏览器侧资源挂在同源前缀：
+
+```text
+http://172.18.109.7:12333/api/office/
+```
+
+也就是说，编辑器里的版本化地址会类似：
+
+```text
+http://172.18.109.7:12333/api/office/9.3.1-xxxx/doc/<documentKey>/c/...
+```
+
 ### Windows 本地断点调试
 
 如果你在 Windows + Docker Desktop 环境下，想让 `postgres`、`minio`、`onlyoffice` 继续跑在容器里，但把后端和前端放到本机 IDE / 终端里启动，推荐使用调试覆盖文件：
@@ -88,12 +117,18 @@ cd packages/server
 mvn -pl onlyoffice-integration-service spring-boot:run -Dspring-boot.run.profiles=windows-debug
 ```
 
-前端本机启动时，把 API 指向本机后端：
+前端本机启动时，默认会通过 Vite 代理把 `/api` 转发到本机后端 `http://localhost:8080`：
 
 ```bash
 cd packages/web
 corepack pnpm install
-$env:VITE_API_BASE_URL="http://localhost:8080"
+corepack pnpm dev
+```
+
+如果你需要改成别的后端地址，再覆盖代理目标即可：
+
+```bash
+$env:VITE_DEV_API_PROXY_TARGET="http://localhost:8081"
 corepack pnpm dev
 ```
 
@@ -122,6 +157,7 @@ corepack pnpm dev
 
 - [最小接入说明](docs/minimal-integration.md)
 - [交付总览](docs/delivery-overview.md)
+- [开发规范](docs/development-guidelines.md)
 - [独立部署说明](docs/standalone-deployment.md)
 - [微服务接入说明](docs/microservice-integration.md)
 - [配置矩阵](docs/configuration-matrix.md)

@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 后端 API"
+  short_description: "Spring Boot API、Controller、异常、AccessContext 和业务日志规则"
+  default_prompt: "按 ONLYOFFICE 后端 API 规则处理当前任务。"

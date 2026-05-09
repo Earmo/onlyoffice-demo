@@ -1,10 +1,11 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
 import com.mybatisflex.core.paginate.Page;
+
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -18,78 +19,80 @@ import java.util.Optional;
  */
 public interface DocumentMetadataService {
 
-  String STATUS_DRAFT = "draft";
-  String STATUS_EDITING = "editing";
-  String STATUS_SAVED = "saved";
-  String STATUS_FAILED = "failed";
-  String STATUS_ARCHIVED = "archived";
+    String STATUS_DRAFT = "draft";
+    String STATUS_EDITING = "editing";
+    String STATUS_SAVED = "saved";
+    String STATUS_FAILED = "failed";
+    String STATUS_ARCHIVED = "archived";
 
-  Optional<DocumentMetadataEntity> findDocument(String documentId);
+    Optional<DocumentMetadataEntity> findDocument(String documentId);
 
-  DocumentMetadataEntity requireDocument(String documentId);
+    DocumentMetadataEntity requireDocument(String documentId);
 
-  DocumentMetadataEntity requireAccessibleDocument(String documentId);
+    DocumentMetadataEntity requireAccessibleDocument(String documentId);
 
-  List<DocumentMetadataEntity> listDocuments(String tenantId);
+    List<DocumentMetadataEntity> listDocuments(String tenantId);
 
-  List<DocumentMetadataEntity> listDocuments(
-      String tenantId,
-      String query,
-      String status,
-      String sourceSystem,
-      String documentType,
-      String sortDirection
-  );
+    List<DocumentMetadataEntity> listDocuments(
+            String tenantId,
+            String query,
+            String status,
+            String sourceSystem,
+            String documentType,
+            String sortDirection
+    );
 
-  Page<DocumentMetadataEntity> listDocumentPage(
-      String tenantId,
-      String query,
-      String status,
-      String sourceSystem,
-      String documentType,
-      String sortDirection,
-      int pageNumber,
-      int pageSize
-  );
+    Page<DocumentMetadataEntity> listDocumentPage(
+            String tenantId,
+            String query,
+            String status,
+            String sourceSystem,
+            String documentType,
+            String sortDirection,
+            int pageNumber,
+            int pageSize
+    );
 
-  List<DocumentMetadataEntity> listRecentDocuments(String tenantId, int limit);
+    List<DocumentMetadataEntity> listRecentDocuments(String tenantId, int limit);
 
-  DocumentMetadataEntity createDocument(
-      String documentId,
-      String title,
-      String fileType,
-      String documentType,
-      String storageKey,
-      RequestContext requestContext,
-      String externalDocumentId
-  );
+    DocumentMetadataEntity createDocument(
+            String documentId,
+            String title,
+            String fileType,
+            String documentType,
+            String storageKey,
+            RequestContext requestContext,
+            String externalDocumentId
+    );
 
-  DocumentMetadataEntity createDocument(
-      String documentId,
-      String title,
-      String fileType,
-      String documentType,
-      String storageKey,
-      RequestContext requestContext,
-      String ownerUser,
-      String externalDocumentId
-  );
+    DocumentMetadataEntity createDocument(
+            String documentId,
+            String title,
+            String fileType,
+            String documentType,
+            String storageKey,
+            RequestContext requestContext,
+            String ownerUser,
+            String externalDocumentId
+    );
 
-  DocumentMetadataEntity archiveDocument(String documentId);
+    DocumentMetadataEntity archiveDocument(String documentId);
 
-  DocumentSaveStatusResponse markOpened(String documentId);
+    DocumentSaveStatusResponse markOpened(String documentId);
 
-  DocumentSaveStatusResponse markEditingStarted(String documentId);
+    DocumentSaveStatusResponse markEditingStarted(String documentId);
 
-  DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus);
+    DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus);
 
-  DocumentSaveStatusResponse markSaved(String documentId, Integer callbackStatus);
+    DocumentSaveStatusResponse markSaved(String documentId, Integer callbackStatus);
 
-  DocumentSaveStatusResponse markFailed(String documentId, Integer callbackStatus, String message);
+    DocumentMetadataEntity updateDocumentFormat(String documentId, String title, String fileType, String documentType);
 
-  DocumentSaveStatusResponse reconcileClosedEditingSession(String documentId);
+    DocumentSaveStatusResponse markFailed(String documentId, Integer callbackStatus, String message);
 
-  DocumentSaveStatusResponse getStatus(String documentId);
+    DocumentSaveStatusResponse reconcileClosedEditingSession(String documentId);
 
-  StoredDocument toStoredDocument(DocumentMetadataEntity entity, Path path, Instant lastModified);
+    DocumentSaveStatusResponse getStatus(String documentId);
+
+    StoredDocument toStoredDocument(DocumentMetadataEntity entity, Path path, Instant lastModified);
 }

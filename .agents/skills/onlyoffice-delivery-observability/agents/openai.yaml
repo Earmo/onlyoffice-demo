@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 交付观测"
+  short_description: "验证命令、Docker Compose、profile、安全配置、日志和 PR 规则"
+  default_prompt: "按 ONLYOFFICE 交付与可观测性规则处理当前任务。"

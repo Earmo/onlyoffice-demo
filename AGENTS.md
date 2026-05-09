@@ -1,47 +1,30 @@
-# Repository Guidelines
+# ONLYOFFICE Integration Skills Index
 
-## Project Structure & Module Organization
+本文件仅作为 `onlyoffice-integration-starter` 项目的 skills 索引。处理本项目文件时，优先读取并遵守本目录 `.agents/skills/*/SKILL.md`；如与上层目录 skills 冲突，以本项目 skills 为准。
 
-当前仓库处于初始化阶段，顶层目录尚无源码、测试或构建配置。新代码请按以下约定落库，避免后续迁移：
+## 项目 Skills
 
-- `src/`：应用源码，按功能拆分，如 `src/editor/`、`src/api/`
-- `tests/`：自动化测试，与功能目录一一对应
-- `public/` 或 `assets/`：静态资源，如图片、示例文档、图标
-- `docs/`：设计说明、接口约定、接入记录
+### 通用
 
-如果引入前端或服务端子项目，优先使用清晰的模块目录，例如 `packages/web/`、`packages/server/`。
+- `.agents/skills/onlyoffice-project-basics/SKILL.md`：项目定位、模块结构、根命令、文档导航、编码命名和搜索工具优先级。
+- `.agents/skills/onlyoffice-delivery-observability/SKILL.md`：构建验证、Docker Compose、profile、本地调试、安全配置、日志规范、提交和 PR。
 
-## Build, Test, and Development Commands
+### 后端
 
-仓库当前未定义构建脚本。引入工具链后，请在根目录统一提供常用命令，并保持文档同步。推荐最少包含：
+- `.agents/skills/onlyoffice-backend-guidelines/SKILL.md`：后端详细规范，覆盖 `packages/server` 的目录职责、编码、AccessContext、数据事务、日志、测试和交付检查。
+- `.agents/skills/onlyoffice-backend-api/SKILL.md`：Spring Boot 后端 API、Controller、ResponseDto、异常处理、AccessContext 和业务日志。
+- `.agents/skills/onlyoffice-data-migrations/SKILL.md`：数据模块、Entity、Mapper、Repository、Flyway migration、文档元数据、编辑会话、审计和 LLM 表。
+- `.agents/skills/onlyoffice-storage-providers/SKILL.md`：local/minio/cos 存储 provider、DocumentStorageService、StorageKeyFactory、对象 key 和存储环境变量。
+- `.agents/skills/onlyoffice-editor-security/SKILL.md`：ONLYOFFICE editor config、callback、JWT、Document Server URL、命令服务、远程资源安全和 nginx header buffer 补丁。
 
-- `npm install`：安装依赖
-- `npm run dev`：启动本地开发环境
-- `npm run build`：生成生产构建
-- `npm test`：运行全部测试
-- `npm run lint`：执行静态检查
+### 前端
 
-如果项目不是 Node.js，请在本文件中替换为实际命令，例如 `mvn test` 或 `pnpm dev`。
+- `.agents/skills/onlyoffice-frontend-guidelines/SKILL.md`：前端详细规范，覆盖 `packages/web` 的目录职责、Vue 编码、UI 交互、API 封装、ONLYOFFICE bridge、测试和构建检查。
+- `.agents/skills/onlyoffice-web-workbench/SKILL.md`：Vue 3 前端工作台、文档列表/预览/编辑页、EditorShell、ONLYOFFICE bridge、AI 工作台、Vite 代理和前端测试。
 
-## Coding Style & Naming Conventions
+## 使用规则
 
-统一使用 UTF-8 和 2 空格缩进。目录名、脚本名使用 `kebab-case`，变量和函数使用 `camelCase`，类型、类、组件使用 `PascalCase`。测试文件建议命名为 `*.test.*` 或 `*.spec.*`。引入格式化或检查工具后，优先使用 `Prettier` + `ESLint`，并通过脚本统一执行。
-
-## Testing Guidelines
-
-测试代码放在 `tests/` 或与源码同级的 `__tests__/` 中。每个新增功能至少补 1 个正常路径测试；修复缺陷时必须补回归测试。提交前至少运行一次完整测试和 lint。
-
-## Commit & Pull Request Guidelines
-
-当前目录没有 Git 历史可参考，建议从一开始采用 Conventional Commits，例如 `feat: add editor bootstrap`、`fix: handle empty document state`。PR 应包含变更摘要、验证方式、关联问题；涉及 UI 时附截图，涉及配置时注明新增环境变量和默认值。
-
-## Security & Configuration Tips
-
-不要提交密钥、令牌或本地 `.env`。示例配置请提供 `.env.example`。第三方服务接入说明统一写入 `docs/`，并记录所需权限、回调地址和最小配置项。
-
-Tool Priority
-
-- 文件名搜索：使用 `fd`
-- 文本内容搜索：使用 `rg` (ripgrep)
-- 代码结构搜索：使用 `sg` (ast-grep)
-- 排除目录：`.git`, `node_modules`, `dist`, `coverage`
+1. 先根据任务类型读取最相关的 skill，不要一次性加载全部 skill。
+2. 修改 `packages/server` 时先读后端详细规范；修改 `packages/web` 时先读前端详细规范。
+3. 任务跨多个主题时，按需读取多个 skill。例如修改编辑器保存链路通常需要同时读取后端规范、后端 API、数据迁移、编辑器安全、前端规范、前端工作台和交付规则。
+4. 面向用户的说明、项目文档和交付记录默认使用简体中文。

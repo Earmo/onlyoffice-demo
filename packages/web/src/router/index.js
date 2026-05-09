@@ -31,5 +31,6 @@ const routes = [
 export default createRouter({
   // 当前项目按浏览器历史模式部署，Nginx 会把前端路由回退到 index.html。
   history: createWebHistory(),
+  // 路由表保持极简，业务状态都放在页面组件内部维护。
   routes
 });

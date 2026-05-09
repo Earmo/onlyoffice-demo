@@ -1,7 +1,19 @@
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   profiles:
     # 测试资源配置显式声明 test，避免把默认 dev profile 带入 SpringBootTest。
     active: test
+  ai:
+    model:
+      # 集成测试用 stub provider，不让 Spring AI starter 绑定真实 chat model。
+      chat: none
 
   datasource:
     url: jdbc:h2:mem:onlyoffice-integration-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
@@ -26,8 +38,48 @@ onlyoffice:
     jwt-secret: onlyoffice-integration-secret-2026-03-09-123456
     default-language: zh
     default-region: zh-CN
-    default-tenant-id: native
+    default-tenant-id: 000001
+    default-org-id: default-org
+    default-org-name: 默认组织
     default-source-system: native
     default-user: starter-user
     default-user-name: 默认用户
     storage-root: ./target/test-storage
+
+llm:
+  enabled: true
+  feature-enabled: true
+  default-provider: stub-provider
+  default-model: fake-gpt
+  timeout-millis: 60000
+  request-sync-wait-millis: 1500
+  default-visible-turns: 6
+  history-budget-tokens: 12000
+  history-token-estimator: chars_div_4
+  allow-heading-context: true
+  default-system-prompt: 你是一个文档协作助手。请基于用户给出的选区和标题上下文，输出可直接写回文档的专业中文建议。
+  provider-response-meta-allowlist:
+    - provider
+    - model
+    - created
+    - reasoningContent
+    - usage.promptTokens
+    - usage.completionTokens
+    - usage.totalTokens
+  providers:
+    stub-provider:
+      enabled: true
+      label: Stub Provider
+      spring-ai-provider: stub-provider
+      base-url: http://127.0.0.1:18089
+      api-key: test-api-key
+      default-model: fake-gpt
+      models:
+        - fake-gpt
+        - fake-gpt-2
+      streaming-enabled: true
+      timeout-millis: 60000
+  session:
+    max-sessions-per-document: 20
+    max-messages-per-session: 200
+    retention-days: 30

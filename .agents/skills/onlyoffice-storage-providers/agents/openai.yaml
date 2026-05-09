@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 存储 Provider"
+  short_description: "local/minio/cos、存储策略、对象 key 和存储配置规则"
+  default_prompt: "按 ONLYOFFICE 存储 Provider 规则处理当前任务。"

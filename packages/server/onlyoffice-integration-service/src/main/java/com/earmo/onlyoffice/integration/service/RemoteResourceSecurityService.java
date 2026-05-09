@@ -1,8 +1,9 @@
 package com.earmo.onlyoffice.integration.service;
 
+import org.springframework.http.MediaType;
+
 import java.io.IOException;
 import java.net.URI;
-import org.springframework.http.MediaType;
 
 /**
  * 远程资源安全服务契约。
@@ -12,12 +13,12 @@ import org.springframework.http.MediaType;
  */
 public interface RemoteResourceSecurityService {
 
-  URI validateRemoteUri(String sourceUrl, String resourceLabel);
+    URI validateRemoteUri(String sourceUrl, String resourceLabel);
 
-  RemoteFetchResult fetch(URI remoteUri, long maxBytes, String resourceLabel) throws IOException;
+    RemoteFetchResult fetch(URI remoteUri, long maxBytes, String resourceLabel) throws IOException;
 
-  MediaType requireImageMediaType(MediaType mediaType);
+    MediaType requireImageMediaType(MediaType mediaType);
 
-  record RemoteFetchResult(byte[] body, MediaType mediaType, String suggestedFilename) {
-  }
+    record RemoteFetchResult(byte[] body, MediaType mediaType, String suggestedFilename) {
+    }
 }

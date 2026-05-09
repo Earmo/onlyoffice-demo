@@ -1,7 +1,11 @@
 package com.earmo.onlyoffice.integration.config;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
@@ -13,14 +17,52 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-  @Override
-  public void addCorsMappings(CorsRegistry registry) {
-    // 示例环境优先追求可运行，直接放开 API 跨域；生产环境应收敛到明确白名单。
-    registry.addMapping("/api/**")
-        .allowedOriginPatterns("*")
-        .allowedMethods("*")
-        .allowedHeaders("*");
-  }
+    private static final long DEFAULT_ASYNC_TIMEOUT_MILLIS = 300000L;
+
+    @Override
+    public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+        // 默认 async 超时要显著大于 LLM provider timeout，避免业务层还没来得及收口失败态，
+        // 容器就先把请求判成 AsyncRequestTimeoutException。
+        configurer.setDefaultTimeout(DEFAULT_ASYNC_TIMEOUT_MILLIS);
+        configurer.setTaskExecutor(runtimeSseTaskExecutor());
+    }
+
+    @Bean("runtimeSseTaskExecutor")
+    public ThreadPoolTaskExecutor runtimeSseTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(16);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("runtime-sse-");
+        executor.initialize();
+        return executor;
+    }
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // 插件源码统一放在 packages/web/public 下。
+        // 开发时优先直接读取前端目录，打包后再回退到 classpath 里的构建产物。
+        registry.addResourceHandler("/onlyoffice-plugins/**")
+                .addResourceLocations(
+                        "file:../web/public/onlyoffice-plugins/",
+                        "classpath:/static/onlyoffice-plugins/");
+    }
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        // 示例环境优先追求可运行，直接放开 API 跨域；生产环境应收敛到明确白名单。
+        registry.addMapping("/api/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("*")
+                .allowedHeaders("*");
+
+        // ONLYOFFICE Docs 会从自己的 iframe 域名加载桥接插件资源。
+        // 本地调试下即使 pluginsData 指向 8080，也允许它跨域拉取 config.json / index.html / code.js。
+        registry.addMapping("/onlyoffice-plugins/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "OPTIONS")
+                .allowedHeaders("*");
+    }
 }
 
 

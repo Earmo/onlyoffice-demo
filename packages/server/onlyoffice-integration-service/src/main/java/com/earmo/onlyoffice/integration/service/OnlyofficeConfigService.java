@@ -1,7 +1,9 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.model.EditorConfigResponse;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
+import com.earmo.onlyoffice.integration.model.request.EditorConfigResponse;
+
 import java.io.IOException;
 
 /**
@@ -12,10 +14,18 @@ import java.io.IOException;
  */
 public interface OnlyofficeConfigService {
 
-  EditorConfigResponse buildEditorConfig(
-      String documentId,
-      boolean readonly,
-      AccessContext accessContext,
-      jakarta.servlet.http.HttpServletRequest request
-  ) throws IOException;
+    default EditorConfigResponse buildEditorConfig(
+            String documentId,
+            boolean readonly,
+            jakarta.servlet.http.HttpServletRequest request
+    ) throws IOException {
+        return buildEditorConfig(documentId, readonly, CurrentAccessContext.getRequired(), request);
+    }
+
+    EditorConfigResponse buildEditorConfig(
+            String documentId,
+            boolean readonly,
+            AccessContext accessContext,
+            jakarta.servlet.http.HttpServletRequest request
+    ) throws IOException;
 }

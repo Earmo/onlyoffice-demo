@@ -7,12 +7,13 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.http.HttpServletRequest;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import javax.crypto.SecretKey;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
  * ONLYOFFICE JWT 服务默认实现。
@@ -24,77 +25,103 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class OnlyofficeJwtServiceImpl implements OnlyofficeJwtService {
 
-  private static final String BEARER_PREFIX = "Bearer ";
+    private static final String BEARER_PREFIX = "Bearer ";
 
-  private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
+    private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
 
-  @Override
-  public String sign(Map<String, Object> payload) {
-    return Jwts.builder()
-        .claims(payload)
-        .signWith(resolveSigningKey())
-        .compact();
-  }
-
-  /**
-   * 校验 ONLYOFFICE callback 请求头里的 JWT。
-   *
-   * <p>这里显式沿用 starter 当前配置的共享 secret，把 callback 可信性建立在应用层签名上，
-   * 而不是依赖容器网络拓扑“恰好只有 ONLYOFFICE 能打到接口”。
-   */
-  @Override
-  public Claims verifyCallbackRequest(HttpServletRequest request) {
-    if (request == null) {
-      throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：请求上下文不能为空。");
+    /**
+     * 使用 ONLYOFFICE 共享密钥签名 payload。
+     *
+     * @param payload 待签名的 JWT claims。
+     * @return JWT 字符串。
+     */
+    @Override
+    public String sign(Map<String, Object> payload) {
+        return Jwts.builder()
+                .claims(payload)
+                .signWith(resolveSigningKey())
+                .compact();
     }
 
-    String headerName = onlyofficeIntegrationProperties.getCallback().getJwtHeaderName();
-    String headerValue = request.getHeader(headerName);
-    if (!StringUtils.hasText(headerValue)) {
-      throw new IllegalArgumentException(
-          "ONLYOFFICE callback JWT 校验失败：缺少请求头 " + headerName + "。"
-      );
-    }
-    return verify(extractToken(headerValue));
-  }
+    /**
+     * 校验 ONLYOFFICE callback 请求头里的 JWT。
+     *
+     * <p>这里显式沿用 starter 当前配置的共享 secret，把 callback 可信性建立在应用层签名上，
+     * 而不是依赖容器网络拓扑“恰好只有 ONLYOFFICE 能打到接口”。
+     *
+     * @param request ONLYOFFICE callback HTTP 请求。
+     * @return JWT claims。
+     */
+    @Override
+    public Claims verifyCallbackRequest(HttpServletRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：请求上下文不能为空。");
+        }
 
-  @Override
-  public Claims verify(String token) {
-    if (!StringUtils.hasText(token)) {
-      throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：Token 不能为空。");
-    }
-
-    try {
-      return Jwts.parser()
-          .verifyWith(resolveSigningKey())
-          .build()
-          .parseSignedClaims(token.trim())
-          .getPayload();
-    } catch (JwtException | IllegalArgumentException ex) {
-      throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：签名无效。", ex);
-    }
-  }
-
-  private SecretKey resolveSigningKey() {
-    return Keys.hmacShaKeyFor(
-        onlyofficeIntegrationProperties.getJwtSecret().getBytes(StandardCharsets.UTF_8)
-    );
-  }
-
-  private String extractToken(String headerValue) {
-    String trimmedHeaderValue = headerValue.trim();
-    if (!StringUtils.hasText(trimmedHeaderValue)) {
-      throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：Token 不能为空。");
+        String headerName = onlyofficeIntegrationProperties.getCallback().getJwtHeaderName();
+        String headerValue = request.getHeader(headerName);
+        if (!StringUtils.hasText(headerValue)) {
+            throw new IllegalArgumentException(
+                    "ONLYOFFICE callback JWT 校验失败：缺少请求头 " + headerName + "。"
+            );
+        }
+        return verify(extractToken(headerValue));
     }
 
-    if (trimmedHeaderValue.startsWith(BEARER_PREFIX)) {
-      String bearerToken = trimmedHeaderValue.substring(BEARER_PREFIX.length()).trim();
-      if (!StringUtils.hasText(bearerToken)) {
-        throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：Bearer Token 不能为空。");
-      }
-      return bearerToken;
+    /**
+     * 校验 JWT 字符串并返回 claims。
+     *
+     * @param token JWT 字符串。
+     * @return JWT claims。
+     */
+    @Override
+    public Claims verify(String token) {
+        if (!StringUtils.hasText(token)) {
+            throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：Token 不能为空。");
+        }
+
+        try {
+            return Jwts.parser()
+                    .verifyWith(resolveSigningKey())
+                    .build()
+                    .parseSignedClaims(token.trim())
+                    .getPayload();
+        } catch (JwtException | IllegalArgumentException ex) {
+            throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：签名无效。", ex);
+        }
     }
 
-    return trimmedHeaderValue;
-  }
+    /**
+     * 根据配置中的共享密钥创建 HMAC 签名 key。
+     *
+     * @return JWT 签名 key。
+     */
+    private SecretKey resolveSigningKey() {
+        return Keys.hmacShaKeyFor(
+                onlyofficeIntegrationProperties.getJwtSecret().getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    /**
+     * 从请求头值中提取原始 JWT。
+     *
+     * @param headerValue 原始请求头值，支持 Bearer 前缀。
+     * @return JWT 字符串。
+     */
+    private String extractToken(String headerValue) {
+        String trimmedHeaderValue = headerValue.trim();
+        if (!StringUtils.hasText(trimmedHeaderValue)) {
+            throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：Token 不能为空。");
+        }
+
+        if (trimmedHeaderValue.startsWith(BEARER_PREFIX)) {
+            String bearerToken = trimmedHeaderValue.substring(BEARER_PREFIX.length()).trim();
+            if (!StringUtils.hasText(bearerToken)) {
+                throw new IllegalArgumentException("ONLYOFFICE callback JWT 校验失败：Bearer Token 不能为空。");
+            }
+            return bearerToken;
+        }
+
+        return trimmedHeaderValue;
+    }
 }

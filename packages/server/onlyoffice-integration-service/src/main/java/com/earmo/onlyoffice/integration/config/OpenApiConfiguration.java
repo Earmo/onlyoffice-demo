@@ -17,37 +17,37 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OpenApiConfiguration {
 
-  /**
-   * 声明项目级 OpenAPI 文档信息。
-   *
-   * <p>这里描述的是“文档服务”这个后端系统本身，而不是某个具体接口，
-   * 便于后续在多微服务接入时保持文档标题、版本和联系信息的一致性。
-   */
-  @Bean
-  public OpenAPI onlyofficeDemoOpenApi() {
-    return new OpenAPI()
-        .info(new Info()
-            .title("ONLYOFFICE 文档服务接口")
-            .version("v1")
-            .description("面向分布式文档编辑场景的后端接口文档，使用 Knife4j 统一展示。")
-            .contact(new Contact()
-                .name("earmo")
-                .url("https://github.com/earmo/onlyoffice-integration-starter")));
-  }
+    /**
+     * 声明项目级 OpenAPI 文档信息。
+     *
+     * <p>这里描述的是“文档服务”这个后端系统本身，而不是某个具体接口，
+     * 便于后续在多微服务接入时保持文档标题、版本和联系信息的一致性。
+     */
+    @Bean
+    public OpenAPI onlyofficeDemoOpenApi() {
+        return new OpenAPI()
+                .info(new Info()
+                        .title("ONLYOFFICE 文档服务接口")
+                        .version("v1")
+                        .description("面向分布式文档编辑场景的后端接口文档，使用 Knife4j 统一展示。")
+                        .contact(new Contact()
+                                .name("earmo")
+                                .url("https://github.com/earmo/onlyoffice-integration-starter")));
+    }
 
-  /**
-   * 把当前服务对外暴露的 `/api/**` 路由收敛到同一个分组中。
-   *
-   * <p>这样做的好处是后续即使继续增加管理接口、回调接口或内部运维接口，
-   * 也可以通过路径或包分组把文档拆开，而不需要重做整个 Swagger 方案。
-   */
-  @Bean
-  public GroupedOpenApi documentServiceApi() {
-    return GroupedOpenApi.builder()
-        .group("document-service")
-        .pathsToMatch("/api/**")
-        .build();
-  }
+    /**
+     * 把当前服务对外暴露的 `/api/**` 路由收敛到同一个分组中。
+     *
+     * <p>这样做的好处是后续即使继续增加管理接口、回调接口或内部运维接口，
+     * 也可以通过路径或包分组把文档拆开，而不需要重做整个 Swagger 方案。
+     */
+    @Bean
+    public GroupedOpenApi documentServiceApi() {
+        return GroupedOpenApi.builder()
+                .group("document-service")
+                .pathsToMatch("/api/**")
+                .build();
+    }
 }
 
 

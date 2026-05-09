@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DocumentCreateActions from "../components/library/DocumentCreateActions.vue";
 import DocumentList from "../components/library/DocumentList.vue";
-import { apiFetch, getCustomAccessContext, saveCustomAccessContext } from "../lib/api";
+import { apiFetch, getCustomAccessContext, parseJsonEnvelope, saveCustomAccessContext } from "../lib/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -14,6 +14,8 @@ const router = useRouter();
 // - success/error/highlight 用于处理创建回流、错误反馈和列表定位。
 const documents = ref([]);
 const tenantId = ref("");
+const orgId = ref("");
+const orgName = ref("");
 const actorUser = ref("");
 const actorName = ref("");
 const isLoading = ref(true);
@@ -25,6 +27,8 @@ const showCreateDialog = ref(false);
 const showContextDialog = ref(false);
 const contextForm = ref({
   tenantId: "",
+  orgId: "",
+  orgName: "",
   actorUser: "",
   actorName: "",
   sourceSystem: ""
@@ -80,54 +84,55 @@ async function readErrorMessage(response, fallbackMessage) {
   }
 }
 
-function buildListParams() {
-  const params = new URLSearchParams();
-  params.set("pageNumber", String(pageNumber.value));
-  params.set("pageSize", String(pageSize.value));
+function buildPageRequest() {
+  // 列表查询参数集中在这里组装，保证“搜索 / 翻页 / 重置 / 回流高亮”用的是同一套规则。
+  const body = {
+    pageNumber: pageNumber.value,
+    pageSize: pageSize.value
+  };
   if (searchQuery.value) {
-    params.set("query", searchQuery.value);
+    body.query = searchQuery.value;
   }
   if (statusFilter.value !== "all") {
-    params.set("status", statusFilter.value);
+    body.status = statusFilter.value;
   }
   if (documentTypeFilter.value !== "all") {
-    params.set("documentType", documentTypeFilter.value);
+    body.documentType = documentTypeFilter.value;
   }
   if (sourceSystemFilter.value) {
-    params.set("sourceSystem", sourceSystemFilter.value);
+    body.sourceSystem = sourceSystemFilter.value;
   }
   if (storageFilter.value !== "all") {
-    params.set("storage", storageFilter.value);
+    body.storage = storageFilter.value;
   }
-  return params;
+  return body;
 }
 
 async function loadDocuments() {
-  const params = buildListParams();
-  const suffix = params.toString() ? `?${params.toString()}` : "";
-  const response = await apiFetch(`/api/documents${suffix}`);
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `文档列表加载失败，HTTP ${response.status}`));
-  }
-
-  const payload = await response.json();
-  documents.value = payload.documents ?? [];
+  const response = await apiFetch("/api/documents/page", {
+    method: "POST",
+    body: JSON.stringify(buildPageRequest())
+  });
+  const payload = await parseJsonEnvelope(response);
+  documents.value = payload.documents ?? payload.result ?? [];
   tenantId.value = payload.tenantId ?? "";
+  orgId.value = payload.orgId ?? "";
+  orgName.value = payload.orgName ?? "";
   actorUser.value = payload.actorUser ?? "";
   actorName.value = payload.actorName ?? "";
-  pageNumber.value = payload.pageNumber ?? pageNumber.value;
+  pageNumber.value = payload.pageNumber ?? payload.currentPage ?? pageNumber.value;
   pageSize.value = payload.pageSize ?? pageSize.value;
-  total.value = payload.total ?? documents.value.length;
-  totalPages.value = payload.totalPages ?? 0;
+  total.value = payload.total ?? payload.totalCount ?? documents.value.length;
+  totalPages.value = payload.totalPages ?? Math.ceil((payload.totalCount ?? 0) / (payload.pageSize || pageSize.value)) ?? 0;
 }
 
 async function loadRecentDocuments() {
-  const response = await apiFetch("/api/documents/recent?limit=3");
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response, `最近文档加载失败，HTTP ${response.status}`));
-  }
-
-  const payload = await response.json();
+  // 最近文档是首页左栏的“继续上次工作”数据源，与主列表拆开请求，互不阻塞。
+  const response = await apiFetch("/api/documents/list/recent", {
+    method: "POST",
+    body: JSON.stringify({ limit: 3 })
+  });
+  const payload = await parseJsonEnvelope(response);
   recentDocuments.value = Array.isArray(payload) ? payload : [];
 }
 
@@ -175,6 +180,7 @@ function syncHighlightFromRoute() {
 }
 
 async function revealDocument(documentSummary, message) {
+  // 创建、上传、远程导入成功后都走同一条“回流到列表并高亮新文档”的流程。
   showCreateDialog.value = false;
   searchQuery.value = "";
   statusFilter.value = "all";
@@ -189,6 +195,7 @@ async function revealDocument(documentSummary, message) {
 }
 
 async function createDocument() {
+  // 这里沿用最轻量的 prompt 交互，后续如果产品形态变复杂，再升级成表单弹窗。
   const title = window.prompt("请输入文档标题（可留空使用默认标题）", "未命名文档.docx");
   if (title === null) {
     return;
@@ -199,7 +206,7 @@ async function createDocument() {
   errorMessage.value = "";
 
   try {
-    const response = await apiFetch("/api/documents", {
+    const response = await apiFetch("/api/documents/create", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -231,6 +238,7 @@ async function handleFileSelected(file) {
   errorMessage.value = "";
 
   try {
+    // 上传入口直接把 File 交给后端，前端不额外做文档类型解析。
     const formData = new FormData();
     formData.append("file", file);
 
@@ -257,6 +265,7 @@ async function importRemoteDocument() {
   errorMessage.value = "";
 
   try {
+    // 远程导入由后端负责拉取并入库，前端只提交源地址。
     const response = await apiFetch("/api/documents/import-remote", {
       method: "POST",
       headers: {
@@ -281,6 +290,7 @@ async function importRemoteDocument() {
 }
 
 function previewDocument(document) {
+  // “查看”和“编辑”拆成不同路由，避免只读预览误建立编辑会话。
   router.push({ name: "preview", params: { documentId: document.documentId } });
 }
 
@@ -300,6 +310,7 @@ function formatTimestamp(value) {
 }
 
 async function applyFilters() {
+  // 每次重新搜索都把页码重置到第一页，避免保留旧页码造成空页错觉。
   successMessage.value = "";
   pageNumber.value = 1;
   await reloadDocumentList();
@@ -345,8 +356,10 @@ async function deleteDocument(document) {
   errorMessage.value = "";
 
   try {
-    const response = await apiFetch(`/api/documents/${document.documentId}`, {
-      method: "DELETE"
+    // 删除后不只刷新主列表，也要把最近文档一起刷新掉，保持首页两列一致。
+    const response = await apiFetch("/api/documents/delete", {
+      method: "POST",
+      body: JSON.stringify({ documentId: document.documentId })
     });
     if (!response.ok) {
       throw new Error(await readErrorMessage(response, `删除文档失败，HTTP ${response.status}`));
@@ -367,9 +380,13 @@ async function deleteDocument(document) {
 }
 
 function openContextDialog() {
+  // 顶部“当前上下文”来自 localStorage 中缓存的 mock access context，
+  // 方便本地调试不同租户/用户头信息。
   const current = getCustomAccessContext() || {};
   contextForm.value = {
     tenantId: current.tenantId || "",
+    orgId: current.orgId || "",
+    orgName: current.orgName || "",
     actorUser: current.actorUser || "",
     actorName: current.actorName || "",
     sourceSystem: current.sourceSystem || ""
@@ -378,8 +395,11 @@ function openContextDialog() {
 }
 
 async function saveContext() {
+  // 保存上下文后主动重置筛选与高亮，避免把旧租户条件残留到新身份下。
   saveCustomAccessContext({
     tenantId: contextForm.value.tenantId.trim(),
+    orgId: contextForm.value.orgId.trim(),
+    orgName: contextForm.value.orgName.trim(),
     actorUser: contextForm.value.actorUser.trim(),
     actorName: contextForm.value.actorName.trim(),
     sourceSystem: contextForm.value.sourceSystem.trim()
@@ -413,7 +433,7 @@ onMounted(loadLibraryWorkspace);
   <el-container class="library-shell">
     <el-main class="library-main">
       <el-row :gutter="24" class="library-grid">
-        <!-- 左侧栏：当前上下文与最近文档 -->
+        <!-- 左侧栏：当前上下文与最近文档，强调“我是谁、最近在干什么” -->
         <el-col :xs="24" :lg="5" class="library-column">
           <div class="column-stack column-stack-left">
             <el-card class="context-card library-card" shadow="hover">
@@ -429,6 +449,7 @@ onMounted(loadLibraryWorkspace);
               <p class="muted-copy">
                 当前租户 <el-tag size="small">{{ tenantId || "未解析" }}</el-tag>，当前用户
                 <el-tag size="small" type="info">{{ actorName || actorUser || "未解析" }}</el-tag>。
+                当前组织 <el-tag size="small" type="success">{{ orgName || orgId || "未解析" }}</el-tag>。
               </p>
             </el-card>
 
@@ -468,7 +489,7 @@ onMounted(loadLibraryWorkspace);
           </div>
         </el-col>
 
-        <!-- 右侧栏：搜索条件与文档列表 -->
+        <!-- 右侧栏：筛选条件 + 分页列表，是首页的主操作区 -->
         <el-col :xs="24" :lg="19" class="library-column">
           <div class="column-stack column-stack-right">
             <el-card class="toolbar-panel library-card" shadow="never">
@@ -593,6 +614,12 @@ onMounted(loadLibraryWorkspace);
         <el-form label-position="top" :model="contextForm">
           <el-form-item label="租户 ID (Tenant ID)">
             <el-input v-model="contextForm.tenantId" placeholder="使用系统默认值" />
+          </el-form-item>
+          <el-form-item label="组织 ID (Org ID)">
+            <el-input v-model="contextForm.orgId" placeholder="使用系统默认值" />
+          </el-form-item>
+          <el-form-item label="组织名称 (Org Name)">
+            <el-input v-model="contextForm.orgName" placeholder="使用系统默认值" />
           </el-form-item>
           <el-form-item label="当前用户 ID (Actor User)">
             <el-input v-model="contextForm.actorUser" placeholder="使用系统默认值" />

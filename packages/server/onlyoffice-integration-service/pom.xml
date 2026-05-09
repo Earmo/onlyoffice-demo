@@ -33,6 +33,21 @@
     </dependency>
 
     <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webflux</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-starter-model-openai</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-aop</artifactId>
+    </dependency>
+
+    <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
       <optional>true</optional>
@@ -126,6 +141,29 @@
 
   <build>
     <plugins>
+      <plugin>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <!-- 插件资源目前有两条加载路径，后端这份是兜底方案，让 8080 的 Spring 服务也能直接提供 /onlyoffice-plugins/**，
+            这样在某些本地调试、Docker 反代、ONLYOFFICE 直接回源到后端地址时，插件仍然能被加载，不会再因为找不到资源或跨域挂掉。-->
+            <id>copy-onlyoffice-plugin-assets</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/static/onlyoffice-plugins</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.basedir}/../../web/public/onlyoffice-plugins</directory>
+                  <filtering>false</filtering>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>

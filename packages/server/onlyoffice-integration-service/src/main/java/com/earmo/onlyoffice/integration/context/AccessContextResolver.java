@@ -1,13 +1,16 @@
 package com.earmo.onlyoffice.integration.context;
 
 import com.earmo.onlyoffice.integration.config.OnlyofficeIntegrationProperties;
+import com.earmo.onlyoffice.integration.context.provider.AccessContextProvider;
+import com.earmo.onlyoffice.integration.exception.MissingAccessContextException;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
 
 /**
  * 按配置顺序聚合访问上下文策略。
@@ -21,82 +24,82 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class AccessContextResolver {
 
-  private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
-  private final List<AccessContextProvider> accessContextProviders;
+    private final OnlyofficeIntegrationProperties onlyofficeIntegrationProperties;
+    private final List<AccessContextProvider> accessContextProviders;
 
-  public AccessContext resolve(HttpServletRequest request) {
-    Map<String, AccessContextProvider> providersByName = providersByName();
-    LinkedHashSet<String> providerNames = orderedProviderNames();
+    public AccessContext resolve(HttpServletRequest request) {
+        Map<String, AccessContextProvider> providersByName = providersByName();
+        LinkedHashSet<String> providerNames = orderedProviderNames();
 
-    AccessContext partialContext = null;
-    for (String providerName : providerNames) {
-      AccessContextProvider provider = providersByName.get(providerName);
-      if (provider == null || !provider.isExplicitStrategy()) {
-        continue;
-      }
+        AccessContext partialContext = null;
+        for (String providerName : providerNames) {
+            AccessContextProvider provider = providersByName.get(providerName);
+            if (provider == null || !provider.isExplicitStrategy()) {
+                continue;
+            }
 
-      AccessContext resolved = provider.resolve(request).orElse(null);
-      if (resolved == null || !resolved.hasAnyExplicitValue()) {
-        continue;
-      }
+            AccessContext resolved = provider.resolve(request).orElse(null);
+            if (resolved == null || !resolved.hasAnyExplicitValue()) {
+                continue;
+            }
 
-      if (resolved.isComplete()) {
-        return resolved;
-      }
-      if (partialContext == null) {
-        partialContext = resolved;
-      }
+            if (resolved.isComplete()) {
+                return resolved;
+            }
+            if (partialContext == null) {
+                partialContext = resolved;
+            }
+        }
+
+        if (partialContext != null) {
+            if (onlyofficeIntegrationProperties.getAccessContext().isAllowDefaultContext()) {
+                return partialContext.fillMissing(resolveDefaultContext(providersByName, request));
+            }
+            throw new MissingAccessContextException("缺少用户上下文：tenantId、sourceSystem、externalUserId、displayName 或 orgId 不完整。");
+        }
+
+        if (!onlyofficeIntegrationProperties.getAccessContext().isRequireExplicitContext()
+                && onlyofficeIntegrationProperties.getAccessContext().isAllowDefaultContext()) {
+            return resolveDefaultContext(providersByName, request);
+        }
+
+        throw new MissingAccessContextException("缺少用户上下文：请求中未提供有效的访问上下文。");
     }
 
-    if (partialContext != null) {
-      if (onlyofficeIntegrationProperties.getAccessContext().isAllowDefaultContext()) {
-        return partialContext.fillMissing(resolveDefaultContext(providersByName, request));
-      }
-      throw new MissingAccessContextException("缺少用户上下文：tenantId、sourceSystem、externalUserId 或 displayName 不完整。");
+    /**
+     * 对外暴露顺序信息，便于测试校验解析链和自定义 provider 覆盖行为。
+     */
+    public List<String> resolutionOrder() {
+        return List.copyOf(orderedProviderNames());
     }
 
-    if (!onlyofficeIntegrationProperties.getAccessContext().isRequireExplicitContext()
-        && onlyofficeIntegrationProperties.getAccessContext().isAllowDefaultContext()) {
-      return resolveDefaultContext(providersByName, request);
+    private AccessContext resolveDefaultContext(
+            Map<String, AccessContextProvider> providersByName,
+            HttpServletRequest request
+    ) {
+        AccessContextProvider defaultProvider = providersByName.get("default");
+        if (defaultProvider == null || defaultProvider.isExplicitStrategy()) {
+            throw new MissingAccessContextException("缺少用户上下文：未配置 default provider，无法补齐默认值。");
+        }
+        return defaultProvider.resolve(request)
+                .orElseThrow(() -> new MissingAccessContextException("缺少用户上下文：default provider 未返回默认上下文。"));
     }
 
-    throw new MissingAccessContextException("缺少用户上下文：请求中未提供有效的访问上下文。");
-  }
-
-  /**
-   * 对外暴露顺序信息，便于测试校验解析链和自定义 provider 覆盖行为。
-   */
-  public List<String> resolutionOrder() {
-    return List.copyOf(orderedProviderNames());
-  }
-
-  private AccessContext resolveDefaultContext(
-      Map<String, AccessContextProvider> providersByName,
-      HttpServletRequest request
-  ) {
-    AccessContextProvider defaultProvider = providersByName.get("default");
-    if (defaultProvider == null || defaultProvider.isExplicitStrategy()) {
-      throw new MissingAccessContextException("缺少用户上下文：未配置 default provider，无法补齐默认值。");
+    private LinkedHashSet<String> orderedProviderNames() {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        names.addAll(onlyofficeIntegrationProperties.getAccessContext().getResolutionOrder());
+        if (names.isEmpty()) {
+            names.addAll(onlyofficeIntegrationProperties.getAccessContext().getEnabledProviders());
+        }
+        names.retainAll(onlyofficeIntegrationProperties.getAccessContext().getEnabledProviders());
+        return names;
     }
-    return defaultProvider.resolve(request)
-        .orElseThrow(() -> new MissingAccessContextException("缺少用户上下文：default provider 未返回默认上下文。"));
-  }
 
-  private LinkedHashSet<String> orderedProviderNames() {
-    LinkedHashSet<String> names = new LinkedHashSet<>();
-    names.addAll(onlyofficeIntegrationProperties.getAccessContext().getResolutionOrder());
-    if (names.isEmpty()) {
-      names.addAll(onlyofficeIntegrationProperties.getAccessContext().getEnabledProviders());
+    private Map<String, AccessContextProvider> providersByName() {
+        Map<String, AccessContextProvider> providers = new LinkedHashMap<>();
+        for (AccessContextProvider provider : accessContextProviders) {
+            providers.put(provider.name(), provider);
+        }
+        return providers;
     }
-    names.retainAll(onlyofficeIntegrationProperties.getAccessContext().getEnabledProviders());
-    return names;
-  }
-
-  private Map<String, AccessContextProvider> providersByName() {
-    Map<String, AccessContextProvider> providers = new LinkedHashMap<>();
-    for (AccessContextProvider provider : accessContextProviders) {
-      providers.put(provider.name(), provider);
-    }
-    return providers;
-  }
 }

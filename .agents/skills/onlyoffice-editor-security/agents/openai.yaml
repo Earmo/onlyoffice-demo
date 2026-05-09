@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 编辑器安全"
+  short_description: "editor config、callback、JWT、Document Server URL 和远程资源安全"
+  default_prompt: "按 ONLYOFFICE 编辑器与安全规则处理当前任务。"

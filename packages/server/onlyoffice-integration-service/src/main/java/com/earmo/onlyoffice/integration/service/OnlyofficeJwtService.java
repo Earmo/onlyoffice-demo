@@ -2,6 +2,7 @@ package com.earmo.onlyoffice.integration.service;
 
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
+
 import java.util.Map;
 
 /**
@@ -9,9 +10,9 @@ import java.util.Map;
  */
 public interface OnlyofficeJwtService {
 
-  String sign(Map<String, Object> payload);
+    String sign(Map<String, Object> payload);
 
-  Claims verifyCallbackRequest(HttpServletRequest request);
+    Claims verifyCallbackRequest(HttpServletRequest request);
 
-  Claims verify(String token);
+    Claims verify(String token);
 }

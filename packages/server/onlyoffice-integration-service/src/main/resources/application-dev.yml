@@ -15,6 +15,8 @@ spring:
 
 onlyoffice:
   integration:
+    # 仅限本地开发使用的临时 JWT；生产环境必须通过环境变量覆盖。
+    jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET:5d8fc72d49e070f303bb963f69902fe626eece4e}
     # 浏览器访问本机后端时使用的公开地址。
     public-base-url: http://localhost:8080
     # ONLYOFFICE 容器回调 Windows 本机后端时使用的内部地址。
@@ -29,9 +31,9 @@ onlyoffice:
       default-provider: minio
       routing:
         # 如需按租户切换存储策略，可在此填写 tenantId -> provider 映射。
-        tenants: {}
+        tenants: { }
         # 如需按来源系统切换存储策略，可在此填写 sourceSystem -> provider 映射。
-        source-systems: {}
+        source-systems: { }
       minio:
         # 本机通过映射端口访问容器内 MinIO。
         endpoint: http://localhost:9000

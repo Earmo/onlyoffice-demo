@@ -1,9 +1,10 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.data.entity.DocumentMetadataEntity;
+import com.earmo.onlyoffice.integration.model.NormalizedDocumentMetadata;
 import com.earmo.onlyoffice.integration.model.RequestContext;
 import com.earmo.onlyoffice.integration.model.StoredDocument;
-import com.earmo.onlyoffice.integration.storage.StorageProvider;
+
 import java.io.IOException;
 
 /**
@@ -14,31 +15,29 @@ import java.io.IOException;
  */
 public interface DocumentStorageService {
 
-  StoredDocument ensureBootstrapDocument(String rawDocumentId) throws IOException;
+    StoredDocument ensureBootstrapDocument(String rawDocumentId) throws IOException;
 
-  StoredDocument getRequiredDocument(String rawDocumentId) throws IOException;
+    StoredDocument getRequiredDocument(String rawDocumentId) throws IOException;
 
-  byte[] readDocument(String rawDocumentId) throws IOException;
+    byte[] readDocument(String rawDocumentId) throws IOException;
 
-  void saveCallbackDocument(String rawDocumentId, String downloadUrl) throws IOException;
+    NormalizedDocumentMetadata saveCallbackDocument(String rawDocumentId, String downloadUrl, String callbackFileType)
+            throws IOException;
 
-  StoredDocument storeUploadedDocument(String originalFilename, byte[] body) throws IOException;
 
-  StoredDocument storeUploadedDocument(String originalFilename, byte[] body, RequestContext requestContext)
-      throws IOException;
+    StoredDocument storeUploadedDocument(String originalFilename, byte[] body, RequestContext requestContext)
+            throws IOException;
 
-  StoredDocument importRemoteDocument(String sourceUrl) throws IOException;
 
-  StoredDocument importRemoteDocument(String sourceUrl, RequestContext requestContext) throws IOException;
+    StoredDocument importRemoteDocument(String sourceUrl, RequestContext requestContext) throws IOException;
 
-  StoredDocument createNativeDocument(
-      String rawDocumentId,
-      String rawTitle,
-      RequestContext requestContext,
-      String externalDocumentId
-  ) throws IOException;
+    StoredDocument createNativeDocument(
+            String rawDocumentId,
+            String rawTitle,
+            RequestContext requestContext,
+            String externalDocumentId
+    ) throws IOException;
 
-  boolean exists(DocumentMetadataEntity entity) throws IOException;
+    boolean exists(DocumentMetadataEntity entity) throws IOException;
 
-  StorageProvider resolveProvider(DocumentMetadataEntity entity);
 }

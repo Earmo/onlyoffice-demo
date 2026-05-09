@@ -9,6 +9,14 @@ server:
   forward-headers-strategy: framework
 
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   profiles:
     # 默认开发环境走 dev；生产或测试环境通过 SPRING_PROFILES_ACTIVE 显式切换。
     active: ${SPRING_PROFILES_ACTIVE:dev}
@@ -26,6 +34,10 @@ spring:
       max-file-size: 50MB
       # 单次 multipart 请求总大小上限。
       max-request-size: 50MB
+  ai:
+    model:
+      # 运行时 provider 由 `llm.providers.*` 动态选择，默认不让 starter 绑定单一 chat model。
+      chat: none
 
 mybatis-flex:
   configuration:
@@ -56,8 +68,10 @@ onlyoffice:
     internal-base-url: ${ONLYOFFICE_INTEGRATION_INTERNAL_BASE_URL:}
     # 浏览器加载 ONLYOFFICE Docs 静态资源的地址。
     document-server-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_URL:}
+    # 服务端调用 ONLYOFFICE Command Service 时使用的内部地址。
+    document-server-command-url: ${ONLYOFFICE_INTEGRATION_DOCUMENT_SERVER_COMMAND_URL:}
     # editor-config 签名和 callback 验签共用的 JWT 密钥。
-    jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET:5d8fc72d49e070f303bb963f69902fe626eece4e}
+    jwt-secret: ${ONLYOFFICE_INTEGRATION_JWT_SECRET}
     callback:
       # callback JWT 默认读取的请求头名称。
       jwt-header-name: ${ONLYOFFICE_INTEGRATION_CALLBACK_JWT_HEADER_NAME:Authorization}
@@ -116,9 +130,9 @@ onlyoffice:
       default-provider: ${ONLYOFFICE_INTEGRATION_STORAGE_DEFAULT_PROVIDER:local}
       routing:
         # 按 tenantId 细分存储策略；键为 tenantId，值为 provider 名称。
-        tenants: {}
+        tenants: { }
         # 按 sourceSystem 细分存储策略；键为来源系统，值为 provider 名称。
-        source-systems: {}
+        source-systems: { }
       local:
         # local 存储策略根目录。
         root: ${ONLYOFFICE_INTEGRATION_STORAGE_LOCAL_ROOT:${ONLYOFFICE_INTEGRATION_STORAGE_ROOT:./storage}}
@@ -145,3 +159,86 @@ onlyoffice:
     editing-session:
       # 活跃编辑会话的心跳超时窗口（秒）。
       active-timeout-seconds: ${ONLYOFFICE_INTEGRATION_EDITING_SESSION_ACTIVE_TIMEOUT_SECONDS:30}
+      # runtime-events SSE 健康连接下的服务端续期间隔（秒）；必须不超过 active timeout 的一半。
+      runtime-keepalive-seconds: ${ONLYOFFICE_INTEGRATION_EDITING_SESSION_RUNTIME_KEEPALIVE_SECONDS:10}
+
+llm:
+  # 是否真正允许后端发起模型调用；默认关闭，避免本地环境误连真实 provider。
+  enabled: ${LLM_ENABLED:true}
+  # 是否向前端暴露 AI 工作台能力；可以在保留配置的前提下单独关闭功能开关。
+  feature-enabled: ${LLM_FEATURE_ENABLED:true}
+  # 14.2 默认 provider / model。
+  default-provider: ${LLM_DEFAULT_PROVIDER:openai}
+  default-model: ${LLM_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
+  # 调用上游 provider 的超时时间，单位毫秒。
+  timeout-millis: ${LLM_TIMEOUT_MILLIS:60000}
+  # 前端首轮同步等待窗口；超过该时长后转入 request 轮询。
+  request-sync-wait-millis: ${LLM_REQUEST_SYNC_WAIT_MILLIS:1500}
+  # 默认向前端返回的最近对话轮次。
+  default-visible-turns: ${LLM_DEFAULT_VISIBLE_TURNS:6}
+  # 历史预算 token 上限，采用 chars_div_4 估算。
+  history-budget-tokens: ${LLM_HISTORY_BUDGET_TOKENS:12000}
+  # 历史 token 估算器名称；Phase 14 固定 chars_div_4。
+  history-token-estimator: ${LLM_HISTORY_TOKEN_ESTIMATOR:chars_div_4}
+  # 是否允许把当前标题上下文拼进 prompt。
+  allow-heading-context: ${LLM_ALLOW_HEADING_CONTEXT:true}
+  # 默认 system prompt。
+  default-system-prompt: ${LLM_DEFAULT_SYSTEM_PROMPT:你是一个文档协作助手。请基于用户给出的选区和标题上下文，输出可直接写回文档的专业中文建议。}
+  # 允许透传给前端的 provider 元数据白名单，禁止包含敏感信息或原始报文。
+  provider-response-meta-allowlist:
+    - provider
+    - model
+    - created
+    - reasoningContent
+    - usage.promptTokens
+    - usage.completionTokens
+    - usage.totalTokens
+  providers:
+    dashscope:
+      enabled: ${LLM_PROVIDER_DASHSCOPE_ENABLED:true}
+      label: DashScope
+      spring-ai-provider: openai-compatible
+      base-url: ${LLM_PROVIDER_DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      api-key: ${LLM_PROVIDER_DASHSCOPE_API_KEY:}
+      default-model: ${LLM_PROVIDER_DASHSCOPE_DEFAULT_MODEL:qwen-plus}
+      models:
+        - qwen-plus
+      streaming-enabled: ${LLM_PROVIDER_DASHSCOPE_STREAMING_ENABLED:true}
+      timeout-millis: ${LLM_PROVIDER_DASHSCOPE_TIMEOUT_MILLIS:60000}
+    siliconflow:
+      enabled: true
+      label: SiliconFlow
+      spring-ai-provider: openai-compatible
+      base-url: ${LLM_PROVIDER_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
+      api-key: ${LLM_PROVIDER_SILICONFLOW_API_KEY:sk-ktnfpujzzrypcngxmbpgsuuhuqilbthjnxyijjfqcvukjxwr}
+      default-model: ${LLM_PROVIDER_SILICONFLOW_DEFAULT_MODEL:Qwen/Qwen3.5-397B-A17B}
+      models:
+        - Qwen/Qwen3.5-397B-A17B
+        - Pro/moonshotai/Kimi-K2.6
+        - Pro/zai-org/GLM-5.1
+        - Pro/MiniMaxAI/MiniMax-M2.5
+        - Pro/deepseek-ai/DeepSeek-V3.2
+      streaming-enabled: ${LLM_PROVIDER_SILICONFLOW_STREAMING_ENABLED:true}
+      timeout-millis: ${LLM_PROVIDER_SILICONFLOW_TIMEOUT_MILLIS:60000}
+    openai:
+      enabled: true
+      label: openai
+      spring-ai-provider: openai-compatible
+      base-url: ${LLM_PROVIDER_OPENAI_BASE_URL:http://127.0.0.1:49199/v1}
+      api-key: ${LLM_PROVIDER_OPENAI_API_KEY:agt_codex_2vlDmcKvHqEm8thTK4nxKPTInZ2XEifG}
+      default-model: ${LLM_PROVIDER_OPENAI_DEFAULT_MODEL:gpt-5.4}
+      models:
+        - gpt-5.4
+        - gpt-5.3-codex
+        - gpt-5.2-codex
+        - gpt-5.2
+        - gpt-5.4-mini
+      streaming-enabled: ${LLM_PROVIDER_OPENAI_STREAMING_ENABLED:true}
+      timeout-millis: ${LLM_PROVIDER_OPENAI_TIMEOUT_MILLIS:60000}
+  session:
+    # 单文档最多保留多少个 AI 会话。
+    max-sessions-per-document: ${LLM_SESSION_MAX_SESSIONS_PER_DOCUMENT:20}
+    # 单会话最多保留多少条消息。
+    max-messages-per-session: ${LLM_SESSION_MAX_MESSAGES_PER_SESSION:200}
+    # 会话保留天数，供后续归档/清理使用。
+    retention-days: ${LLM_SESSION_RETENTION_DAYS:30}

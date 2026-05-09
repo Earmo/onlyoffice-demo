@@ -1,7 +1,9 @@
 package com.earmo.onlyoffice.integration.service;
 
 import com.earmo.onlyoffice.integration.context.AccessContext;
-import com.earmo.onlyoffice.integration.model.DocumentSaveStatusResponse;
+import com.earmo.onlyoffice.integration.context.CurrentAccessContext;
+import com.earmo.onlyoffice.integration.model.response.DocumentSaveStatusResponse;
+
 import java.util.List;
 import java.util.Map;
 
@@ -13,23 +15,35 @@ import java.util.Map;
  */
 public interface DocumentStatusService {
 
-  DocumentSaveStatusResponse initialize(String documentId);
+    DocumentSaveStatusResponse initialize(String documentId);
 
-  DocumentSaveStatusResponse openEditingSession(String documentId, AccessContext accessContext);
+    default DocumentSaveStatusResponse openEditingSession(String documentId) {
+        return openEditingSession(documentId, CurrentAccessContext.getRequired());
+    }
 
-  DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext);
+    DocumentSaveStatusResponse openEditingSession(String documentId, AccessContext accessContext);
 
-  void touchEditingSession(String documentId, AccessContext accessContext);
+    default DocumentSaveStatusResponse closeEditingSession(String documentId) {
+        return closeEditingSession(documentId, CurrentAccessContext.getRequired());
+    }
 
-  DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus);
+    DocumentSaveStatusResponse closeEditingSession(String documentId, AccessContext accessContext);
 
-  DocumentSaveStatusResponse recordCallbackRejected(String documentId, String message);
+    default void touchEditingSession(String documentId) {
+        touchEditingSession(documentId, CurrentAccessContext.getRequired());
+    }
 
-  DocumentSaveStatusResponse recordSaveSucceeded(String documentId, Integer callbackStatus);
+    void touchEditingSession(String documentId, AccessContext accessContext);
 
-  DocumentSaveStatusResponse recordSaveFailed(String documentId, Integer callbackStatus, String failureReason);
+    DocumentSaveStatusResponse recordCallbackReceived(String documentId, Integer callbackStatus);
 
-  DocumentSaveStatusResponse getStatus(String documentId);
+    DocumentSaveStatusResponse recordCallbackRejected(String documentId, String message);
 
-  Map<String, Integer> countActiveEditingSessions(List<String> documentIds);
+    DocumentSaveStatusResponse recordSaveSucceeded(String documentId, Integer callbackStatus);
+
+    DocumentSaveStatusResponse recordSaveFailed(String documentId, Integer callbackStatus, String failureReason);
+
+    DocumentSaveStatusResponse getStatus(String documentId);
+
+    Map<String, Integer> countActiveEditingSessions(List<String> documentIds);
 }

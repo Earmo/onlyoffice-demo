@@ -1,4 +1,5 @@
 :root {
+  /* 全局视觉变量保持偏纸张/工作台气质，给文档类产品留出更柔和的底色。 */
   color-scheme: light;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --text-main: #172126;
@@ -17,6 +18,7 @@
 }
 
 * {
+  /* 统一盒模型，减少 Element Plus 与自定义布局混排时的尺寸偏差。 */
   box-sizing: border-box;
 }
 
@@ -42,12 +44,14 @@ select {
 }
 
 .page-shell {
+  /* 通用页面外边距，首页与预览页都可以复用。 */
   min-height: 100vh;
   padding: 18px 18px 0;
 }
 
 @media (max-width: 900px) {
   .page-shell {
+    /* 小屏上适当收紧留白，把空间优先留给文档内容。 */
     padding: 12px 12px 0;
   }
 }

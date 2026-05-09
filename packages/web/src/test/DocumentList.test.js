@@ -3,6 +3,8 @@ import { defineComponent, h, inject, provide } from "vue";
 import { describe, expect, it } from "vitest";
 import DocumentList from "../components/library/DocumentList.vue";
 
+// 这些 stub 只复刻本用例真正依赖的 Element Plus 行为，
+// 让列表测试可以保持轻量、稳定，不受真实表格实现细节影响。
 const TABLE_DATA_KEY = Symbol("table-data");
 
 const ElCardStub = defineComponent({
@@ -115,6 +117,7 @@ describe("DocumentList", () => {
 });
 
 function mountDocumentList(overrides = {}) {
+  // 统一的 mount 工厂，方便后续继续扩展高亮、删除 loading 等场景。
   return mount(DocumentList, {
     props: {
       documents: [documentSummary()],

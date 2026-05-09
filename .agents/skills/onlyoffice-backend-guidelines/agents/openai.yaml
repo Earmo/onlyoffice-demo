@@ -1,0 +1,4 @@
+interface:
+  display_name: "ONLYOFFICE 后端规范"
+  short_description: "后端目录职责、Swagger/Javadoc、AccessContext、事务、日志、测试和交付"
+  default_prompt: "按 ONLYOFFICE 后端详细规范处理当前任务。"

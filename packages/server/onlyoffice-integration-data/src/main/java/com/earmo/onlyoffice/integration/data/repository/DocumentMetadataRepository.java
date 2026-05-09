@@ -27,7 +27,11 @@ public class DocumentMetadataRepository {
   private final DocumentMetadataMapper documentMetadataMapper;
 
   public List<DocumentMetadataEntity> listByTenant(String tenantId) {
-    return listVisibleByTenant(tenantId, null, null, null, null, "desc");
+    return listVisibleByTenant(tenantId, null, null, null, null, null, "desc");
+  }
+
+  public List<DocumentMetadataEntity> listByTenant(String tenantId, String orgId) {
+    return listVisibleByTenant(tenantId, orgId, null, null, null, null, "desc");
   }
 
   public List<DocumentMetadataEntity> listByTenant(
@@ -38,7 +42,21 @@ public class DocumentMetadataRepository {
       String documentType,
       String sortDirection
   ) {
-    return listVisibleByTenant(tenantId, query, status, sourceSystem, documentType, sortDirection);
+    return listVisibleByTenant(tenantId, null, query, status, sourceSystem, documentType, sortDirection);
+  }
+
+  public List<DocumentMetadataEntity> listVisibleByTenant(
+      String tenantId,
+      String orgId,
+      String query,
+      String status,
+      String sourceSystem,
+      String documentType,
+      String sortDirection
+  ) {
+    return documentMetadataMapper.selectListByQuery(
+        buildTenantQuery(tenantId, orgId, query, status, sourceSystem, documentType, sortDirection, true, null)
+    );
   }
 
   public List<DocumentMetadataEntity> listVisibleByTenant(
@@ -49,9 +67,7 @@ public class DocumentMetadataRepository {
       String documentType,
       String sortDirection
   ) {
-    return documentMetadataMapper.selectListByQuery(
-        buildTenantQuery(tenantId, query, status, sourceSystem, documentType, sortDirection, true, null)
-    );
+    return listVisibleByTenant(tenantId, null, query, status, sourceSystem, documentType, sortDirection);
   }
 
   public Page<DocumentMetadataEntity> paginateByTenant(
@@ -64,7 +80,39 @@ public class DocumentMetadataRepository {
       int pageNumber,
       int pageSize
   ) {
-    return paginateVisibleByTenant(tenantId, query, status, sourceSystem, documentType, sortDirection, pageNumber, pageSize);
+    return paginateVisibleByTenant(tenantId, null, query, status, sourceSystem, documentType, sortDirection, pageNumber, pageSize);
+  }
+
+  public Page<DocumentMetadataEntity> paginateByTenant(
+      String tenantId,
+      String orgId,
+      String query,
+      String status,
+      String sourceSystem,
+      String documentType,
+      String sortDirection,
+      int pageNumber,
+      int pageSize
+  ) {
+    return paginateVisibleByTenant(tenantId, orgId, query, status, sourceSystem, documentType, sortDirection, pageNumber, pageSize);
+  }
+
+  public Page<DocumentMetadataEntity> paginateVisibleByTenant(
+      String tenantId,
+      String orgId,
+      String query,
+      String status,
+      String sourceSystem,
+      String documentType,
+      String sortDirection,
+      int pageNumber,
+      int pageSize
+  ) {
+    return documentMetadataMapper.paginate(
+        pageNumber,
+        pageSize,
+        buildTenantQuery(tenantId, orgId, query, status, sourceSystem, documentType, sortDirection, true, null)
+    );
   }
 
   public Page<DocumentMetadataEntity> paginateVisibleByTenant(
@@ -77,32 +125,48 @@ public class DocumentMetadataRepository {
       int pageNumber,
       int pageSize
   ) {
-    return documentMetadataMapper.paginate(
-        pageNumber,
-        pageSize,
-        buildTenantQuery(tenantId, query, status, sourceSystem, documentType, sortDirection, true, null)
-    );
+    return paginateVisibleByTenant(tenantId, null, query, status, sourceSystem, documentType, sortDirection, pageNumber, pageSize);
   }
 
   public Optional<DocumentMetadataEntity> findBySourceSystemAndExternalDocument(
       String sourceSystem,
       String externalDocumentId
   ) {
+    return findBySourceSystemAndExternalDocument(null, null, sourceSystem, externalDocumentId);
+  }
+
+  public Optional<DocumentMetadataEntity> findBySourceSystemAndExternalDocument(
+      String tenantId,
+      String orgId,
+      String sourceSystem,
+      String externalDocumentId
+  ) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_METADATA_ENTITY.SOURCE_SYSTEM.eq(sourceSystem))
-        .and(DOCUMENT_METADATA_ENTITY.EXTERNAL_DOCUMENT_ID.eq(externalDocumentId))
-        .limit(1);
+        .and(DOCUMENT_METADATA_ENTITY.EXTERNAL_DOCUMENT_ID.eq(externalDocumentId));
+    if (StringUtils.hasText(tenantId)) {
+      queryWrapper.and(DOCUMENT_METADATA_ENTITY.TENANT_ID.eq(tenantId));
+    }
+    if (StringUtils.hasText(orgId)) {
+      queryWrapper.and(DOCUMENT_METADATA_ENTITY.ORG_ID.eq(orgId.trim()));
+    }
+    queryWrapper.limit(1);
     return Optional.ofNullable(documentMetadataMapper.selectOneByQuery(queryWrapper));
   }
 
   public List<DocumentMetadataEntity> listRecentVisibleByTenant(String tenantId, int limit) {
+    return listRecentVisibleByTenant(tenantId, null, limit);
+  }
+
+  public List<DocumentMetadataEntity> listRecentVisibleByTenant(String tenantId, String orgId, int limit) {
     return documentMetadataMapper.selectListByQuery(
-        buildTenantQuery(tenantId, null, null, null, null, "desc", true, limit)
+        buildTenantQuery(tenantId, orgId, null, null, null, null, "desc", true, limit)
     );
   }
 
   private QueryWrapper buildTenantQuery(
       String tenantId,
+      String orgId,
       String query,
       String status,
       String sourceSystem,
@@ -113,6 +177,9 @@ public class DocumentMetadataRepository {
   ) {
     QueryWrapper queryWrapper = QueryWrapper.create()
         .where(DOCUMENT_METADATA_ENTITY.TENANT_ID.eq(tenantId));
+    if (StringUtils.hasText(orgId)) {
+      queryWrapper.and(DOCUMENT_METADATA_ENTITY.ORG_ID.eq(orgId.trim()));
+    }
 
     if (visibleOnly) {
       queryWrapper.and(DOCUMENT_METADATA_ENTITY.STATUS.ne(STATUS_ARCHIVED));

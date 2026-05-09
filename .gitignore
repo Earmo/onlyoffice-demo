@@ -25,6 +25,7 @@ replay_pid*
 
 packages/web/node_modules/
 packages/web/dist/
+packages/web/test-output.txt
 packages/server/target/
 packages/server/**/target/
 packages/server/storage/
@@ -34,18 +35,26 @@ packages/server/storage/
 .vscode/
 
 .agent/
+.augment/
 .claude/
 .codex/
 .gemini/
 .github/
+.kilo/
 .opencode/
 .qoder/
 .trae/
-.kiro/
 .cursor/
 .planning/
 .windsurf/
+.codebuddy/
+.qwen/
+
+get-shit-done/
 
 **/rebel.xml
 *.iml
 *.env
+node_modules
+/gsd-file-manifest.json
+/.clinerules
