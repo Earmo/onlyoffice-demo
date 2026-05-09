@@ -72,7 +72,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "insert-image", "insert-html", "close"]);
+const emit = defineEmits(["capture-selection", "refresh-outline", "jump-to-heading", "select-text-on-page", "insert-image", "insert-html", "close"]);
 
 // AI 工作台把状态拆成 5 组：
 // 1. 抽屉展示与 provider 能力；
@@ -107,6 +107,8 @@ const writebackPreviewRef = ref(null);
 const writeBackMode = ref("cursor");
 const writeBackHasSelection = ref(false);
 const variantSwitching = ref({});
+const locatePageNumber = ref(1);
+const locateText = ref("");
 
 // token 用于隔离异步竞态：
 // 文档切换、会话切换、流式响应都可能让旧请求晚于新请求返回，
@@ -162,6 +164,12 @@ const flatOutlineItems = computed(() => {
   }
   flatten(props.runtimeContext.outlineTreeData || []);
   return result;
+});
+const canLocateTextOnPage = computed(() => {
+  return props.runtimeContext.bridgeReady
+    && Number.isInteger(locatePageNumber.value)
+    && locatePageNumber.value > 0
+    && Boolean(locateText.value.trim());
 });
 
 watch(
@@ -1309,6 +1317,18 @@ function handleOutlineCommand(node) {
   emit("jump-to-heading", node);
 }
 
+function handleLocateTextOnPage() {
+  if (!canLocateTextOnPage.value) {
+    return;
+  }
+  emit("select-text-on-page", {
+    pageIndex: locatePageNumber.value - 1,
+    text: locateText.value.trim(),
+    occurrence: 0,
+    matchCase: false
+  });
+}
+
 function renderAssistantText(entry) {
   const variant = activeVariant(entry);
   return variant.assistantText || variant.streamingText || "";
@@ -1635,6 +1655,36 @@ function formatTimestamp(value) {
             </template>
           </el-dropdown>
         </div>
+        <div class="toolbox-locate-row">
+          <el-input-number
+            v-model="locatePageNumber"
+            class="locate-page-input"
+            size="small"
+            :min="1"
+            :step="1"
+            controls-position="right"
+            aria-label="页码"
+          />
+          <el-input
+            v-model="locateText"
+            class="locate-text-input"
+            size="small"
+            clearable
+            placeholder="文本"
+            @keyup.enter="handleLocateTextOnPage"
+          />
+          <el-tooltip content="定位并选中" placement="top">
+            <el-button
+              size="small"
+              type="primary"
+              :disabled="!canLocateTextOnPage"
+              @click="handleLocateTextOnPage"
+            >
+              <el-icon><Position /></el-icon>
+              <span>定位选中</span>
+            </el-button>
+          </el-tooltip>
+        </div>
       </div>
 
       <div class="thread-list">
@@ -1867,6 +1917,7 @@ function formatTimestamp(value) {
 .top-actions-left,
 .top-actions-right,
 .toolbox-actions,
+.toolbox-locate-row,
 .composer-actions,
 .dialog-actions,
 .meta-line,
@@ -1969,6 +2020,24 @@ function formatTimestamp(value) {
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   background-color: var(--el-bg-color);
+}
+
+.toolbox-actions {
+  flex-wrap: wrap;
+}
+
+.toolbox-locate-row {
+  margin-top: 10px;
+}
+
+.locate-page-input {
+  width: 92px;
+  flex: 0 0 92px;
+}
+
+.locate-text-input {
+  min-width: 0;
+  flex: 1 1 180px;
 }
 
 .thread-list {

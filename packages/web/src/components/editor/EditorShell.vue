@@ -329,6 +329,7 @@ async function selectTextOnPage(target) {
     bridgeStatusMessage.value = payload.pageScoped === false
       ? "已选中匹配文本；当前 DOCX 能力不支持严格页内过滤，页码仅用于辅助定位。"
       : "已选中指定页面中的匹配文本。";
+    await captureSelectedText();
     return payload;
   } catch (error) {
     bridgeErrorMessage.value = toBridgeErrorMessage(error, "定位并选中文本失败，请检查页码和文本后重试。");
@@ -961,6 +962,7 @@ defineExpose({
           @capture-selection="captureSelectedText"
           @refresh-outline="refreshOutline"
           @jump-to-heading="jumpToHeading"
+          @select-text-on-page="selectTextOnPage"
           @insert-image="insertRemoteImage"
           @insert-html="handleInsertHtml"
           @close="closeConsole"
