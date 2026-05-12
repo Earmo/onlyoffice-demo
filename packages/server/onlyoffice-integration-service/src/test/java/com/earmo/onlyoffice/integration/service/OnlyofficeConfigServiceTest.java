@@ -88,9 +88,9 @@ class OnlyofficeConfigServiceTest {
         Map<String, Object> plugins = cast(editorConfig.get("plugins"));
 
         assertEquals("https://docs.example.test/", response.documentServerUrl());
-        assertTrue(document.get("url").toString().contains("http://internal.example.test/api/documents/demo/file.docx"));
+        assertTrue(document.get("url").toString().contains("http://internal.example.test/api/document-runtime/demo/file.docx"));
         assertEquals("demo-1773907200000", document.get("key"));
-        assertTrue(editorConfig.get("callbackUrl").toString().contains("http://internal.example.test/api/documents/demo/callback"));
+        assertTrue(editorConfig.get("callbackUrl").toString().contains("http://internal.example.test/api/document-runtime/demo/callback"));
         assertEquals("user-a", cast(editorConfig.get("user")).get("id"));
         assertEquals("Alice", cast(editorConfig.get("user")).get("name"));
         assertEquals("edit", editorConfig.get("mode"));
@@ -426,7 +426,7 @@ class OnlyofficeConfigServiceTest {
         );
 
         Map<String, Object> document = cast(response.config().get("document"));
-        assertEquals("http://internal.example.test/api/documents/demo/file.docx", document.get("url"));
+        assertEquals("http://internal.example.test/api/document-runtime/demo/file.docx", document.get("url"));
     }
 
     @Test

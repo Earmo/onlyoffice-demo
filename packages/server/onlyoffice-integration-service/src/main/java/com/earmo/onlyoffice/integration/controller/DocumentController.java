@@ -33,7 +33,7 @@ import java.util.Map;
  */
 @Tag(name = "文档运行时接口", description = "提供 ONLYOFFICE 编辑器配置、文件下载、回调和图片代理能力。")
 @RestController
-@RequestMapping("/api/documents")
+@RequestMapping("/api/document-runtime")
 @RequiredArgsConstructor
 public class DocumentController extends BaseController {
 

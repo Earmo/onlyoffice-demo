@@ -39,7 +39,7 @@ class OnlyofficeImageServiceTest {
         Map<String, Object> payload = response.insertImage();
         assertEquals("add", payload.get("c"));
         assertEquals("png", payload.get("fileType"));
-        assertTrue(payload.get("url").toString().contains("http://internal.example.test/api/documents/demo/images/proxy"));
+        assertTrue(payload.get("url").toString().contains("http://internal.example.test/api/document-runtime/demo/images/proxy"));
         assertTrue(payload.get("url").toString().contains("sourceUrl=https://example.com/assets/logo.png"));
         assertNotNull(payload.get("token"));
     }

@@ -109,7 +109,7 @@ class DocumentControllerTest {
         when(documentStorageService.saveCallbackDocument("sample", "https://files.example.test/latest.docx", "docx"))
                 .thenReturn(new NormalizedDocumentMetadata("sample.docx", "docx", "word"));
 
-        mockMvc.perform(post("/api/documents/sample/callback")
+        mockMvc.perform(post("/api/document-runtime/sample/callback")
                         .header("Authorization", "Bearer signed-callback-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -157,7 +157,7 @@ class DocumentControllerTest {
                 )
         ));
 
-        mockMvc.perform(post("/api/documents/editor-config")
+        mockMvc.perform(post("/api/document-runtime/editor-config")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -198,7 +198,7 @@ class DocumentControllerTest {
                 )
         ));
 
-        mockMvc.perform(post("/api/documents/editor-config")
+        mockMvc.perform(post("/api/document-runtime/editor-config")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -218,7 +218,7 @@ class DocumentControllerTest {
         when(documentStorageService.saveCallbackDocument("sample", "https://files.example.test/latest.docx", "docx"))
                 .thenThrow(new IOException("storage failed"));
 
-        mockMvc.perform(post("/api/documents/sample/callback")
+        mockMvc.perform(post("/api/document-runtime/sample/callback")
                         .header("Authorization", "Bearer signed-callback-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -240,7 +240,7 @@ class DocumentControllerTest {
                 .when(onlyofficeJwtService)
                 .verifyCallbackRequest(org.mockito.ArgumentMatchers.any());
 
-        mockMvc.perform(post("/api/documents/sample/callback")
+        mockMvc.perform(post("/api/document-runtime/sample/callback")
                         .header("Authorization", "Bearer invalid-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -273,7 +273,7 @@ class DocumentControllerTest {
                 ))
         ));
 
-        mockMvc.perform(post("/api/documents/save-status")
+        mockMvc.perform(post("/api/document-runtime/save-status")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -312,7 +312,7 @@ class DocumentControllerTest {
             return emitter;
         });
 
-        MvcResult mvcResult = mockMvc.perform(get("/api/documents/sample/runtime-events"))
+        MvcResult mvcResult = mockMvc.perform(get("/api/document-runtime/sample/runtime-events"))
                 .andExpect(request().asyncStarted())
                 .andReturn();
 
@@ -347,7 +347,7 @@ class DocumentControllerTest {
                         List.of()
                 ));
 
-        mockMvc.perform(post("/api/documents/close/session")
+        mockMvc.perform(post("/api/document-runtime/close/session")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -377,7 +377,7 @@ class DocumentControllerTest {
                         List.of()
                 ));
 
-        mockMvc.perform(post("/api/documents/close/session")
+        mockMvc.perform(post("/api/document-runtime/close/session")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("{\"documentId\":\"sample\"}"))
                 .andExpect(status().isOk())
@@ -402,7 +402,7 @@ class DocumentControllerTest {
                         List.of()
                 ));
 
-        mockMvc.perform(post("/api/documents/close/session")
+        mockMvc.perform(post("/api/document-runtime/close/session")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("sample"))
                 .andExpect(status().isOk())
@@ -431,7 +431,7 @@ class DocumentControllerTest {
         ));
         when(onlyofficeCommandService.forceSaveAndAwait("sample", 8000L)).thenReturn(true);
 
-        mockMvc.perform(post("/api/documents/save")
+        mockMvc.perform(post("/api/document-runtime/save")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -457,7 +457,7 @@ class DocumentControllerTest {
                 org.mockito.ArgumentMatchers.any()
         )).thenThrow(new IllegalStateException("ONLYOFFICE 运行配置缺失：onlyoffice.integration.document-server-url 不能为空。"));
 
-        mockMvc.perform(post("/api/documents/editor-config")
+        mockMvc.perform(post("/api/document-runtime/editor-config")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -476,7 +476,7 @@ class DocumentControllerTest {
         when(documentStatusService.openEditingSession(anyString()))
                 .thenThrow(new DocumentNotFoundException("archived"));
 
-        mockMvc.perform(post("/api/documents/editor-config")
+        mockMvc.perform(post("/api/document-runtime/editor-config")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -492,7 +492,7 @@ class DocumentControllerTest {
         when(documentStorageService.getRequiredDocument("archived"))
                 .thenThrow(new DocumentNotFoundException("archived"));
 
-        mockMvc.perform(get("/api/documents/archived/file"))
+        mockMvc.perform(get("/api/document-runtime/archived/file"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("文档不存在：archived"));
     }
@@ -502,7 +502,7 @@ class DocumentControllerTest {
         when(documentStatusService.getStatus("archived"))
                 .thenThrow(new DocumentNotFoundException("archived"));
 
-        mockMvc.perform(post("/api/documents/save-status")
+        mockMvc.perform(post("/api/document-runtime/save-status")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -535,7 +535,7 @@ class DocumentControllerTest {
         ));
         when(documentStorageService.readDocument("sample")).thenReturn("demo".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
-        mockMvc.perform(get("/api/documents/sample/file.docx"))
+        mockMvc.perform(get("/api/document-runtime/sample/file.docx"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("filename*=UTF-8''report.docx")));

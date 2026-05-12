@@ -1,6 +1,6 @@
 import { buildApiUrl, createAccessContextHeaders } from "../../lib/api";
 
-const RUNTIME_EVENT_PATH = documentId => `/api/documents/${encodeURIComponent(documentId)}/runtime-events`;
+const RUNTIME_EVENT_PATH = documentId => `/api/document-runtime/${encodeURIComponent(documentId)}/runtime-events`;
 
 // Phase 14.1 不使用原生 EventSource，而是自己走 fetch + reader。
 // 这么做有三个明确原因：

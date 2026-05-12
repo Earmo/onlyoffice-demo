@@ -20,7 +20,7 @@
    - `POST /api/documents/upload`
    - `POST /api/documents/import-remote`
 2. 获取内部 `documentId`
-3. 调用 `POST /api/documents/editor-config`
+3. 调用 `POST /api/document-runtime/editor-config`
 4. 由上游系统决定：
    - 跳转官方前端 `/editor/{documentId}`
    - 或在自己的前端里消费 `editor-config`
@@ -118,20 +118,20 @@ Content-Type: application/json
 编辑器运行态接口也使用显式 body：
 
 ```http
-POST /api/documents/editor-config
+POST /api/document-runtime/editor-config
 Content-Type: application/json
 
 {"documentId":"demo","readonly":false}
 ```
 
 ```http
-POST /api/documents/close/session
+POST /api/document-runtime/close/session
 Content-Type: application/json
 
 {"documentId":"demo"}
 ```
 
-保留的协议端点仍使用原协议返回值：文件下载、图片代理、ONLYOFFICE callback、文档运行态 SSE、LLM SSE 和 multipart upload。旧 `GET /api/documents/{documentId}`、`GET /api/documents/{documentId}/editor-config` 等兼容入口仍可迁移期调用，但已标记 deprecated，新接入不应继续新增依赖。
+保留的协议端点仍使用原协议返回值：文件下载、图片代理、ONLYOFFICE callback、文档运行态 SSE、LLM SSE 和 multipart upload。新接入应把编辑器运行态能力统一挂到 `/api/document-runtime`，不要继续把运行态接口混在 `/api/documents` 主数据路径下。
 
 ## 官方前端入口
 

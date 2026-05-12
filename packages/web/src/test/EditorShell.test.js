@@ -103,7 +103,7 @@ describe("runtimeEventStream", () => {
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("/api/documents/doc%201%2Ftest/runtime-events"),
+      expect.stringContaining("/api/document-runtime/doc%201%2Ftest/runtime-events"),
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "text/event-stream",
@@ -239,7 +239,7 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/editor-config");
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/document-runtime/editor-config");
     expect(wrapper.find(".drawer-collapse-btn").exists()).toBe(true);
 
     await wrapper.find(".drawer-collapse-btn").trigger("click");
@@ -254,7 +254,7 @@ describe("EditorShell", () => {
     wrapper.unmount();
     await flushPromises();
 
-    const closeCalls = fetch.mock.calls.filter(call => String(call[0]).includes("/api/documents/close/session"));
+    const closeCalls = fetch.mock.calls.filter(call => String(call[0]).includes("/api/document-runtime/close/session"));
     expect(closeCalls).toHaveLength(1);
   });
 
@@ -417,7 +417,7 @@ describe("EditorShell", () => {
     });
     await flushPromises();
 
-    expect(String(fetch.mock.calls[0][0])).toContain("/api/documents/editor-config");
+    expect(String(fetch.mock.calls[0][0])).toContain("/api/document-runtime/editor-config");
     expect(wrapper.find(".floating-console").isVisible()).toBe(false);
     expect(wrapper.find(".drawer-collapse-btn").exists()).toBe(false);
   });
@@ -445,7 +445,7 @@ describe("EditorShell", () => {
 
     expect(startStreamSpy).toHaveBeenCalledWith(expect.objectContaining({ documentId: "doc-1" }));
     expect(wrapper.vm.saveStatus?.message).toBe("来自 runtime-events");
-    expect(countFetchCalls("/api/documents/doc-1/save-status")).toBe(0);
+    expect(countFetchCalls("/api/document-runtime/doc-1/save-status")).toBe(0);
     expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
   });
 
@@ -480,7 +480,7 @@ describe("EditorShell", () => {
       await flushTimersAndPromises();
       expectedCalls += 1;
       expect(startStreamSpy).toHaveBeenCalledTimes(expectedCalls);
-      expect(countFetchCalls("/api/documents/save-status")).toBeGreaterThan(0);
+      expect(countFetchCalls("/api/document-runtime/save-status")).toBeGreaterThan(0);
       expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
       if (controllers[failureIndex + 1]) {
         controllers[failureIndex + 1].emitError(new Error(`retry-${failureIndex}`));
@@ -516,7 +516,7 @@ describe("EditorShell", () => {
     await flushTimersAndPromises();
 
     expect(startStreamSpy).toHaveBeenCalledTimes(2);
-    expect(countFetchCalls("/api/documents/doc-1/save-status")).toBe(0);
+    expect(countFetchCalls("/api/document-runtime/doc-1/save-status")).toBe(0);
     expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
   });
 
@@ -541,7 +541,7 @@ describe("EditorShell", () => {
     await flushTimersAndPromises();
 
     expect(startStreamSpy).toHaveBeenCalledWith(expect.objectContaining({ documentId: "doc-1" }));
-    expect(countFetchCalls("/api/documents/doc-1/save-status")).toBe(0);
+    expect(countFetchCalls("/api/document-runtime/doc-1/save-status")).toBe(0);
     expect(countFetchCalls("/api/documents/doc-1/editing-sessions/heartbeat")).toBe(0);
 
     hiddenConsoleWrapper.unmount();
@@ -560,7 +560,7 @@ describe("EditorShell", () => {
     await flushTimersAndPromises();
 
     expect(startStreamSpy).toHaveBeenCalledTimes(1);
-    expect(countFetchCalls("/api/documents/doc-2/save-status")).toBe(0);
+    expect(countFetchCalls("/api/document-runtime/doc-2/save-status")).toBe(0);
     expect(countFetchCalls("/api/documents/doc-2/editing-sessions/heartbeat")).toBe(0);
 
     readonlyWrapper.unmount();

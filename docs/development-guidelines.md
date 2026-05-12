@@ -133,10 +133,10 @@ executor.execute(() -> CurrentAccessContext.runWith(accessContext, () -> touch(d
 - `POST /api/documents/detail`
 - `POST /api/documents/create`
 - `POST /api/documents/delete`
-- `POST /api/documents/editor-config`
-- `POST /api/documents/close/session`
-- `POST /api/documents/save`
-- `POST /api/documents/save-status`
+- `POST /api/document-runtime/editor-config`
+- `POST /api/document-runtime/close/session`
+- `POST /api/document-runtime/save`
+- `POST /api/document-runtime/save-status`
 - `POST /api/llm/capability/query`
 - `POST /api/llm/sessions/list`
 - `POST /api/llm/sessions/create`
@@ -152,10 +152,10 @@ executor.execute(() -> CurrentAccessContext.runWith(accessContext, () -> touch(d
 
 以下端点保持原始协议形态，不包裹成普通 `ResponseDto`：
 
-- ONLYOFFICE callback：`POST /api/documents/{documentId}/callback`
-- 文档二进制下载：`GET /api/documents/{documentId}/file` 和 `GET /api/documents/{documentId}/file.{extension}`
-- 图片二进制代理：`GET /api/documents/{documentId}/images/proxy`
-- 文档运行态 SSE：`GET /api/documents/{documentId}/runtime-events`
+- ONLYOFFICE callback：`POST /api/document-runtime/{documentId}/callback`
+- 文档二进制下载：`GET /api/document-runtime/{documentId}/file` 和 `GET /api/document-runtime/{documentId}/file.{extension}`
+- 图片二进制代理：`GET /api/document-runtime/{documentId}/images/proxy`
+- 文档运行态 SSE：`GET /api/document-runtime/{documentId}/runtime-events`
 - LLM 流式响应：`POST /api/llm/messages/stream`
 - multipart 文件字段：`POST /api/documents/upload`
 

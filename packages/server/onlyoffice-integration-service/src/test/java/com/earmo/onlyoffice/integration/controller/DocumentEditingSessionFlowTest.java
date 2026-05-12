@@ -56,7 +56,7 @@ class DocumentEditingSessionFlowTest {
         Instant lastSeenBeforeStream = sessionBeforeStream.getLastSeenTime();
 
         MvcResult runtimeEvents = mockMvc.perform(withAccessHeaders(
-                        get("/api/documents/{documentId}/runtime-events", documentId),
+                        get("/api/document-runtime/{documentId}/runtime-events", documentId),
                         actorUser,
                         actorName
                 ))
@@ -177,7 +177,7 @@ class DocumentEditingSessionFlowTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(
-                        post("/api/documents/{documentId}/callback", documentId)
+                        post("/api/document-runtime/{documentId}/callback", documentId)
                                 .header("Authorization", "Bearer " + onlyofficeJwtService.sign(Map.of("documentId", documentId, "status", 4)))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
@@ -235,7 +235,7 @@ class DocumentEditingSessionFlowTest {
     }
 
     private MockHttpServletRequestBuilder editorConfigRequest(String documentId, boolean readonly) {
-        return post("/api/documents/editor-config")
+        return post("/api/document-runtime/editor-config")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {
@@ -246,7 +246,7 @@ class DocumentEditingSessionFlowTest {
     }
 
     private MockHttpServletRequestBuilder closeEditingSessionRequest(String documentId) {
-        return post("/api/documents/close/session")
+        return post("/api/document-runtime/close/session")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {

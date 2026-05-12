@@ -88,7 +88,7 @@ corepack pnpm dev
 1. 调用 `POST /api/documents/create`
 2. 或调用 `POST /api/documents/upload`
 3. 或调用 `POST /api/documents/import-remote`
-4. 调用 `GET /api/documents/{documentId}/editor-config`
+4. 调用 `POST /api/document-runtime/editor-config`
 5. 再决定跳转官方前端，或由上游系统自己的前端消费该配置
 
 ### 4.1 官方前端默认流转
@@ -117,7 +117,7 @@ corepack pnpm dev
 编辑页返回和列表状态投影现在还有两个额外约定：
 
 - 点击“保存并返回”时，前端会先调用服务端保存接口，等待本次显式保存完成后再关闭编辑会话并回到列表；返回动作本身不额外轮询 `save-status`，避免页面卡顿
-- 编辑页运行态使用 `/api/documents/{documentId}/runtime-events` SSE：保存状态推送和编辑会话存活都由 SSE 主通道维护；浏览器不再轮询 `/editing-sessions/heartbeat`，后端不暴露独立 REST heartbeat 接口。SSE 断流时前端只恢复 `/save-status` 查询并按退避重连 runtime stream，不能用 REST heartbeat 掩盖 runtime 通道故障。
+- 编辑页运行态使用 `/api/document-runtime/{documentId}/runtime-events` SSE：保存状态推送和编辑会话存活都由 SSE 主通道维护；浏览器不再轮询 `/editing-sessions/heartbeat`，后端不暴露独立 REST heartbeat 接口。SSE 断流时前端只恢复 `/save-status` 查询并按退避重连 runtime stream，不能用 REST heartbeat 掩盖 runtime 通道故障。
 - 直接关闭浏览器、刷新页面或异常离开时，前端会通过 `pagehide/beforeunload` 尽量补发关闭请求；如果会话还是残留，后端也会按活跃超时窗口自动把脏会话从“编辑中”投影里剔除
 - 如果关闭编辑器后 ONLYOFFICE 继续补发 `status=4` 之类的关闭类 callback，后端会结合活跃编辑会话数把主状态重新收口回稳定态，避免列表在“会话已关闭”后仍显示 `editing`
 
@@ -130,9 +130,9 @@ corepack pnpm dev
 - `POST /api/documents/create`
 - `POST /api/documents/upload`
 - `POST /api/documents/import-remote`
-- `GET /api/documents/{documentId}/editor-config`
-- `GET /api/documents/{documentId}/file`
-- `POST /api/documents/{documentId}/callback`
+- `POST /api/document-runtime/editor-config`
+- `GET /api/document-runtime/{documentId}/file`
+- `POST /api/document-runtime/{documentId}/callback`
 
 ### 5.1 ONLYOFFICE callback JWT
 

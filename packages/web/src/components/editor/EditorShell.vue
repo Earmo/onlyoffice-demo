@@ -347,7 +347,7 @@ async function loadEditorConfig() {
     // - 同源的 ONLYOFFICE 文档服务地址
     // - 文档 key/token/config
     // - 编辑态下自动挂载的隐藏桥接插件配置
-    const response = await apiFetch("/api/documents/editor-config", {
+    const response = await apiFetch("/api/document-runtime/editor-config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ documentId: props.documentId, readonly: props.readonly })
@@ -379,7 +379,7 @@ async function fetchSaveStatusSnapshot(options = {}) {
 
   try {
     // 保存状态来自我们自己的后端，不依赖 ONLYOFFICE iframe DOM。
-    const response = await apiFetch("/api/documents/save-status", {
+    const response = await apiFetch("/api/document-runtime/save-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ documentId: props.documentId })
@@ -435,7 +435,7 @@ async function insertRemoteImage(sourceUrl) {
   try {
     // 图片插入仍沿用现有后端接口：
     // 后端生成 ONLYOFFICE insertImage 所需配置，前端只负责调用 editor 实例写入。
-    const response = await apiFetch(`/api/documents/${props.documentId}/images/insert`, {
+    const response = await apiFetch(`/api/document-runtime/${props.documentId}/images/insert`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -781,7 +781,7 @@ async function closeEditingSession(options = {}) {
     if (!keepalive) {
       // 显式离开编辑页时先主动触发一次保存，再关闭 editing session，
       // 这样能把“离开即保存”的体验收口到一个稳定流程里。
-      const saveResponse = await apiFetch("/api/documents/save", {
+      const saveResponse = await apiFetch("/api/document-runtime/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ documentId: props.documentId })
@@ -792,7 +792,7 @@ async function closeEditingSession(options = {}) {
     destroyDocEditor();
 
     // 编辑器销毁后再通知后端关闭会话，避免前端残留实例继续发送 callback。
-    const response = await apiFetch("/api/documents/close/session", {
+    const response = await apiFetch("/api/document-runtime/close/session", {
       method: "POST",
       keepalive,
       headers: { "Content-Type": "application/json" },
@@ -829,7 +829,7 @@ function dispatchUnloadCloseRequest() {
   clearRuntimeStreamRetry();
   stopSaveStatusPolling();
 
-  fetch(buildApiUrl("/api/documents/close/session"), {
+  fetch(buildApiUrl("/api/document-runtime/close/session"), {
     method: "POST",
     keepalive: true,
     headers: createAccessContextHeaders({ "Content-Type": "application/json" }),

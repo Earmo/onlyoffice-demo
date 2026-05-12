@@ -109,7 +109,7 @@ public class OnlyofficeImageServiceImpl implements OnlyofficeImageService {
      */
     private String buildInternalImageProxyUrl(String documentId, String sourceUrl) {
         return UriComponentsBuilder.fromHttpUrl(onlyofficeIntegrationProperties.getInternalBaseUrl())
-                .path("/api/documents/{documentId}/images/proxy")
+                .path("/api/document-runtime/{documentId}/images/proxy")
                 .queryParam("sourceUrl", sourceUrl)
                 .buildAndExpand(documentId)
                 .toUriString();

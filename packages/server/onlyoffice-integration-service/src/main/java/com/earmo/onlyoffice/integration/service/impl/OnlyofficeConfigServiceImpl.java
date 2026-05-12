@@ -103,7 +103,7 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
         document.put("key", OnlyofficeDocumentKeyResolver.resolveDocumentKey(storedDocument));
         document.put(
                 "url",
-                buildInternalUrl("/api/documents/%s/file.%s".formatted(storedDocument.documentId(), storedDocument.fileType()))
+                buildInternalUrl("/api/document-runtime/%s/file.%s".formatted(storedDocument.documentId(), storedDocument.fileType()))
         );
         document.put("permissions", permissions);
         return document;
@@ -211,7 +211,7 @@ public class OnlyofficeConfigServiceImpl implements OnlyofficeConfigService {
         editorConfig.put("lang", onlyofficeIntegrationProperties.getDefaultLanguage());
         editorConfig.put("region", onlyofficeIntegrationProperties.getDefaultRegion());
         editorConfig.put("mode", editMode ? "edit" : "view");
-        editorConfig.put("callbackUrl", buildInternalUrl("/api/documents/%s/callback".formatted(storedDocument.documentId())));
+        editorConfig.put("callbackUrl", buildInternalUrl("/api/document-runtime/%s/callback".formatted(storedDocument.documentId())));
         editorConfig.put("user", user);
         editorConfig.put("customization", customization);
         // 即使是只读(preview)模式，前端也需要桥接插件来读取选区和章节目录
