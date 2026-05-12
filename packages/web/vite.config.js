@@ -12,9 +12,29 @@ const elementPlusResolver = ElementPlusResolver({
   importStyle: isVitest ? false : "css"
 });
 
+function parseProxyHeaders(value) {
+  return String(value || "").split(";").reduce((headers, pair) => {
+    const separatorIndex = pair.indexOf("=");
+    if (separatorIndex <= 0) {
+      return headers;
+    }
+    const name = pair.slice(0, separatorIndex).trim();
+    const headerValue = pair.slice(separatorIndex + 1).trim();
+    if (name && headerValue) {
+      headers[name] = headerValue;
+    }
+    return headers;
+  }, {});
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const devApiProxyTarget = env.VITE_DEV_API_PROXY_TARGET || "http://localhost:8080";
+  const devApiAuthorization = env.VITE_DEV_API_AUTHORIZATION || env.VITE_AUTH_TOKEN || "";
+  const devApiHeaders = parseProxyHeaders(env.VITE_DEV_API_HEADERS);
+  if (devApiAuthorization) {
+    devApiHeaders.authorization = devApiAuthorization;
+  }
 
   return {
     plugins: [
@@ -37,7 +57,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": {
           target: devApiProxyTarget,
-          changeOrigin: true
+          changeOrigin: true,
+          headers: Object.keys(devApiHeaders).length ? devApiHeaders : undefined
         }
       }
     },

@@ -309,6 +309,42 @@ describe("DocumentLibraryPage", () => {
     expect(wrapper.text()).toContain("自定义身份查看到的文档.docx");
     expect(wrapper.text()).toContain("已更新访问上下文。");
   });
+
+  it("应能保存服务接入设置并在刷新工作台时使用自定义服务地址和鉴权头", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse(listPayload()))
+      .mockResolvedValueOnce(jsonResponse(recentPayload()))
+      .mockResolvedValueOnce(jsonResponse(listPayload({
+        documents: [documentSummary({ documentId: "doc-remote", title: "测试后端文档.docx" })]
+      })))
+      .mockResolvedValueOnce(jsonResponse(recentPayload()));
+
+    const wrapper = mount(DocumentLibraryPage);
+    await flushPromises();
+
+    wrapper.vm.openIntegrationSettingsDialog();
+    await flushPromises();
+
+    wrapper.vm.integrationSettingsForm.apiBaseUrl = "https://investment-test.jinbizhihui.com/egc-operation/tt-biddingservice/";
+    wrapper.vm.integrationSettingsForm.authorization = "test-token";
+    wrapper.vm.integrationSettingsForm.onlyofficeDocumentServerUrl = "https://investment-test.jinbizhihui.com/egc-operation/api/office/";
+
+    await wrapper.vm.saveIntegrationRuntimeSettings();
+    await flushPromises();
+
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch.mock.calls[2][0]).toBe("https://investment-test.jinbizhihui.com/egc-operation/tt-biddingservice/api/documents/page");
+    expect(fetch.mock.calls[2][1]?.headers?.authorization).toBe("test-token");
+    expect(fetch.mock.calls[3][0]).toBe("https://investment-test.jinbizhihui.com/egc-operation/tt-biddingservice/api/documents/list/recent");
+    expect(JSON.parse(localStorage.getItem("ONLYOFFICE_INTEGRATION_SETTINGS"))).toEqual({
+      apiBaseUrl: "https://investment-test.jinbizhihui.com/egc-operation/tt-biddingservice",
+      authorization: "test-token",
+      onlyofficeDocumentServerUrl: "https://investment-test.jinbizhihui.com/egc-operation/api/office",
+      customHeaders: {}
+    });
+    expect(wrapper.text()).toContain("测试后端文档.docx");
+    expect(wrapper.text()).toContain("已更新服务接入设置。");
+  });
 });
 
 function requestUrl(callIndex) {

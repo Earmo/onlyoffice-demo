@@ -1,4 +1,5 @@
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+const INTEGRATION_SETTINGS_STORAGE_KEY = "ONLYOFFICE_INTEGRATION_SETTINGS";
 
 // 本地开发和独立调试时，前端需要自己带上最小访问上下文，
 // 否则后端的 AccessContextResolver 会把请求当成“完全没有身份来源”而直接拒绝。
@@ -52,9 +53,78 @@ function resolveDefaultAccessContextHeaders() {
   };
 }
 
+function normalizeBaseUrl(value) {
+  return String(value ?? "").trim().replace(/\/+$/, "");
+}
+
+function normalizeAuthorization(value) {
+  return String(value ?? "").trim();
+}
+
+function parseCustomHeaders(value) {
+  const rawValue = String(value ?? "").trim();
+  if (!rawValue) {
+    return {};
+  }
+
+  return rawValue.split(";").reduce((headers, pair) => {
+    const separatorIndex = pair.indexOf("=");
+    if (separatorIndex <= 0) {
+      return headers;
+    }
+    const name = pair.slice(0, separatorIndex).trim();
+    const headerValue = pair.slice(separatorIndex + 1).trim();
+    if (name && headerValue) {
+      headers[name] = headerValue;
+    }
+    return headers;
+  }, {});
+}
+
+function resolveEnvIntegrationSettings() {
+  return {
+    apiBaseUrl: normalizeBaseUrl(apiBaseUrl),
+    authorization: normalizeAuthorization(import.meta.env.VITE_DEV_API_AUTHORIZATION || import.meta.env.VITE_AUTH_TOKEN),
+    onlyofficeDocumentServerUrl: normalizeBaseUrl(import.meta.env.VITE_ONLYOFFICE_DOCUMENT_SERVER_URL),
+    customHeaders: parseCustomHeaders(import.meta.env.VITE_DEV_API_HEADERS)
+  };
+}
+
+export function getIntegrationSettings() {
+  const defaults = resolveEnvIntegrationSettings();
+  try {
+    const stored = localStorage.getItem(INTEGRATION_SETTINGS_STORAGE_KEY);
+    if (!stored) {
+      return defaults;
+    }
+    const parsed = JSON.parse(stored);
+    return {
+      apiBaseUrl: normalizeBaseUrl(parsed?.apiBaseUrl) || defaults.apiBaseUrl,
+      authorization: normalizeAuthorization(parsed?.authorization) || defaults.authorization,
+      onlyofficeDocumentServerUrl: normalizeBaseUrl(parsed?.onlyofficeDocumentServerUrl)
+        || defaults.onlyofficeDocumentServerUrl,
+      customHeaders: {
+        ...defaults.customHeaders,
+        ...(parsed?.customHeaders && typeof parsed.customHeaders === "object" ? parsed.customHeaders : {})
+      }
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+export function saveIntegrationSettings(settings) {
+  localStorage.setItem(INTEGRATION_SETTINGS_STORAGE_KEY, JSON.stringify({
+    apiBaseUrl: normalizeBaseUrl(settings?.apiBaseUrl),
+    authorization: normalizeAuthorization(settings?.authorization),
+    onlyofficeDocumentServerUrl: normalizeBaseUrl(settings?.onlyofficeDocumentServerUrl),
+    customHeaders: settings?.customHeaders && typeof settings.customHeaders === "object" ? settings.customHeaders : {}
+  }));
+}
+
 export function buildApiUrl(path) {
   // 支持在 nginx 同源代理和独立调试 baseUrl 两种场景之间切换。
-  return `${apiBaseUrl}${path}`;
+  return `${getIntegrationSettings().apiBaseUrl}${path}`;
 }
 
 const CUSTOM_CONTEXT_STORAGE_KEY = "MOCK_ACCESS_CONTEXT";
@@ -97,6 +167,7 @@ export function saveCustomAccessContext(context) {
  */
 export function createAccessContextHeaders(headers = {}) {
   const defaultAccessContextHeaders = resolveDefaultAccessContextHeaders();
+  const integrationSettings = getIntegrationSettings();
   const customContext = getCustomAccessContext() || {};
 
   // 默认值 + 本地自定义上下文 + 调用方传入 headers 三层合并：
@@ -122,10 +193,23 @@ export function createAccessContextHeaders(headers = {}) {
     mergedHeaders["X-User-Display-Name"] = normalizeHeaderValue(customContext.actorName, mergedHeaders["X-User-Display-Name"]);
   }
 
-  return {
+  const resolvedHeaders = {
     ...mergedHeaders,
     ...headers
   };
+
+  if (integrationSettings.authorization && !hasHeader(resolvedHeaders, "authorization")) {
+    resolvedHeaders.authorization = integrationSettings.authorization;
+  }
+  Object.entries(integrationSettings.customHeaders || {}).forEach(([name, value]) => {
+    const headerName = String(name ?? "").trim();
+    const headerValue = String(value ?? "").trim();
+    if (headerName && headerValue && !hasHeader(resolvedHeaders, headerName)) {
+      resolvedHeaders[headerName] = headerValue;
+    }
+  });
+
+  return resolvedHeaders;
 }
 
 /**

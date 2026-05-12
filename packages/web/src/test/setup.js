@@ -13,6 +13,7 @@ beforeEach(() => {
   // 避免 ONLYOFFICE 相关测试互相污染。
   vi.stubGlobal("fetch", vi.fn());
   vi.stubGlobal("alert", vi.fn());
+  localStorage.clear();
   window.DocEditor = { instances: {} };
 });
 

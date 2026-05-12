@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { DArrowLeft, DArrowRight } from "@element-plus/icons-vue";
 import { DocumentEditor } from "@onlyoffice/document-editor-vue";
-import { apiFetch, buildApiUrl, createAccessContextHeaders, parseJsonEnvelope } from "../../lib/api";
+import { apiFetch, buildApiUrl, createAccessContextHeaders, getIntegrationSettings, parseJsonEnvelope } from "../../lib/api";
 import EditorAiWorkbench from "./EditorAiWorkbench.vue";
 import { createOnlyofficeBridge } from "./onlyofficeBridge";
 import { startRuntimeEventStream } from "./runtimeEventStream";
@@ -352,7 +352,14 @@ async function loadEditorConfig() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ documentId: props.documentId, readonly: props.readonly })
     });
-    editorPayload.value = await parseJsonEnvelope(response);
+    const payload = await parseJsonEnvelope(response);
+    const onlyofficeDocumentServerUrl = getIntegrationSettings().onlyofficeDocumentServerUrl;
+    editorPayload.value = onlyofficeDocumentServerUrl
+      ? {
+          ...payload,
+          documentServerUrl: onlyofficeDocumentServerUrl
+        }
+      : payload;
     editingSessionOpened.value = !props.readonly;
     editorKey.value += 1;
     ensureBridge();

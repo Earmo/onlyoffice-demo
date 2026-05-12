@@ -3,7 +3,14 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DocumentCreateActions from "../components/library/DocumentCreateActions.vue";
 import DocumentList from "../components/library/DocumentList.vue";
-import { apiFetch, getCustomAccessContext, parseJsonEnvelope, saveCustomAccessContext } from "../lib/api";
+import {
+  apiFetch,
+  getCustomAccessContext,
+  getIntegrationSettings,
+  parseJsonEnvelope,
+  saveCustomAccessContext,
+  saveIntegrationSettings
+} from "../lib/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +32,7 @@ const highlightedDocumentId = ref("");
 const remoteDocumentUrl = ref("");
 const showCreateDialog = ref(false);
 const showContextDialog = ref(false);
+const showIntegrationSettingsDialog = ref(false);
 const contextForm = ref({
   tenantId: "",
   orgId: "",
@@ -32,6 +40,11 @@ const contextForm = ref({
   actorUser: "",
   actorName: "",
   sourceSystem: ""
+});
+const integrationSettingsForm = ref({
+  apiBaseUrl: "",
+  authorization: "",
+  onlyofficeDocumentServerUrl: ""
 });
 
 const isCreating = ref(false);
@@ -418,6 +431,30 @@ async function saveContext() {
   await loadLibraryWorkspace();
 }
 
+function openIntegrationSettingsDialog() {
+  const current = getIntegrationSettings();
+  integrationSettingsForm.value = {
+    apiBaseUrl: current.apiBaseUrl || "",
+    authorization: current.authorization || "",
+    onlyofficeDocumentServerUrl: current.onlyofficeDocumentServerUrl || ""
+  };
+  showIntegrationSettingsDialog.value = true;
+}
+
+async function saveIntegrationRuntimeSettings() {
+  saveIntegrationSettings({
+    apiBaseUrl: integrationSettingsForm.value.apiBaseUrl.trim(),
+    authorization: integrationSettingsForm.value.authorization.trim(),
+    onlyofficeDocumentServerUrl: integrationSettingsForm.value.onlyofficeDocumentServerUrl.trim()
+  });
+  showIntegrationSettingsDialog.value = false;
+
+  successMessage.value = "已更新服务接入设置。";
+  errorMessage.value = "";
+  pageNumber.value = 1;
+  await loadLibraryWorkspace();
+}
+
 watch(
   () => route.query.highlight,
   () => {
@@ -443,7 +480,10 @@ onMounted(loadLibraryWorkspace);
                     <span class="eyebrow">当前上下文</span>
                     <h2>文档工作台</h2>
                   </div>
-                  <el-button size="small" @click="openContextDialog">切换</el-button>
+                  <div class="context-actions">
+                    <el-button size="small" @click="openContextDialog">切换</el-button>
+                    <el-button size="small" @click="openIntegrationSettingsDialog">服务设置</el-button>
+                  </div>
                 </div>
               </template>
               <p class="muted-copy">
@@ -636,6 +676,35 @@ onMounted(loadLibraryWorkspace);
           <el-button type="primary" @click="saveContext">保存并刷新工作台</el-button>
         </template>
       </el-dialog>
+
+      <el-dialog v-model="showIntegrationSettingsDialog" title="服务接入设置" width="640px" destroy-on-close>
+        <el-form label-position="top" :model="integrationSettingsForm">
+          <el-form-item label="服务端 API 地址">
+            <el-input
+              v-model="integrationSettingsForm.apiBaseUrl"
+              placeholder="为空时使用当前站点 /api 代理，例如 https://example.com/service"
+            />
+          </el-form-item>
+          <el-form-item label="服务端鉴权 Token">
+            <el-input
+              v-model="integrationSettingsForm.authorization"
+              type="password"
+              show-password
+              placeholder="将作为 authorization 请求头发送"
+            />
+          </el-form-item>
+          <el-form-item label="ONLYOFFICE 地址">
+            <el-input
+              v-model="integrationSettingsForm.onlyofficeDocumentServerUrl"
+              placeholder="例如 https://example.com/api/office"
+            />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="showIntegrationSettingsDialog = false">取消</el-button>
+          <el-button type="primary" @click="saveIntegrationRuntimeSettings">保存并刷新工作台</el-button>
+        </template>
+      </el-dialog>
     </el-main>
   </el-container>
 </template>
@@ -710,6 +779,13 @@ onMounted(loadLibraryWorkspace);
 .card-header h2 {
   margin: 0;
   font-size: 18px;
+}
+
+.context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .muted-copy {
